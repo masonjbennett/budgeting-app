@@ -153,6 +153,25 @@ section[data-testid="stSidebar"] p {
     color: #e2e8f0;
 }
 
+/* Sidebar nav buttons */
+section[data-testid="stSidebar"] button {
+    color: #e2e8f0 !important;
+}
+section[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: #252836 !important;
+    border: 1px solid #2d3348 !important;
+    color: #e2e8f0 !important;
+}
+section[data-testid="stSidebar"] button[kind="primary"] {
+    background-color: #34d399 !important;
+    color: #0f1117 !important;
+    border: none !important;
+}
+section[data-testid="stSidebar"] button span,
+section[data-testid="stSidebar"] button p {
+    color: inherit !important;
+}
+
 /* Input labels */
 div[data-testid="stNumberInput"] label,
 div[data-testid="stTextInput"] label,
