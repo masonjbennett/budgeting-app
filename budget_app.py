@@ -806,9 +806,9 @@ with st.sidebar:
     pages = [
         "Dashboard", "Income Setup", "Budget Builder", "Expense Tracker",
         "Net Worth", "Debt Payoff", "Savings Goals", "Investments",
-        "Tax Estimator", "Data Management",
+        "FIRE Calculator", "Tax Estimator", "Data Management",
     ]
-    icons = ["📊", "💰", "📋", "💳", "📈", "🏦", "🎯", "📈", "🧾", "💾"]
+    icons = ["📊", "💰", "📋", "💳", "📈", "🏦", "🎯", "📈", "🔥", "🧾", "💾"]
 
     for i, p in enumerate(pages):
         if st.sidebar.button(
@@ -908,7 +908,29 @@ def page_dashboard():
 
     st.markdown("")
 
-    # Row 3: Charts
+    # YTD Summary
+    cur_year = now.strftime("%Y")
+    ytd_expenses = [e for e in data["expenses"] if e["date"][:4] == cur_year]
+    ytd_spent = sum(e["amount"] for e in ytd_expenses)
+    ytd_income = monthly_income * now.month
+    ytd_saved = ytd_income - ytd_spent
+    months_elapsed = now.month
+
+    st.markdown("### Year-to-Date Summary")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric(f"YTD Income ({months_elapsed}mo)", fmt(ytd_income))
+    with c2:
+        st.metric("YTD Spending", fmt(ytd_spent))
+    with c3:
+        st.metric("YTD Saved", fmt(ytd_saved))
+    with c4:
+        ytd_rate = (ytd_saved / ytd_income * 100) if ytd_income else 0
+        st.metric("YTD Savings Rate", f"{ytd_rate:.1f}%")
+
+    st.markdown("")
+
+    # Charts
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Monthly Cash Flow")
@@ -961,8 +983,9 @@ def page_dashboard():
         fig = go.Figure()
         fig.add_trace(go.Bar(name="This Month", x=all_cats_union, y=cur_vals, marker_color=GREEN, opacity=0.8))
         fig.add_trace(go.Bar(name="Last Month", x=all_cats_union, y=prev_vals, marker_color=BLUE, opacity=0.5))
-        fig.update_layout(**default_layout(), height=300, barmode="group",
-                         yaxis_tickprefix="$", yaxis_tickformat=",")
+        fig.update_layout(**default_layout(), height=350, barmode="group",
+                         yaxis_tickprefix="$", yaxis_tickformat=",",
+                         xaxis_tickangle=-45)
         st.plotly_chart(fig, use_container_width=True)
 
     # Net worth trend
@@ -1085,6 +1108,71 @@ def page_income():
     ))
     fig.update_layout(**default_layout(), height=400, title="Annual Pay Breakdown")
     st.plotly_chart(fig, use_container_width=True)
+
+    # Salary Negotiation Modeler
+    st.markdown("---")
+    st.markdown("### Salary Negotiation Impact")
+    st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.85rem;">See how negotiating a higher salary compounds over your career.</p>', unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        neg_increase = st.number_input("Negotiated Raise ($)", value=10000, min_value=0, step=1000, format="%d",
+                                        key="neg_raise", help="How much more you'd negotiate")
+    with c2:
+        neg_years = st.slider("Career Horizon (years)", 1, 40, 25, key="neg_years")
+    with c3:
+        annual_raise_pct = st.number_input("Annual Raise (%)", value=3.0, min_value=0.0, step=0.5, format="%.1f",
+                                            key="neg_annual_raise", help="Expected annual salary increases")
+
+    base = data["income"]["gross_salary"]
+    negotiated = base + neg_increase
+
+    base_cum, neg_cum = 0, 0
+    base_series, neg_series = [], []
+    for y in range(neg_years):
+        base_year = base * (1 + annual_raise_pct / 100) ** y
+        neg_year = negotiated * (1 + annual_raise_pct / 100) ** y
+        base_cum += base_year
+        neg_cum += neg_year
+        base_series.append(base_cum)
+        neg_series.append(neg_cum)
+
+    lifetime_diff = neg_cum - base_cum
+    # After-tax approximation
+    marginal = th_local["marginal_fed"] / 100
+    state_d = STATE_TAX_DATA.get(data["income"]["state"])
+    state_m = state_d["brackets"][-1][1] if state_d and state_d["brackets"] else 0
+    after_tax_diff = lifetime_diff * (1 - marginal - state_m - 0.0765)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Year 1 Difference", fmt(neg_increase), delta=f"+{fmt(neg_increase * (1 - marginal - state_m - 0.0765))} after tax")
+    with c2:
+        st.metric(f"Lifetime Earnings Delta ({neg_years}yr)", fmt(lifetime_diff))
+    with c3:
+        st.metric("After-Tax Lifetime Impact", fmt(after_tax_diff),
+                  help="Approximate after federal, state, and FICA taxes")
+
+    fig = go.Figure()
+    x = list(range(1, neg_years + 1))
+    fig.add_trace(go.Scatter(x=x, y=neg_series, name=f"Negotiated ({fmt(negotiated)})",
+                            line=dict(color=GREEN, width=2), fill="tonexty"))
+    fig.add_trace(go.Scatter(x=x, y=base_series, name=f"Current ({fmt(base)})",
+                            line=dict(color=BLUE, width=2), fill="tozeroy",
+                            fillcolor="rgba(96,165,250,0.1)"))
+    fig.update_layout(**default_layout(), height=300, xaxis_title="Years",
+                     yaxis_title="Cumulative Earnings", yaxis_tickprefix="$", yaxis_tickformat=",")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown(f'''<div class="card" style="border-left:3px solid {GREEN};">
+        <p style="margin:0; font-weight:600;">Bottom Line</p>
+        <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.9rem;">
+            Negotiating <span class="mono" style="color:{GREEN};">{fmt(neg_increase)}</span> more today is worth
+            <span class="mono" style="color:{GREEN}; font-weight:600;">{fmt(after_tax_diff)}</span> after taxes over {neg_years} years
+            — assuming {annual_raise_pct:.0f}% annual raises compound on the higher base.
+        </p>
+    </div>''', unsafe_allow_html=True)
+
     render_footer()
 
 
@@ -1316,13 +1404,17 @@ def page_expenses():
         for cat in sorted(cat_spending.keys()):
             spent = cat_spending[cat]
             budgeted = budget_cats.get(cat, 0)
-            pct = (spent / budgeted * 100) if budgeted > 0 else 100
-            if pct >= 100:
-                color, label = RED, "OVER"
-            elif pct >= 80:
-                color, label = YELLOW, f"{pct:.0f}%"
+            if budgeted > 0:
+                pct = spent / budgeted * 100
+                if pct >= 100:
+                    color, label = RED, "OVER"
+                elif pct >= 80:
+                    color, label = YELLOW, f"{pct:.0f}%"
+                else:
+                    color, label = GREEN, f"{pct:.0f}%"
             else:
-                color, label = GREEN, f"{pct:.0f}%"
+                pct = 0
+                color, label = (TEXT_DIM, "No budget") if spent == 0 else (YELLOW, "Unbudgeted")
 
             st.markdown(f'''<div style="margin-bottom:0.75rem;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
@@ -1836,6 +1928,159 @@ def page_investments():
 
 
 # ══════════════════════════════════════════════
+# PAGE: FIRE CALCULATOR
+# ══════════════════════════════════════════════
+
+def page_fire():
+    st.markdown("# 🔥 FIRE Calculator")
+    st.markdown(f'<p style="color:{TEXT_DIM};">Financial Independence, Retire Early — calculate when you can live off your investments.</p>', unsafe_allow_html=True)
+
+    monthly_income = th["monthly_take_home"]
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        fire_income = st.number_input("Annual Take-Home ($)", value=int(th["annual_take_home"]),
+                                       min_value=0, step=1000, format="%d", key="fire_income",
+                                       help="Your annual after-tax income")
+        fire_expenses = st.number_input("Annual Expenses ($)", value=int(sum(
+            sum(data["budget"][c].values()) for c in ["needs", "wants"]) * 12),
+            min_value=0, step=1000, format="%d", key="fire_expenses",
+            help="Your total annual spending (needs + wants)")
+    with c2:
+        fire_portfolio = st.number_input("Current Portfolio ($)", value=int(sum(data["assets"].values())),
+                                          min_value=0, step=1000, format="%d", key="fire_portfolio")
+        fire_return = st.number_input("Expected Return (%)", value=7.0, min_value=0.0, max_value=20.0,
+                                       step=0.5, format="%.1f", key="fire_return")
+    with c3:
+        fire_withdrawal = st.number_input("Safe Withdrawal Rate (%)", value=4.0, min_value=1.0, max_value=10.0,
+                                           step=0.25, format="%.2f", key="fire_swr",
+                                           help="4% is the classic 'Trinity Study' rule. 3.5% is more conservative.")
+        fire_inflation = st.number_input("Inflation (%)", value=3.0, min_value=0.0, max_value=10.0,
+                                          step=0.5, format="%.1f", key="fire_inflation")
+
+    annual_savings = fire_income - fire_expenses
+    savings_rate = (annual_savings / fire_income * 100) if fire_income > 0 else 0
+    fire_number = (fire_expenses / (fire_withdrawal / 100)) if fire_withdrawal > 0 else 0
+    real_return = fire_return - fire_inflation
+
+    # Calculate years to FIRE
+    portfolio = fire_portfolio
+    years_to_fire = 0
+    fire_reached = False
+    trajectory = [{"year": 0, "portfolio": portfolio, "fire_number": fire_number}]
+
+    for y in range(1, 101):
+        portfolio = portfolio * (1 + real_return / 100) + annual_savings
+        fi_num = fire_number * (1 + fire_inflation / 100) ** y  # inflation-adjusted FIRE number
+        trajectory.append({"year": y, "portfolio": portfolio, "fire_number": fi_num})
+        if portfolio >= fi_num and not fire_reached:
+            years_to_fire = y
+            fire_reached = True
+            break
+
+    if not fire_reached:
+        years_to_fire = -1
+
+    # Key metrics
+    st.markdown("---")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        sr_color = GREEN if savings_rate >= 50 else (YELLOW if savings_rate >= 20 else RED)
+        sr_status = "Excellent" if savings_rate >= 50 else ("Good" if savings_rate >= 20 else "Low")
+        st.markdown(metric_card_html("Savings Rate", f"{savings_rate:.1f}%", sr_status, sr_color,
+            "50%+ = FIRE in ~17 yrs. 25% = ~32 yrs. Higher is dramatically better."), unsafe_allow_html=True)
+    with c2:
+        st.markdown(metric_card_html("FIRE Number", fmt(fire_number), f"At {fire_withdrawal:.1f}% SWR", BLUE,
+            f"Portfolio needed to withdraw {fmt(fire_expenses)}/yr safely."), unsafe_allow_html=True)
+    with c3:
+        if years_to_fire > 0:
+            fire_age = 24 + years_to_fire  # approximate
+            st.markdown(metric_card_html("Years to FIRE", str(years_to_fire), f"~Age {fire_age}", GREEN,
+                f"When your portfolio covers {fmt(fire_expenses)}/yr at {fire_withdrawal:.1f}% withdrawal."), unsafe_allow_html=True)
+        else:
+            st.markdown(metric_card_html("Years to FIRE", "100+", "Increase savings", RED,
+                "Your current savings rate won't reach FIRE. Increase income or reduce expenses."), unsafe_allow_html=True)
+    with c4:
+        monthly_passive = fire_number * fire_withdrawal / 100 / 12
+        st.markdown(metric_card_html("Passive Income at FIRE", fmt(monthly_passive) + "/mo", "From portfolio", GREEN,
+            f"What your portfolio generates at {fire_withdrawal:.1f}% withdrawal rate."), unsafe_allow_html=True)
+
+    # Trajectory chart
+    st.markdown("### Path to Financial Independence")
+    traj_df = pd.DataFrame(trajectory)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=traj_df["year"], y=traj_df["portfolio"], name="Your Portfolio",
+                            line=dict(color=GREEN, width=3), fill="tozeroy",
+                            fillcolor="rgba(52,211,153,0.1)"))
+    fig.add_trace(go.Scatter(x=traj_df["year"], y=traj_df["fire_number"], name="FIRE Number",
+                            line=dict(color=RED, width=2, dash="dash")))
+    if fire_reached:
+        fig.add_vline(x=years_to_fire, line_dash="dot", line_color=YELLOW, annotation_text=f"FIRE! Year {years_to_fire}")
+    fig.update_layout(**default_layout(), height=400, xaxis_title="Years from Now",
+                     yaxis_title="Portfolio Value", yaxis_tickprefix="$", yaxis_tickformat=",")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Savings rate sensitivity
+    st.markdown("### Savings Rate vs. Years to FIRE")
+    st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.85rem;">How your savings rate dramatically affects your timeline — the math is non-linear.</p>', unsafe_allow_html=True)
+
+    rates = list(range(10, 85, 5))
+    years_list = []
+    for sr in rates:
+        ann_save = fire_income * sr / 100
+        ann_spend = fire_income - ann_save
+        fi_num = (ann_spend / (fire_withdrawal / 100)) if fire_withdrawal > 0 else 0
+        p = fire_portfolio
+        yrs = 0
+        for y in range(1, 101):
+            p = p * (1 + real_return / 100) + ann_save
+            if p >= fi_num:
+                yrs = y
+                break
+        years_list.append(yrs if yrs > 0 else 100)
+
+    fig = go.Figure()
+    bar_colors = [GREEN if y <= 15 else (YELLOW if y <= 30 else (BLUE if y <= 50 else RED)) for y in years_list]
+    fig.add_trace(go.Bar(x=[f"{r}%" for r in rates], y=years_list, marker_color=bar_colors,
+                        text=[f"{y}yr" for y in years_list], textposition="outside",
+                        textfont=dict(family="JetBrains Mono", size=10)))
+    # Mark current savings rate
+    fig.update_layout(**default_layout(), height=350, xaxis_title="Savings Rate",
+                     yaxis_title="Years to FIRE", xaxis_tickangle=-45)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # What-if scenarios
+    st.markdown("### What-If Scenarios")
+    scenarios_data = []
+    for label, extra_savings in [("Current", 0), ("+$500/mo", 6000), ("+$1,000/mo", 12000), ("+$2,000/mo", 24000)]:
+        adj_savings = annual_savings + extra_savings
+        p = fire_portfolio
+        yrs = 0
+        for y in range(1, 101):
+            p = p * (1 + real_return / 100) + adj_savings
+            fi_target = fire_number * (1 + fire_inflation / 100) ** y
+            if p >= fi_target:
+                yrs = y
+                break
+        scenarios_data.append({"Scenario": label, "Annual Savings": fmt(adj_savings),
+                               "Years to FIRE": f"{yrs if yrs > 0 else '100+'}",
+                               "FIRE Age": f"~{24 + yrs}" if yrs > 0 else "N/A"})
+
+    st.dataframe(pd.DataFrame(scenarios_data), use_container_width=True, hide_index=True)
+
+    st.markdown(f'''<div class="card" style="border-left:3px solid {YELLOW};">
+        <p style="font-weight:600; margin:0;">Key Insight</p>
+        <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.9rem;">
+            Your savings rate matters more than your return rate. Going from 20% to 40% savings
+            cuts your working years nearly in half. Every dollar of expenses you cut permanently
+            reduces your FIRE number <em>and</em> increases your savings rate — a double win.
+        </p>
+    </div>''', unsafe_allow_html=True)
+
+    render_footer()
+
+
+# ══════════════════════════════════════════════
 # PAGE: TAX ESTIMATOR
 # ══════════════════════════════════════════════
 
@@ -2100,6 +2345,7 @@ PAGES = {
     "Debt Payoff": page_debt,
     "Savings Goals": page_savings_goals,
     "Investments": page_investments,
+    "FIRE Calculator": page_fire,
     "Tax Estimator": page_tax,
     "Data Management": page_data,
 }
