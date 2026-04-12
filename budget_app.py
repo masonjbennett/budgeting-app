@@ -417,11 +417,13 @@ def simulate_payoff(debts, extra, strategy):
     schedule = []
     max_months = 600
 
-    # Check if minimums can cover interest
+    # Check if payments can make progress
     total_min = sum(mins.values()) + extra
     total_monthly_interest = sum(b * r for b, r in zip(balances.values(), rates.values()) if b > 0)
+    if total_min <= 0:
+        return -1, 0, []  # No payments = can't pay off
     if total_min <= total_monthly_interest and total_monthly_interest > 0:
-        return -1, 0, []  # Can't pay off
+        return -1, 0, []  # Can't cover interest
 
     while any(b > 0.01 for b in balances.values()) and months < max_months:
         months += 1
@@ -657,7 +659,7 @@ def compute_take_home(d=None):
     filing = d.get("filing_status", "Single")
     annual_gross = gross + (bonus if bonus_type != "None" else 0)
 
-    contrib_401k_annual = gross * d["contribution_401k"] / 100
+    contrib_401k_annual = min(gross * d["contribution_401k"] / 100, 24_500)  # 2026 IRS limit
     health_annual = d["health_insurance"] * 12
     hsa_annual = d["hsa"] * 12
     pretax = contrib_401k_annual + health_annual + hsa_annual
@@ -1062,7 +1064,7 @@ def page_income():
         lifetime_diff = neg_cum - base_cum
         marginal = th_local["marginal_fed"] / 100
         state_d = STATE_TAX_DATA.get(data["income"]["state"])
-        state_m = state_d["brackets"][-1][1] if state_d and state_d["brackets"] else 0
+        state_m = state_d["brackets"][-1][1] if (state_d and state_d.get("brackets")) else 0
         after_tax_diff = lifetime_diff * (1 - marginal - state_m - 0.0765)
 
         c1, c2, c3 = st.columns(3)
@@ -2080,8 +2082,8 @@ def page_tax():
             help="Only the amount exceeding 7.5% of AGI is deductible")
 
     salt_capped = min(data["itemized"]["salt"], SALT_CAP)
-    medical_threshold = th_local["agi"] * 0.075
-    medical_deductible = max(0, data["itemized"]["medical"] - medical_threshold)
+    medical_threshold = max(0, th_local["agi"]) * 0.075
+    medical_deductible = max(0, data["itemized"]["medical"] - medical_threshold) if th_local["agi"] > 0 else 0
     total_itemized = salt_capped + data["itemized"]["mortgage_interest"] + data["itemized"]["charitable"] + medical_deductible
     standard = th_local["std_ded"]
 
@@ -2139,7 +2141,7 @@ def page_tax():
     marginal = th_local["marginal_fed"] / 100
     state_d = STATE_TAX_DATA.get(data["income"]["state"])
     state_marginal = 0
-    if state_d and state_d["brackets"]:
+    if state_d and state_d.get("brackets"):
         state_marginal = state_d["brackets"][-1][1] if th_local["taxable"] > 0 else 0
 
     tax_saved = contrib * (marginal + state_marginal)
