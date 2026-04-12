@@ -179,33 +179,35 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 # ──────────────────────────────────────────────
 
 FEDERAL_BRACKETS_2026 = {
+    # Source: IRS Revenue Procedure 2025-32 (official 2026 brackets)
     "Single": [
-        (11_925, 0.10), (48_475, 0.12), (103_350, 0.22),
-        (197_300, 0.24), (250_525, 0.32), (626_350, 0.35),
+        (12_400, 0.10), (50_400, 0.12), (105_700, 0.22),
+        (201_775, 0.24), (256_225, 0.32), (640_600, 0.35),
         (float("inf"), 0.37),
     ],
     "Married Filing Jointly": [
-        (23_850, 0.10), (96_950, 0.12), (206_700, 0.22),
-        (394_600, 0.24), (501_050, 0.32), (751_600, 0.35),
+        (24_800, 0.10), (100_800, 0.12), (211_400, 0.22),
+        (403_550, 0.24), (512_450, 0.32), (768_700, 0.35),
         (float("inf"), 0.37),
     ],
     "Married Filing Separately": [
-        (11_925, 0.10), (48_475, 0.12), (103_350, 0.22),
-        (197_300, 0.24), (250_525, 0.32), (375_800, 0.35),
+        (12_400, 0.10), (50_400, 0.12), (105_700, 0.22),
+        (201_775, 0.24), (256_225, 0.32), (384_350, 0.35),
         (float("inf"), 0.37),
     ],
     "Head of Household": [
-        (17_000, 0.10), (64_850, 0.12), (103_350, 0.22),
-        (197_300, 0.24), (250_500, 0.32), (626_350, 0.35),
+        (17_700, 0.10), (67_450, 0.12), (105_700, 0.22),
+        (201_775, 0.24), (256_200, 0.32), (640_600, 0.35),
         (float("inf"), 0.37),
     ],
 }
 
 STANDARD_DEDUCTION_2026 = {
-    "Single": 15_700,
-    "Married Filing Jointly": 31_400,
-    "Married Filing Separately": 15_700,
-    "Head of Household": 23_550,
+    # Source: IRS Revenue Procedure 2025-32
+    "Single": 16_100,
+    "Married Filing Jointly": 32_200,
+    "Married Filing Separately": 16_100,
+    "Head of Household": 24_150,
 }
 
 FILING_STATUSES = list(FEDERAL_BRACKETS_2026.keys())
@@ -265,7 +267,7 @@ STATE_TAX_DATA = {
 }
 
 FICA_SS_RATE = 0.062
-FICA_SS_CAP = 176_100
+FICA_SS_CAP = 184_500  # 2026 Social Security wage base (SSA official)
 FICA_MEDICARE_RATE = 0.0145
 FICA_MEDICARE_SURTAX = 0.009
 FICA_MEDICARE_SURTAX_THRESHOLD = 200_000
@@ -965,11 +967,11 @@ def page_income():
         st.markdown("### Pre-Tax Deductions")
         data["income"]["contribution_401k"] = st.slider(
             "401(k) Contribution (%)", 0, 100, data["income"]["contribution_401k"],
-            help="Percentage of base salary. 2026 employee limit: $23,500. Employer match is separate.",
+            help="Percentage of base salary. 2026 employee limit: $24,500. Employer match is separate.",
         )
         contrib_dollar = data["income"]["gross_salary"] * data["income"]["contribution_401k"] / 100
-        if contrib_dollar > 23500:
-            st.warning(f"Your 401(k) contribution ({fmt(contrib_dollar)}) exceeds the 2026 limit of $23,500.")
+        if contrib_dollar > 24500:
+            st.warning(f"Your 401(k) contribution ({fmt(contrib_dollar)}) exceeds the 2026 limit of $24,500.")
 
         data["income"]["health_insurance"] = st.number_input(
             "Health Insurance ($/month)", value=data["income"]["health_insurance"],
@@ -978,7 +980,7 @@ def page_income():
         data["income"]["hsa"] = st.number_input(
             "HSA Contribution ($/month)", value=data["income"]["hsa"],
             min_value=0, step=25, format="%d",
-            help="2026 individual limit: ~$4,300/year. Only available with HDHP.",
+            help="2026 individual limit: $4,400/year. Only available with HDHP.",
         )
 
     st.divider()
@@ -2145,7 +2147,7 @@ def page_tax():
     scenarios = [0, 3, 6, 10, 15, 20]
     savings_data = []
     for pct in scenarios:
-        c = min(data["income"]["gross_salary"] * pct / 100, 23500)
+        c = min(data["income"]["gross_salary"] * pct / 100, 24500)
         s = c * (marginal + state_marginal)
         savings_data.append({"Contribution %": f"{pct}%", "Annual ($)": fmt(c), "Tax Savings": fmt(s)})
     st.dataframe(pd.DataFrame(savings_data), use_container_width=True, hide_index=True)
