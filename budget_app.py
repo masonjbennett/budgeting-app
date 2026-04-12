@@ -20,17 +20,17 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Color palette
-GREEN = "#34d399"
-RED = "#f87171"
-BLUE = "#60a5fa"
-YELLOW = "#fbbf24"
-PURPLE = "#a78bfa"
-BG_DARK = "#0f1117"
-BG_CARD = "#1a1d29"
-BG_SURFACE = "#252836"
-TEXT = "#e2e8f0"
-TEXT_DIM = "#94a3b8"
+# Color palette — light theme (matches portfolio app)
+GREEN = "#2ECC71"
+RED = "#E74C3C"
+BLUE = "#2E86AB"
+YELLOW = "#F18F01"
+PURPLE = "#9B59B6"
+BG_DARK = "#FFFFFF"
+BG_CARD = "#FFFFFF"
+BG_SURFACE = "#F1F5F9"
+TEXT = "#1B2A4A"
+TEXT_DIM = "#6C7A96"
 
 CUSTOM_CSS = """
 <style>
@@ -38,35 +38,34 @@ CUSTOM_CSS = """
 
 /* ── Base ── */
 :root {
-    --bg-dark: #0f1117; --bg-card: #1a1d29; --bg-surface: #252836;
-    --green: #34d399; --red: #f87171; --blue: #60a5fa;
-    --yellow: #fbbf24; --text: #e2e8f0; --text-dim: #94a3b8;
-    --border: #2d3348; --radius: 0.75rem;
+    --primary: #1B2A4A; --accent: #2E86AB; --green: #2ECC71; --red: #E74C3C;
+    --yellow: #F18F01; --text: #1B2A4A; --text-dim: #6C7A96;
+    --bg: #FFFFFF; --surface: #F8F9FC; --card: #FFFFFF;
+    --border: #E2E8F0; --radius: 0.75rem;
     --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
-.stApp { background-color: var(--bg-dark); }
-
-/* ── Content width ── */
-div[data-testid="stMainBlockContainer"] { max-width: 1200px; margin: 0 auto; }
+html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
+.block-container { padding-top: 1rem; max-width: 1200px; }
 
 /* ── Typography ── */
-h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; letter-spacing: -0.02em; }
-h2, h3 { font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
-p, span, label, div { color: var(--text); }
+h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; letter-spacing: -0.02em; color: var(--primary); }
+h2, h3 { font-family: 'Space Grotesk', sans-serif; font-weight: 600; color: var(--primary); }
 .mono { font-family: 'JetBrains Mono', monospace; }
-div[data-testid="stCaptionContainer"] { color: var(--text-dim); opacity: 0.85; }
 
 /* ── Cards ── */
 .card {
-    background: linear-gradient(145deg, #1a1d29, #151823);
-    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 1.5rem; margin-bottom: 1rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease);
-    animation: fadeIn 0.35s ease-out;
 }
-.card:hover { border-color: rgba(52,211,153,0.3); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
-@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+.card:hover { border-color: var(--accent); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+
+/* ── Section divider ── */
+.section-divider {
+    height: 3px; background: linear-gradient(90deg, #2E86AB, #F18F01);
+    border: none; border-radius: 2px; margin: 0.25rem 0 1rem 0; opacity: 0.7;
+}
 
 /* ── Badges ── */
 .badge {
@@ -76,102 +75,109 @@ div[data-testid="stCaptionContainer"] { color: var(--text-dim); opacity: 0.85; }
 
 /* ── Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #1a1d29 0%, #151823 100%);
-    border-right: 1px solid var(--border);
+    background: linear-gradient(180deg, #1B2A4A 0%, #243B63 100%);
 }
+section[data-testid="stSidebar"] * { color: #E2E8F0; }
 section[data-testid="stSidebar"] button {
-    transition: all 0.25s var(--ease); border-radius: 0.5rem;
-    margin-bottom: 2px;
+    transition: all 0.25s var(--ease); border-radius: 0.5rem; margin-bottom: 2px;
 }
 section[data-testid="stSidebar"] button[kind="secondary"] {
-    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-    color: var(--text-dim);
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    color: #CBD5E1;
 }
 section[data-testid="stSidebar"] button[kind="secondary"]:hover {
-    background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.25);
-    color: var(--text);
+    background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25);
+    color: #FFFFFF;
 }
 section[data-testid="stSidebar"] button[kind="primary"] {
-    background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.35);
-    color: var(--green); font-weight: 600;
-    box-shadow: 0 0 8px rgba(52,211,153,0.1);
+    background: rgba(46,134,171,0.3); border: 1px solid rgba(46,134,171,0.5);
+    color: #7DD3FC; font-weight: 600;
 }
 
 /* ── Metrics ── */
 div[data-testid="stMetric"] {
-    background: linear-gradient(145deg, #1a1d29, #151823);
-    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
     padding: 1.25rem; transition: all 0.3s var(--ease);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 div[data-testid="stMetric"]:hover {
-    border-color: rgba(52,211,153,0.25); transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    border-color: var(--accent); transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
-div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
-div[data-testid="stMetricDelta"] { font-family: 'JetBrains Mono', monospace; }
+div[data-testid="stMetricValue"] {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-size: 1.25rem; color: var(--primary);
+}
+div[data-testid="stMetricDelta"] { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
 div[data-testid="stMetricLabel"] p {
-    text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.78rem;
+    text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem;
     color: var(--text-dim); font-weight: 500;
 }
 
 /* ── Inputs ── */
 div[data-testid="stNumberInput"] input,
 div[data-testid="stTextInput"] input {
-    font-family: 'JetBrains Mono', monospace; color: var(--text);
+    font-family: 'JetBrains Mono', monospace; border-radius: 8px;
     transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 input:focus, div[data-baseweb="input"]:focus-within {
-    border-color: var(--green); box-shadow: 0 0 0 3px rgba(52,211,153,0.12);
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,134,171,0.15);
 }
-div[data-baseweb="select"] > div { color: var(--text); }
-li[role="option"] { color: var(--text); }
-li[role="option"]:hover { background: rgba(52,211,153,0.1); }
 
 /* ── Tabs ── */
-.stTabs [data-baseweb="tab-list"] { gap: 0.25rem; border-bottom: 1px solid var(--border); }
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0; background: var(--surface); border-radius: 12px; padding: 4px;
+}
 .stTabs [data-baseweb="tab"] {
-    background: transparent; border-radius: 0.5rem 0.5rem 0 0;
-    padding: 0.6rem 1.2rem; color: var(--text-dim);
-    border-bottom: 2px solid transparent; transition: all 0.25s var(--ease);
+    background: transparent; border-radius: 8px;
+    padding: 0.5rem 1rem; color: var(--text-dim); font-weight: 500;
+    transition: all 0.2s var(--ease);
 }
-.stTabs [data-baseweb="tab"]:hover { color: var(--text); background: rgba(52,211,153,0.05); }
 .stTabs [data-baseweb="tab"][aria-selected="true"] {
-    color: var(--green); border-bottom-color: var(--green); background: rgba(52,211,153,0.08);
+    background: var(--card); color: var(--primary); font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
+[data-baseweb="tab-highlight"], [data-baseweb="tab-border"] { display: none; }
 
 /* ── Expanders ── */
 div[data-testid="stExpander"] {
-    background: linear-gradient(145deg, #1a1d29, #151823);
-    border: 1px solid var(--border); border-radius: var(--radius);
-    transition: border-color 0.25s var(--ease);
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: border-color 0.25s var(--ease);
 }
-div[data-testid="stExpander"]:hover { border-color: rgba(52,211,153,0.25); }
+div[data-testid="stExpander"]:hover { border-color: var(--accent); }
 
 /* ── Dividers ── */
 hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 
 /* ── Dataframes ── */
 div[data-testid="stDataFrame"] {
-    border: 1px solid var(--border); border-radius: 0.5rem; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+}
+
+/* ── Charts ── */
+div[data-testid="stPlotlyChart"] {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 /* ── Buttons ── */
 button[kind="primary"] { transition: all 0.25s var(--ease); }
-button[kind="primary"]:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(52,211,153,0.25); }
+button[kind="primary"]:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(46,134,171,0.25); }
 button[kind="secondary"] { transition: all 0.25s var(--ease); }
-button[kind="secondary"]:hover { border-color: var(--green); color: var(--green); }
+button[kind="secondary"]:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ── Alerts ── */
-div[data-testid="stAlert"] { border-radius: 0.5rem; }
+div[data-testid="stAlert"] { border-radius: 10px; }
 
 /* ── Hide default footer ── */
+#MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
 
 /* ── Mobile ── */
 @media (max-width: 768px) {
-    div[data-testid="stMainBlockContainer"] { padding: 0.75rem; }
+    .block-container { padding: 0.75rem; }
     div[data-testid="stMetric"] { padding: 0.75rem; }
-    div[data-testid="stMetricValue"] { font-size: 1.3rem; }
+    div[data-testid="stMetricValue"] { font-size: 1.1rem; }
     .card { padding: 1rem; }
 }
 </style>
@@ -325,12 +331,16 @@ def default_layout():
     return dict(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="JetBrains Mono, monospace", color=TEXT, size=12),
-        margin=dict(l=40, r=20, t=40, b=40),
-        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=-0.15),
-        xaxis=dict(gridcolor="#2d3348", zerolinecolor="#2d3348"),
-        yaxis=dict(gridcolor="#2d3348", zerolinecolor="#2d3348"),
+        font=dict(family="Inter, sans-serif", color=TEXT, size=12),
+        margin=dict(l=50, r=50, t=50, b=60),
+        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=-0.15,
+                    font=dict(size=11, color=TEXT)),
+        xaxis=dict(gridcolor="rgba(226,232,240,0.6)", linecolor="#E2E8F0", linewidth=1,
+                   title_font=dict(size=12, color=TEXT_DIM), tickfont=dict(size=11, color=TEXT_DIM)),
+        yaxis=dict(gridcolor="rgba(226,232,240,0.6)", linecolor="#E2E8F0", linewidth=1,
+                   title_font=dict(size=12, color=TEXT_DIM), tickfont=dict(size=11, color=TEXT_DIM)),
         hovermode="x unified",
+        hoverlabel=dict(bgcolor="#FFFFFF", font_size=12, font_color=TEXT, bordercolor="#E2E8F0"),
     )
 
 
@@ -469,7 +479,7 @@ def simulate_payoff(debts, extra, strategy):
 
 def render_footer():
     st.markdown(f"""
-    <div style="text-align:center; padding:2rem 0 1rem; margin-top:3rem; border-top:1px solid #2d3348;">
+    <div style="text-align:center; padding:2rem 0 1rem; margin-top:3rem; border-top:1px solid #E2E8F0;">
         <p style="color:{TEXT_DIM}; font-size:0.8rem; margin:0;">
             Built by <a href="https://masonjbennett.com" target="_blank" style="color:{GREEN}; text-decoration:none;">Mason Bennett</a>
             &nbsp;&middot;&nbsp; Powered by Streamlit + Plotly
@@ -734,9 +744,9 @@ def get_marginal_rate(taxable, brackets):
 with st.sidebar:
     st.markdown(f"""
     <div style="text-align:center; margin-bottom:1.5rem;">
-        <h2 style="color:{GREEN}; margin:0; font-family:'Space Grotesk',sans-serif;">Budget Tracker</h2>
-        <p style="color:{TEXT_DIM}; font-size:0.85rem; margin:0;">
-            <a href="https://masonjbennett.com" target="_blank" style="color:{TEXT_DIM}; text-decoration:none;">masonjbennett.com</a>
+        <h2 style="color:#FFFFFF; margin:0; font-family:'Space Grotesk',sans-serif;">Budget Tracker</h2>
+        <p style="color:#94A3C0; font-size:0.85rem; margin:0;">
+            <a href="https://masonjbennett.com" target="_blank" style="color:#94A3C0; text-decoration:none;">masonjbennett.com</a>
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -752,7 +762,7 @@ with st.sidebar:
     pages = []
     for group_label, items in nav_groups:
         if group_label:
-            st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.12em; margin:1rem 0 0.4rem 0.25rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.06); font-weight:600;">{group_label}</p>', unsafe_allow_html=True)
+            st.markdown(f'<p style="color:#94A3C0; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.12em; margin:1rem 0 0.4rem 0.25rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.08); font-weight:600;">{group_label}</p>', unsafe_allow_html=True)
         for icon, name in items:
             pages.append(name)
             if st.sidebar.button(
@@ -765,7 +775,7 @@ with st.sidebar:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown(
-        f'<p style="color:{TEXT_DIM}; font-size:0.75rem; text-align:center;">v3.0</p>',
+        f'<p style="color:#94A3C0; font-size:0.75rem; text-align:center;">v3.0</p>',
         unsafe_allow_html=True,
     )
 
@@ -955,7 +965,7 @@ def page_dashboard():
             x=nw_df["date"], y=nw_df["net_worth"],
             mode="lines+markers", line=dict(color=GREEN, width=3),
             marker=dict(size=8), fill="tozeroy",
-            fillcolor="rgba(52,211,153,0.1)",
+            fillcolor="rgba(46,204,113,0.1)",
         ))
         fig.update_layout(**default_layout(), height=300, yaxis_title="Net Worth ($)",
                          yaxis_tickprefix="$", yaxis_tickformat=",")
@@ -1123,7 +1133,7 @@ def page_income():
                                 line=dict(color=GREEN, width=2), fill="tonexty"))
         fig.add_trace(go.Scatter(x=x, y=base_series, name=f"Current ({fmt(base)})",
                                 line=dict(color=BLUE, width=2), fill="tozeroy",
-                                fillcolor="rgba(96,165,250,0.1)"))
+                                fillcolor="rgba(46,134,171,0.1)"))
         fig.update_layout(**default_layout(), height=300, xaxis_title="Years",
                          yaxis_title="Cumulative Earnings", yaxis_tickprefix="$", yaxis_tickformat=",")
         st.plotly_chart(fig, use_container_width=True)
@@ -1246,7 +1256,7 @@ def page_budget():
     fig.add_trace(go.Scatter(
         name="50/30/20 Guideline", x=["Needs", "Wants", "Savings"],
         y=[50, 30, 20], mode="markers+text",
-        marker=dict(color="white", size=12, symbol="diamond"),
+        marker=dict(color=TEXT, size=12, symbol="diamond"),
         text=["50%", "30%", "20%"], textposition="top center",
         textfont=dict(family="JetBrains Mono", size=12, color=TEXT_DIM),
     ))
@@ -1563,6 +1573,7 @@ def page_debt():
             Compare two strategies:
             <strong style="color:{GREEN};">Avalanche</strong> (highest interest first — saves the most money) vs
             <strong style="color:{BLUE};">Snowball</strong> (smallest balance first — fastest psychological wins).
+            Calculations use standard amortization math with monthly compounding.
         </p>
     </div>''', unsafe_allow_html=True)
 
@@ -1901,7 +1912,8 @@ def page_investments():
 
 def page_fire():
     st.markdown("# FIRE Calculator")
-    st.caption("Financial Independence, Retire Early — calculate when your portfolio can sustain your lifestyle.")
+    st.caption("Financial Independence, Retire Early — calculate when your portfolio can sustain your lifestyle. "
+               "Based on the 4% safe withdrawal rate from the Trinity Study, with inflation-adjusted FIRE targets.")
 
     monthly_income = th["monthly_take_home"]
 
@@ -1981,7 +1993,7 @@ def page_fire():
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=traj_df["year"], y=traj_df["portfolio"], name="Your Portfolio",
                             line=dict(color=GREEN, width=3), fill="tozeroy",
-                            fillcolor="rgba(52,211,153,0.1)"))
+                            fillcolor="rgba(46,204,113,0.1)"))
     fig.add_trace(go.Scatter(x=traj_df["year"], y=traj_df["fire_number"], name="FIRE Number",
                             line=dict(color=RED, width=2, dash="dash")))
     if fire_reached:
@@ -2057,6 +2069,13 @@ def page_fire():
 def page_tax():
     st.markdown("# Tax Estimator")
     st.caption("Estimate your federal and state tax liability, compare deduction strategies, and optimize 401(k) contributions.")
+    st.markdown(f'''<div class="card" style="border-left:3px solid {BLUE}; padding:1rem 1.25rem;">
+        <p style="color:{TEXT_DIM}; margin:0; font-size:0.82rem;">
+            All brackets use official IRS 2026 data from
+            <a href="https://www.irs.gov/newsroom/irs-releases-tax-inflation-adjustments-for-tax-year-2026-including-amendments-from-the-one-big-beautiful-bill" target="_blank" style="color:{BLUE};">Revenue Procedure 2025-32</a>.
+            SALT cap reflects the One Big Beautiful Bill Act ($40,400). State rates updated for 2026 changes.
+        </p>
+    </div>''', unsafe_allow_html=True)
 
     th_local = compute_take_home(data["income"])
     gross = th_local["annual_gross"]
