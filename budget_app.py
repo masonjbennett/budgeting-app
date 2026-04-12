@@ -140,6 +140,106 @@ div[data-testid="stExpander"] {
 }
 
 footer { visibility: hidden; }
+
+/* ── Force light text on dark background everywhere ── */
+.stApp, .stApp p, .stApp span, .stApp label, .stApp div {
+    color: #e2e8f0;
+}
+
+/* Sidebar text */
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] p {
+    color: #e2e8f0;
+}
+
+/* Input labels */
+div[data-testid="stNumberInput"] label,
+div[data-testid="stTextInput"] label,
+div[data-testid="stSelectbox"] label,
+div[data-testid="stDateInput"] label,
+div[data-testid="stSlider"] label,
+div[data-testid="stMultiSelect"] label,
+div[data-testid="stFileUploader"] label,
+div[data-testid="stCheckbox"] label {
+    color: #e2e8f0 !important;
+}
+
+/* Input fields */
+div[data-testid="stNumberInput"] input,
+div[data-testid="stTextInput"] input,
+div[data-testid="stDateInput"] input,
+div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+div[data-testid="stMultiSelect"] div[data-baseweb="select"] span {
+    color: #e2e8f0 !important;
+}
+
+/* Selectbox dropdown */
+div[data-baseweb="select"] > div {
+    color: #e2e8f0 !important;
+    background-color: #1a1d29 !important;
+}
+
+/* Dropdown options */
+li[role="option"] {
+    color: #e2e8f0 !important;
+}
+
+/* Dataframe / table text */
+div[data-testid="stDataFrame"] td,
+div[data-testid="stDataFrame"] th,
+div[data-testid="stDataFrame"] span,
+.stDataFrame td, .stDataFrame th {
+    color: #e2e8f0 !important;
+}
+
+/* Metric labels */
+div[data-testid="stMetricLabel"] label,
+div[data-testid="stMetricLabel"] p,
+div[data-testid="stMetricLabel"] div {
+    color: #94a3b8 !important;
+}
+
+/* Tabs text */
+.stTabs [data-baseweb="tab"] p,
+.stTabs [data-baseweb="tab"] span,
+.stTabs [data-baseweb="tab"] {
+    color: #e2e8f0 !important;
+}
+
+/* Expander header text */
+div[data-testid="stExpander"] summary span,
+div[data-testid="stExpander"] summary p {
+    color: #e2e8f0 !important;
+}
+
+/* Download button text */
+div[data-testid="stDownloadButton"] button span {
+    color: #e2e8f0 !important;
+}
+
+/* Toggle / checkbox */
+div[data-testid="stToggle"] label span {
+    color: #e2e8f0 !important;
+}
+
+/* Slider value */
+div[data-testid="stSlider"] div[data-testid="stTickBarMin"],
+div[data-testid="stSlider"] div[data-testid="stTickBarMax"] {
+    color: #94a3b8 !important;
+}
+
+/* Info/warning/success/error boxes */
+div[data-testid="stAlert"] p {
+    color: #e2e8f0 !important;
+}
+
+/* File uploader */
+div[data-testid="stFileUploader"] span,
+div[data-testid="stFileUploader"] p,
+div[data-testid="stFileUploader"] small {
+    color: #e2e8f0 !important;
+}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
