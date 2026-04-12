@@ -81,16 +81,20 @@ section[data-testid="stSidebar"] {
 }
 section[data-testid="stSidebar"] button {
     transition: all 0.25s var(--ease); border-radius: 0.5rem;
+    margin-bottom: 2px;
 }
 section[data-testid="stSidebar"] button[kind="secondary"] {
-    background: transparent; border: 1px solid transparent; color: var(--text-dim);
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    color: var(--text-dim);
 }
 section[data-testid="stSidebar"] button[kind="secondary"]:hover {
-    background: rgba(52,211,153,0.08); border-color: rgba(52,211,153,0.2); color: var(--text);
+    background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.25);
+    color: var(--text);
 }
 section[data-testid="stSidebar"] button[kind="primary"] {
-    background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3);
+    background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.35);
     color: var(--green); font-weight: 600;
+    box-shadow: 0 0 8px rgba(52,211,153,0.1);
 }
 
 /* ── Metrics ── */
@@ -729,7 +733,7 @@ with st.sidebar:
     pages = []
     for group_label, items in nav_groups:
         if group_label:
-            st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.1em; margin:0.75rem 0 0.25rem 0.5rem; font-weight:600;">{group_label}</p>', unsafe_allow_html=True)
+            st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.12em; margin:1rem 0 0.4rem 0.25rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.06); font-weight:600;">{group_label}</p>', unsafe_allow_html=True)
         for icon, name in items:
             pages.append(name)
             if st.sidebar.button(
