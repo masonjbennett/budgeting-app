@@ -843,8 +843,18 @@ def page_dashboard():
     total_budgeted = sum(budget_cats.values())
 
     now = datetime.now()
-    cur_month = now.strftime("%Y-%m")
-    prev_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    # Month selector
+    available_months = sorted(set(e["date"][:7] for e in data["expenses"]), reverse=True)
+    if not available_months:
+        available_months = [now.strftime("%Y-%m")]
+    if now.strftime("%Y-%m") not in available_months:
+        available_months = [now.strftime("%Y-%m")] + available_months
+    dash_month = st.selectbox("View Month", available_months, key="dash_month")
+    cur_month = dash_month
+
+    # Determine previous month relative to selected month
+    sel_date = datetime.strptime(cur_month + "-01", "%Y-%m-%d")
+    prev_month = (sel_date - timedelta(days=1)).strftime("%Y-%m")
 
     month_expenses = [e for e in data["expenses"] if e["date"][:7] == cur_month]
     prev_expenses = [e for e in data["expenses"] if e["date"][:7] == prev_month]
@@ -1393,6 +1403,40 @@ def page_expenses():
             else:
                 st.warning("Enter an amount greater than $0.")
 
+    # CSV bulk import
+    with st.expander("📄 Import Expenses from CSV"):
+        st.caption("Upload a CSV with columns: `date`, `amount`, `category`, `note` (optional). Dates should be YYYY-MM-DD format.")
+        csv_file = st.file_uploader("Choose CSV file", type=["csv"], key="csv_import")
+        if csv_file:
+            try:
+                import_df = pd.read_csv(csv_file)
+                required_cols = {"date", "amount", "category"}
+                if not required_cols.issubset(set(import_df.columns)):
+                    st.error(f"CSV must have columns: {', '.join(required_cols)}. Found: {', '.join(import_df.columns)}")
+                else:
+                    st.dataframe(import_df.head(10), use_container_width=True, hide_index=True)
+                    st.caption(f"{len(import_df)} expenses found in file.")
+                    if st.button(f"Import {len(import_df)} Expenses", type="primary"):
+                        count = 0
+                        for _, row in import_df.iterrows():
+                            try:
+                                amt = float(row["amount"])
+                                if amt > 0:
+                                    data["expenses"].append({
+                                        "id": _make_id(),
+                                        "date": str(row["date"])[:10],
+                                        "amount": amt,
+                                        "category": str(row["category"]),
+                                        "note": str(row.get("note", "")) if pd.notna(row.get("note")) else "",
+                                    })
+                                    count += 1
+                            except (ValueError, TypeError):
+                                continue
+                        st.success(f"Imported {count} expenses.")
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Could not read CSV: {e}")
+
     # Monthly filter + category filter
     now = datetime.now()
     months = sorted(set(e["date"][:7] for e in data["expenses"]), reverse=True)
@@ -1939,6 +1983,7 @@ def page_investments():
 
     # Employer match
     st.markdown("### 401(k) Employer Match")
+    st.caption("Your employer match is free money — the highest guaranteed return you'll ever get.")
     salary = data["income"]["gross_salary"]
     your_contrib_pct = data["income"]["contribution_401k"]
     match_pct = inv["employer_match_pct"]
@@ -1949,18 +1994,38 @@ def page_investments():
     employer_annual = min(your_annual, matchable) * match_pct / 100
     employer_monthly = employer_annual / 12
 
-    c1, c2, c3 = st.columns(3)
+    # Career-lifetime free money calculation
+    career_years = 35  # typical career
+    _, career_contribs = project_investment(0, employer_monthly, rate, career_years)
+    career_match_total = career_contribs[-1]  # total employer contributions
+    career_match_with_growth, _ = project_investment(0, employer_monthly, rate, career_years)
+    career_match_value = career_match_with_growth[-1]
+
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric("Your Annual 401(k)", fmt(your_annual))
     with c2:
-        st.metric("Employer Match", fmt(employer_annual), help="Free money from your employer!")
+        st.metric("Employer Match / Year", fmt(employer_annual), help="Free money from your employer!")
     with c3:
         total_401k_monthly = your_annual / 12 + employer_monthly
         vals_with, _ = project_investment(inv["starting_amount"], total_401k_monthly, rate, years)
         vals_without, _ = project_investment(inv["starting_amount"], your_annual / 12, rate, years)
         match_value = vals_with[-1] - vals_without[-1]
-        st.metric("Match Value Over Time", fmt(match_value),
-                  help=f"Extra growth from employer match over {years} years")
+        st.metric(f"Match Growth ({years}yr)", fmt(match_value),
+                  help=f"Extra portfolio value from employer match over {years} years")
+    with c4:
+        st.metric("Career Free Money (35yr)", fmt(career_match_value),
+                  help=f"Total value of employer match invested at {rate:.0f}% over a 35-year career")
+
+    if employer_annual > 0:
+        st.markdown(f'''<div class="card" style="border-left:3px solid {GREEN};">
+            <p style="font-weight:600; margin:0;">Your employer gives you {fmt(employer_annual)}/year for free.</p>
+            <p style="color:{TEXT_DIM}; margin:0.25rem 0 0; font-size:0.88rem;">
+                Invested at {rate:.0f}% over a 35-year career, that match alone grows to
+                <span class="mono" style="color:{GREEN}; font-weight:600;">{fmt(career_match_value)}</span>.
+                That's money you never contributed — pure employer subsidy compounded over time.
+            </p>
+        </div>''', unsafe_allow_html=True)
 
     if your_contrib_pct < match_limit:
         max_employer = salary * match_limit / 100 * match_pct / 100
