@@ -4,7 +4,7 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 import json
-import io
+import uuid
 import math
 from datetime import datetime, date, timedelta
 from copy import deepcopy
@@ -25,6 +25,7 @@ GREEN = "#34d399"
 RED = "#f87171"
 BLUE = "#60a5fa"
 YELLOW = "#fbbf24"
+PURPLE = "#a78bfa"
 BG_DARK = "#0f1117"
 BG_CARD = "#1a1d29"
 BG_SURFACE = "#252836"
@@ -33,7 +34,7 @@ TEXT_DIM = "#94a3b8"
 
 CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
     --bg-dark: #0f1117;
@@ -57,10 +58,11 @@ section[data-testid="stSidebar"] {
 }
 
 .stMetric {
-    background-color: var(--bg-card);
+    background: linear-gradient(145deg, #1a1d29, #151823);
     padding: 1rem;
     border-radius: 0.75rem;
     border: 1px solid #2d3348;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
 }
 
 .stMetric [data-testid="stMetricValue"] {
@@ -77,17 +79,30 @@ div[data-testid="stTextInput"] input {
     font-family: 'JetBrains Mono', monospace;
 }
 
-h1, h2, h3 {
-    font-family: 'Inter', sans-serif;
+h1 {
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
     font-weight: 700;
 }
 
+h2, h3 {
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-weight: 600;
+}
+
 .card {
-    background-color: var(--bg-card);
+    background: linear-gradient(145deg, #1a1d29, #151823);
     border: 1px solid #2d3348;
+    border-top: 1px solid rgba(255,255,255,0.05);
     border-radius: 0.75rem;
     padding: 1.5rem;
     margin-bottom: 1rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 4px 6px -1px rgba(0,0,0,0.3);
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .status-green { color: var(--green); font-weight: 600; }
@@ -99,8 +114,17 @@ h1, h2, h3 {
     font-family: 'JetBrains Mono', monospace;
 }
 
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+}
+
 div[data-testid="stExpander"] {
-    background-color: var(--bg-card);
+    background: linear-gradient(145deg, #1a1d29, #151823);
     border: 1px solid #2d3348;
     border-radius: 0.75rem;
 }
@@ -121,20 +145,40 @@ footer { visibility: hidden; }
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────
-# TAX DATA (2026 estimates based on 2025 brackets + inflation adjustment)
+# TAX DATA (2026 estimates)
 # ──────────────────────────────────────────────
 
-FEDERAL_BRACKETS_SINGLE_2026 = [
-    (11_925, 0.10),
-    (48_475, 0.12),
-    (103_350, 0.22),
-    (197_300, 0.24),
-    (250_525, 0.32),
-    (626_350, 0.35),
-    (float("inf"), 0.37),
-]
+FEDERAL_BRACKETS_2026 = {
+    "Single": [
+        (11_925, 0.10), (48_475, 0.12), (103_350, 0.22),
+        (197_300, 0.24), (250_525, 0.32), (626_350, 0.35),
+        (float("inf"), 0.37),
+    ],
+    "Married Filing Jointly": [
+        (23_850, 0.10), (96_950, 0.12), (206_700, 0.22),
+        (394_600, 0.24), (501_050, 0.32), (751_600, 0.35),
+        (float("inf"), 0.37),
+    ],
+    "Married Filing Separately": [
+        (11_925, 0.10), (48_475, 0.12), (103_350, 0.22),
+        (197_300, 0.24), (250_525, 0.32), (375_800, 0.35),
+        (float("inf"), 0.37),
+    ],
+    "Head of Household": [
+        (17_000, 0.10), (64_850, 0.12), (103_350, 0.22),
+        (197_300, 0.24), (250_500, 0.32), (626_350, 0.35),
+        (float("inf"), 0.37),
+    ],
+}
 
-FEDERAL_STANDARD_DEDUCTION_2026 = 15_700
+STANDARD_DEDUCTION_2026 = {
+    "Single": 15_700,
+    "Married Filing Jointly": 31_400,
+    "Married Filing Separately": 15_700,
+    "Head of Household": 23_550,
+}
+
+FILING_STATUSES = list(FEDERAL_BRACKETS_2026.keys())
 
 STATE_TAX_DATA = {
     "Alabama": {"brackets": [(500, 0.02), (3000, 0.04), (float("inf"), 0.05)], "deduction": 3000},
@@ -195,10 +239,10 @@ FICA_SS_CAP = 176_100
 FICA_MEDICARE_RATE = 0.0145
 FICA_MEDICARE_SURTAX = 0.009
 FICA_MEDICARE_SURTAX_THRESHOLD = 200_000
+SALT_CAP = 10_000
 
 
 def calc_bracket_tax(taxable_income, brackets):
-    """Calculate tax for a progressive bracket system."""
     tax = 0.0
     prev = 0
     for ceiling, rate in brackets:
@@ -211,21 +255,22 @@ def calc_bracket_tax(taxable_income, brackets):
     return tax
 
 
-def calc_federal_tax(gross, deductions_401k=0, other_pretax=0, filing="single"):
+def calc_federal_tax(gross, deductions_401k=0, other_pretax=0, filing="Single"):
+    brackets = FEDERAL_BRACKETS_2026.get(filing, FEDERAL_BRACKETS_2026["Single"])
+    standard = STANDARD_DEDUCTION_2026.get(filing, 15_700)
     agi = gross - deductions_401k - other_pretax
-    standard = FEDERAL_STANDARD_DEDUCTION_2026
     taxable = max(0, agi - standard)
-    tax = calc_bracket_tax(taxable, FEDERAL_BRACKETS_SINGLE_2026)
+    tax = calc_bracket_tax(taxable, brackets)
     return tax, agi, taxable, standard
 
 
 def calc_state_tax(gross, state, deductions_401k=0, other_pretax=0):
-    data = STATE_TAX_DATA.get(state)
-    if not data or not data["brackets"]:
+    sdata = STATE_TAX_DATA.get(state)
+    if not sdata or not sdata["brackets"]:
         return 0.0
     agi = gross - deductions_401k - other_pretax
-    taxable = max(0, agi - data["deduction"])
-    return calc_bracket_tax(taxable, data["brackets"])
+    taxable = max(0, agi - sdata["deduction"])
+    return calc_bracket_tax(taxable, sdata["brackets"])
 
 
 def calc_fica(gross):
@@ -237,7 +282,7 @@ def calc_fica(gross):
 
 
 # ──────────────────────────────────────────────
-# PLOTLY LAYOUT DEFAULTS
+# REUSABLE HELPERS
 # ──────────────────────────────────────────────
 
 def default_layout():
@@ -249,6 +294,7 @@ def default_layout():
         legend=dict(bgcolor="rgba(0,0,0,0)"),
         xaxis=dict(gridcolor="#2d3348", zerolinecolor="#2d3348"),
         yaxis=dict(gridcolor="#2d3348", zerolinecolor="#2d3348"),
+        hovermode="x unified",
     )
 
 
@@ -258,15 +304,156 @@ def fmt(val, prefix="$", decimals=0):
     return f"{prefix}{val:,.{decimals}f}"
 
 
+def progress_bar_html(pct, color, height="8px"):
+    w = min(pct, 100)
+    return f'''<div style="background:{BG_SURFACE}; border-radius:0.5rem; height:{height}; margin:0.5rem 0;">
+        <div style="background:{color}; border-radius:0.5rem; height:100%; width:{w:.0f}%; transition:width 0.3s;"></div>
+    </div>'''
+
+
+def metric_card_html(label, value, status, color, description=""):
+    desc = f'<p style="color:{TEXT_DIM}; margin:0.5rem 0 0; font-size:0.75rem;">{description}</p>' if description else ''
+    return f'''<div class="card">
+        <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">{label}</p>
+        <p class="mono" style="color:{color}; font-size:1.8rem; margin:0.25rem 0;">{value}</p>
+        <p style="color:{color}; margin:0; font-size:0.85rem;">&#9679; {status}</p>
+        {desc}
+    </div>'''
+
+
+def status_badge_html(text, color):
+    return f'<span class="badge" style="background:rgba({_hex_rgb(color)},0.15); color:{color};">{text}</span>'
+
+
+def _hex_rgb(hex_color):
+    h = hex_color.lstrip("#")
+    return f"{int(h[0:2],16)},{int(h[2:4],16)},{int(h[4:6],16)}"
+
+
+def goal_progress_info(goal):
+    pct = (goal["current"] / goal["target"] * 100) if goal["target"] else 0
+    remaining = goal["target"] - goal["current"]
+    days_left = (datetime.strptime(goal["deadline"], "%Y-%m-%d") - datetime.now()).days
+    if days_left < 0:
+        monthly_needed = 0
+        deadline_label = "OVERDUE"
+        color = RED
+    else:
+        months_left = max(1, days_left / 30.44)
+        monthly_needed = remaining / months_left if remaining > 0 else 0
+        deadline_label = f"{days_left} days left"
+        color = GREEN if pct >= 75 else (YELLOW if pct >= 40 else BLUE)
+    if pct >= 100:
+        color = GREEN
+        deadline_label = "COMPLETE"
+    return pct, color, monthly_needed, deadline_label
+
+
+def render_savings_goal_card(goal):
+    pct, color, monthly_needed, deadline_label = goal_progress_info(goal)
+    badge = status_badge_html(deadline_label, color)
+    return f'''<div class="card" style="padding:1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight:600;">{goal['name']}</span>
+            <span class="mono" style="color:{TEXT_DIM};">{fmt(goal['current'])} / {fmt(goal['target'])}</span>
+        </div>
+        {progress_bar_html(pct, color)}
+        <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:{TEXT_DIM};">
+            <span>{pct:.0f}% complete</span>
+            <span>{fmt(monthly_needed)}/mo needed &middot; {badge}</span>
+        </div>
+    </div>'''
+
+
+def project_investment(start, monthly, rate, years):
+    values = [start]
+    contributions = [start]
+    r = rate / 100 / 12
+    for m in range(1, years * 12 + 1):
+        prev = values[-1]
+        values.append(prev * (1 + r) + monthly)
+        contributions.append(contributions[-1] + monthly)
+    return values, contributions
+
+
+def simulate_payoff(debts, extra, strategy):
+    balances = {d["name"]: float(d["balance"]) for d in debts}
+    rates = {d["name"]: d["rate"] / 100 / 12 for d in debts}
+    mins = {d["name"]: float(d["min_payment"]) for d in debts}
+    total_interest = 0
+    months = 0
+    schedule = []
+    max_months = 600
+
+    # Check if minimums can cover interest
+    total_min = sum(mins.values()) + extra
+    total_monthly_interest = sum(b * r for b, r in zip(balances.values(), rates.values()) if b > 0)
+    if total_min <= total_monthly_interest and total_monthly_interest > 0:
+        return -1, 0, []  # Can't pay off
+
+    while any(b > 0.01 for b in balances.values()) and months < max_months:
+        months += 1
+        month_interest = 0
+        for name in balances:
+            if balances[name] > 0:
+                interest = balances[name] * rates[name]
+                balances[name] += interest
+                month_interest += interest
+                total_interest += interest
+
+        remaining_extra = extra
+        for name in balances:
+            if balances[name] > 0:
+                payment = min(mins[name], balances[name])
+                balances[name] -= payment
+
+        if strategy == "avalanche":
+            order = sorted([n for n in balances if balances[n] > 0], key=lambda n: rates[n], reverse=True)
+        else:
+            order = sorted([n for n in balances if balances[n] > 0], key=lambda n: balances[n])
+
+        for name in order:
+            if remaining_extra <= 0:
+                break
+            if balances[name] > 0:
+                payment = min(remaining_extra, balances[name])
+                balances[name] -= payment
+                remaining_extra -= payment
+
+        schedule.append({
+            "month": months,
+            "total_balance": sum(max(0, b) for b in balances.values()),
+            "interest": month_interest,
+        })
+
+    return months, total_interest, schedule
+
+
+def render_footer():
+    st.markdown(f"""
+    <div style="text-align:center; padding:2rem 0 1rem; margin-top:3rem; border-top:1px solid #2d3348;">
+        <p style="color:{TEXT_DIM}; font-size:0.8rem; margin:0;">
+            Built by <a href="https://masonjbennett.com" target="_blank" style="color:{GREEN}; text-decoration:none;">Mason Bennett</a>
+            &nbsp;&middot;&nbsp; Powered by Streamlit + Plotly
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ──────────────────────────────────────────────
 # SESSION STATE INITIALIZATION
 # ──────────────────────────────────────────────
+
+def _make_id():
+    return str(uuid.uuid4())[:8]
+
 
 def get_default_state():
     return {
         "income": {
             "gross_salary": 100000,
             "state": "New York",
+            "filing_status": "Single",
             "contribution_401k": 6,
             "health_insurance": 200,
             "hsa": 0,
@@ -290,6 +477,7 @@ def get_default_state():
             },
         },
         "expenses": [],
+        "recurring_templates": [],
         "net_worth_snapshots": [],
         "assets": {
             "Checking": 5000, "Savings": 8000, "401(k)": 3500,
@@ -308,6 +496,10 @@ def get_default_state():
             "employer_match_pct": 50,
             "employer_match_limit": 6,
         },
+        "itemized": {
+            "salt": 0, "mortgage_interest": 0,
+            "charitable": 0, "medical": 0,
+        },
     }
 
 
@@ -315,6 +507,7 @@ DEMO_DATA = {
     "income": {
         "gross_salary": 95000,
         "state": "New York",
+        "filing_status": "Single",
         "contribution_401k": 6,
         "health_insurance": 180,
         "hsa": 100,
@@ -338,18 +531,32 @@ DEMO_DATA = {
         },
     },
     "expenses": [
-        {"date": "2026-04-01", "amount": 1900, "category": "Rent", "note": "April rent"},
-        {"date": "2026-04-02", "amount": 52.30, "category": "Groceries", "note": "Trader Joe's"},
-        {"date": "2026-04-03", "amount": 45.00, "category": "Dining Out", "note": "Dinner with friends"},
-        {"date": "2026-04-04", "amount": 127.00, "category": "Transportation", "note": "Monthly metro pass"},
-        {"date": "2026-04-05", "amount": 15.99, "category": "Subscriptions", "note": "Spotify + iCloud"},
-        {"date": "2026-04-06", "amount": 68.40, "category": "Groceries", "note": "Whole Foods"},
-        {"date": "2026-04-07", "amount": 22.00, "category": "Entertainment", "note": "Movie tickets"},
-        {"date": "2026-04-08", "amount": 130.00, "category": "Utilities", "note": "Electric + Internet"},
-        {"date": "2026-04-09", "amount": 89.99, "category": "Shopping", "note": "Running shoes"},
-        {"date": "2026-04-10", "amount": 35.50, "category": "Dining Out", "note": "Lunch meeting"},
-        {"date": "2026-04-11", "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
-        {"date": "2026-04-12", "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
+        {"id": "demo-01", "date": "2026-04-01", "amount": 1900, "category": "Rent", "note": "April rent"},
+        {"id": "demo-02", "date": "2026-04-02", "amount": 52.30, "category": "Groceries", "note": "Trader Joe's"},
+        {"id": "demo-03", "date": "2026-04-03", "amount": 45.00, "category": "Dining Out", "note": "Dinner with friends"},
+        {"id": "demo-04", "date": "2026-04-04", "amount": 127.00, "category": "Transportation", "note": "Monthly metro pass"},
+        {"id": "demo-05", "date": "2026-04-05", "amount": 15.99, "category": "Subscriptions", "note": "Spotify + iCloud"},
+        {"id": "demo-06", "date": "2026-04-06", "amount": 68.40, "category": "Groceries", "note": "Whole Foods"},
+        {"id": "demo-07", "date": "2026-04-07", "amount": 22.00, "category": "Entertainment", "note": "Movie tickets"},
+        {"id": "demo-08", "date": "2026-04-08", "amount": 130.00, "category": "Utilities", "note": "Electric + Internet"},
+        {"id": "demo-09", "date": "2026-04-09", "amount": 89.99, "category": "Shopping", "note": "Running shoes"},
+        {"id": "demo-10", "date": "2026-04-10", "amount": 35.50, "category": "Dining Out", "note": "Lunch meeting"},
+        {"id": "demo-11", "date": "2026-04-11", "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
+        {"id": "demo-12", "date": "2026-04-12", "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
+        {"id": "demo-13", "date": "2026-03-01", "amount": 1900, "category": "Rent", "note": "March rent"},
+        {"id": "demo-14", "date": "2026-03-05", "amount": 95.20, "category": "Groceries", "note": "Weekly groceries"},
+        {"id": "demo-15", "date": "2026-03-10", "amount": 127.00, "category": "Transportation", "note": "Metro pass"},
+        {"id": "demo-16", "date": "2026-03-12", "amount": 62.00, "category": "Dining Out", "note": "Brunch"},
+        {"id": "demo-17", "date": "2026-03-15", "amount": 130.00, "category": "Utilities", "note": "Electric + Internet"},
+        {"id": "demo-18", "date": "2026-03-20", "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
+        {"id": "demo-19", "date": "2026-03-22", "amount": 210.00, "category": "Shopping", "note": "New jacket"},
+        {"id": "demo-20", "date": "2026-03-28", "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
+    ],
+    "recurring_templates": [
+        {"name": "Rent", "amount": 1900, "category": "Rent", "day": 1},
+        {"name": "Metro Pass", "amount": 127, "category": "Transportation", "day": 4},
+        {"name": "Gym Membership", "amount": 45, "category": "Gym", "day": 12},
+        {"name": "Phone Bill", "amount": 75, "category": "Phone", "day": 11},
     ],
     "net_worth_snapshots": [
         {"date": "2026-01-01", "assets": 17500, "liabilities": 0, "net_worth": 17500},
@@ -380,12 +587,24 @@ DEMO_DATA = {
         "employer_match_pct": 50,
         "employer_match_limit": 6,
     },
+    "itemized": {
+        "salt": 0, "mortgage_interest": 0,
+        "charitable": 0, "medical": 0,
+    },
 }
+
+
+def _ensure_expense_ids(expenses):
+    for e in expenses:
+        if "id" not in e:
+            e["id"] = _make_id()
+    return expenses
 
 
 def init_state():
     if "data" not in st.session_state:
         st.session_state.data = deepcopy(DEMO_DATA)
+        _ensure_expense_ids(st.session_state.data["expenses"])
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Dashboard"
 
@@ -394,7 +613,7 @@ init_state()
 data = st.session_state.data
 
 # ──────────────────────────────────────────────
-# HELPER: compute take-home
+# COMPUTE TAKE-HOME
 # ──────────────────────────────────────────────
 
 def compute_take_home(d=None):
@@ -403,6 +622,7 @@ def compute_take_home(d=None):
     gross = d["gross_salary"]
     bonus = d.get("bonus_amount", 0)
     bonus_type = d.get("bonus_type", "None")
+    filing = d.get("filing_status", "Single")
     annual_gross = gross + (bonus if bonus_type != "None" else 0)
 
     contrib_401k_annual = gross * d["contribution_401k"] / 100
@@ -410,13 +630,15 @@ def compute_take_home(d=None):
     hsa_annual = d["hsa"] * 12
     pretax = contrib_401k_annual + health_annual + hsa_annual
 
-    fed_tax, agi, taxable, std_ded = calc_federal_tax(annual_gross, contrib_401k_annual, health_annual + hsa_annual)
+    fed_tax, agi, taxable, std_ded = calc_federal_tax(annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing)
     state_tax = calc_state_tax(annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual)
     fica = calc_fica(annual_gross)
 
     total_tax = fed_tax + state_tax + fica
     annual_take_home = annual_gross - pretax - total_tax
     monthly_take_home = annual_take_home / 12
+
+    brackets = FEDERAL_BRACKETS_2026.get(filing, FEDERAL_BRACKETS_2026["Single"])
 
     return {
         "annual_gross": annual_gross,
@@ -434,7 +656,8 @@ def compute_take_home(d=None):
         "taxable": taxable,
         "std_ded": std_ded,
         "effective_rate": (total_tax / annual_gross * 100) if annual_gross else 0,
-        "marginal_fed": get_marginal_rate(taxable, FEDERAL_BRACKETS_SINGLE_2026),
+        "marginal_fed": get_marginal_rate(taxable, brackets),
+        "filing": filing,
     }
 
 
@@ -454,7 +677,7 @@ def get_marginal_rate(taxable, brackets):
 with st.sidebar:
     st.markdown(f"""
     <div style="text-align:center; margin-bottom:1.5rem;">
-        <h2 style="color:{GREEN}; margin:0;">Budget Tracker</h2>
+        <h2 style="color:{GREEN}; margin:0; font-family:'Space Grotesk',sans-serif;">Budget Tracker</h2>
         <p style="color:{TEXT_DIM}; font-size:0.85rem; margin:0;">
             <a href="https://masonjbennett.com" target="_blank" style="color:{TEXT_DIM}; text-decoration:none;">masonjbennett.com</a>
         </p>
@@ -462,33 +685,24 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     pages = [
-        "Dashboard",
-        "Income Setup",
-        "Budget Builder",
-        "Expense Tracker",
-        "Net Worth",
-        "Debt Payoff",
-        "Savings Goals",
-        "Investments",
-        "Tax Estimator",
-        "Data Management",
+        "Dashboard", "Income Setup", "Budget Builder", "Expense Tracker",
+        "Net Worth", "Debt Payoff", "Savings Goals", "Investments",
+        "Tax Estimator", "Data Management",
     ]
+    icons = ["📊", "💰", "📋", "💳", "📈", "🏦", "🎯", "📈", "🧾", "💾"]
 
-    icons = ["📊", "💰", "📋", "💳", "📈", "🏦", "🎯", "📉", "🧾", "💾"]
-
-    for i, page in enumerate(pages):
+    for i, p in enumerate(pages):
         if st.sidebar.button(
-            f"{icons[i]}  {page}",
-            key=f"nav_{page}",
+            f"{icons[i]}  {p}", key=f"nav_{p}",
             use_container_width=True,
-            type="primary" if st.session_state.current_page == page else "secondary",
+            type="primary" if st.session_state.current_page == p else "secondary",
         ):
-            st.session_state.current_page = page
+            st.session_state.current_page = p
             st.rerun()
 
     st.sidebar.markdown("---")
     st.sidebar.markdown(
-        f'<p style="color:{TEXT_DIM}; font-size:0.75rem; text-align:center;">v1.0 — Built with Streamlit + Plotly</p>',
+        f'<p style="color:{TEXT_DIM}; font-size:0.75rem; text-align:center;">v2.0 — Built with Streamlit + Plotly</p>',
         unsafe_allow_html=True,
     )
 
@@ -496,37 +710,33 @@ page = st.session_state.current_page
 th = compute_take_home()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # PAGE: DASHBOARD
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_dashboard():
-    st.markdown(f"# 📊 Financial Health Dashboard")
+    st.markdown("# 📊 Financial Health Dashboard")
 
     monthly_income = th["monthly_take_home"]
     budget_cats = {**data["budget"]["needs"], **data["budget"]["wants"], **data["budget"]["savings"]}
     total_budgeted = sum(budget_cats.values())
 
-    # Current month expenses
     now = datetime.now()
-    month_expenses = [
-        e for e in data["expenses"]
-        if e["date"][:7] == now.strftime("%Y-%m")
-    ]
+    cur_month = now.strftime("%Y-%m")
+    prev_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+
+    month_expenses = [e for e in data["expenses"] if e["date"][:7] == cur_month]
+    prev_expenses = [e for e in data["expenses"] if e["date"][:7] == prev_month]
     total_spent = sum(e["amount"] for e in month_expenses)
+    prev_spent = sum(e["amount"] for e in prev_expenses)
     net_savings = monthly_income - total_spent
 
     # Budget adherence
     cat_spending = {}
     for e in month_expenses:
         cat_spending[e["category"]] = cat_spending.get(e["category"], 0) + e["amount"]
-    on_track = 0
+    on_track = sum(1 for cat, b in budget_cats.items() if b == 0 or cat_spending.get(cat, 0) <= b)
     total_cats = len(budget_cats)
-    for cat, budgeted in budget_cats.items():
-        if budgeted > 0 and cat_spending.get(cat, 0) <= budgeted:
-            on_track += 1
-        elif budgeted == 0:
-            on_track += 1
     adherence = (on_track / total_cats * 100) if total_cats else 100
 
     # Net worth
@@ -536,7 +746,7 @@ def page_dashboard():
 
     # Key ratios
     savings_rate = (net_savings / monthly_income * 100) if monthly_income else 0
-    monthly_debt_payments = sum(data["budget"]["needs"].get("Min. Debt Payments", 0) for _ in [1])
+    monthly_debt_payments = data["budget"]["needs"].get("Min. Debt Payments", 0)
     dti = (monthly_debt_payments / monthly_income * 100) if monthly_income else 0
     monthly_needs = sum(data["budget"]["needs"].values())
     ef_months = data["assets"].get("Savings", 0) / monthly_needs if monthly_needs else 0
@@ -544,54 +754,38 @@ def page_dashboard():
     # Row 1: Key metrics
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("Monthly Take-Home", fmt(monthly_income), help="Net pay after taxes and deductions")
+        st.metric("Monthly Take-Home", fmt(monthly_income),
+                  help="Net pay after taxes and pre-tax deductions")
     with c2:
-        delta_color = "normal" if net_savings >= 0 else "inverse"
-        st.metric("Net Savings (MTD)", fmt(net_savings), delta=f"{savings_rate:.1f}% rate", delta_color=delta_color)
+        spend_delta = total_spent - prev_spent if prev_spent else 0
+        delta_str = f"{'+'if spend_delta>0 else ''}{fmt(spend_delta)} vs last mo"
+        st.metric("Spent (MTD)", fmt(total_spent), delta=delta_str,
+                  delta_color="inverse")
     with c3:
         st.metric("Net Worth", fmt(net_worth))
     with c4:
-        st.metric("Budget Adherence", f"{adherence:.0f}%", help="Percentage of categories on track this month")
+        st.metric("Budget Adherence", f"{adherence:.0f}%",
+                  help="Percentage of budget categories on track this month")
 
     st.markdown("")
 
-    # Row 2: Ratios & status
+    # Row 2: Ratios
     c1, c2, c3 = st.columns(3)
     with c1:
         color = GREEN if savings_rate >= 20 else (YELLOW if savings_rate >= 10 else RED)
-        status = "Healthy" if savings_rate >= 20 else ("Watch" if savings_rate >= 10 else "Action Needed")
-        st.markdown(f"""
-        <div class="card">
-            <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">Savings Rate</p>
-            <p class="mono" style="color:{color}; font-size:1.8rem; margin:0.25rem 0;">{savings_rate:.1f}%</p>
-            <p style="color:{color}; margin:0; font-size:0.85rem;">● {status}</p>
-            <p style="color:{TEXT_DIM}; margin:0.5rem 0 0; font-size:0.75rem;">Target: 20%+ is excellent. 10-20% is good. Below 10% needs attention.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
+        status = "Excellent" if savings_rate >= 20 else ("Good" if savings_rate >= 10 else "Needs Work")
+        st.markdown(metric_card_html("Savings Rate", f"{savings_rate:.1f}%", status, color,
+            "20%+ is excellent. 10-20% is solid. Below 10% needs attention."), unsafe_allow_html=True)
     with c2:
         color = GREEN if dti <= 20 else (YELLOW if dti <= 36 else RED)
-        status = "Healthy" if dti <= 20 else ("Watch" if dti <= 36 else "Action Needed")
-        st.markdown(f"""
-        <div class="card">
-            <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">Debt-to-Income Ratio</p>
-            <p class="mono" style="color:{color}; font-size:1.8rem; margin:0.25rem 0;">{dti:.1f}%</p>
-            <p style="color:{color}; margin:0; font-size:0.85rem;">● {status}</p>
-            <p style="color:{TEXT_DIM}; margin:0.5rem 0 0; font-size:0.75rem;">Below 20% is great. 20-36% is manageable. Above 36% is risky.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
+        status = "Healthy" if dti <= 20 else ("Manageable" if dti <= 36 else "High Risk")
+        st.markdown(metric_card_html("Debt-to-Income", f"{dti:.1f}%", status, color,
+            "Below 20% is great. 20-36% is manageable. Above 36% limits borrowing."), unsafe_allow_html=True)
     with c3:
         color = GREEN if ef_months >= 6 else (YELLOW if ef_months >= 3 else RED)
-        status = "Healthy" if ef_months >= 6 else ("Building" if ef_months >= 3 else "Priority")
-        st.markdown(f"""
-        <div class="card">
-            <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">Emergency Fund Coverage</p>
-            <p class="mono" style="color:{color}; font-size:1.8rem; margin:0.25rem 0;">{ef_months:.1f} mo</p>
-            <p style="color:{color}; margin:0; font-size:0.85rem;">● {status}</p>
-            <p style="color:{TEXT_DIM}; margin:0.5rem 0 0; font-size:0.75rem;">6+ months of expenses is the gold standard. 3-6 is a solid start.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        status = "Strong" if ef_months >= 6 else ("Building" if ef_months >= 3 else "Priority")
+        st.markdown(metric_card_html("Emergency Fund", f"{ef_months:.1f} mo", status, color,
+            "6+ months of essential expenses is the gold standard. 3-6 is a solid start."), unsafe_allow_html=True)
 
     st.markdown("")
 
@@ -608,7 +802,8 @@ def page_dashboard():
             textposition="outside",
             textfont=dict(family="JetBrains Mono", size=13),
         ))
-        fig.update_layout(**default_layout(), height=350, showlegend=False, yaxis_title="")
+        fig.update_layout(**default_layout(), height=350, showlegend=False, yaxis_title="",
+                         hovermode="closest")
         st.plotly_chart(fig, use_container_width=True)
 
     with c2:
@@ -625,10 +820,33 @@ def page_dashboard():
                 textinfo="label+percent",
                 textfont=dict(family="JetBrains Mono", size=11),
             )])
-            fig.update_layout(**default_layout(), height=350, showlegend=False)
+            fig.update_layout(**default_layout(), height=350, showlegend=False, hovermode="closest")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No expenses logged this month yet.")
+            st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
+                <p style="font-size:2rem; margin:0;">💳</p>
+                <p style="color:{TEXT_DIM}; margin:0.5rem 0;">No expenses logged this month yet.</p>
+                <p style="color:{TEXT_DIM}; font-size:0.85rem;">Head to the Expense Tracker to add your first entry.</p>
+            </div>''', unsafe_allow_html=True)
+
+    # Month-over-month comparison
+    if prev_expenses and month_expenses:
+        st.markdown("### Month-over-Month Comparison")
+        prev_cat = {}
+        for e in prev_expenses:
+            prev_cat[e["category"]] = prev_cat.get(e["category"], 0) + e["amount"]
+
+        all_cats_union = sorted(set(list(cat_spending.keys()) + list(prev_cat.keys())))
+        cur_vals = [cat_spending.get(c, 0) for c in all_cats_union]
+        prev_vals = [prev_cat.get(c, 0) for c in all_cats_union]
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(name="This Month", x=all_cats_union, y=cur_vals, marker_color=GREEN, opacity=0.8))
+        fig.add_trace(go.Bar(name="Last Month", x=all_cats_union, y=prev_vals, marker_color=BLUE, opacity=0.5))
+        fig.update_layout(**default_layout(), height=300, barmode="group",
+                         yaxis_tickprefix="$", yaxis_tickformat=",",
+                         legend=dict(orientation="h", y=-0.2))
+        st.plotly_chart(fig, use_container_width=True)
 
     # Net worth trend
     if data["net_worth_snapshots"]:
@@ -637,10 +855,8 @@ def page_dashboard():
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=nw_df["date"], y=nw_df["net_worth"],
-            mode="lines+markers",
-            line=dict(color=GREEN, width=3),
-            marker=dict(size=8),
-            fill="tozeroy",
+            mode="lines+markers", line=dict(color=GREEN, width=3),
+            marker=dict(size=8), fill="tozeroy",
             fillcolor="rgba(52,211,153,0.1)",
         ))
         fig.update_layout(**default_layout(), height=300, yaxis_title="Net Worth ($)",
@@ -651,33 +867,14 @@ def page_dashboard():
     if data["savings_goals"]:
         st.markdown("### Savings Goals Progress")
         for goal in sorted(data["savings_goals"], key=lambda g: g.get("priority", 99)):
-            pct = (goal["current"] / goal["target"] * 100) if goal["target"] else 0
-            color = GREEN if pct >= 75 else (YELLOW if pct >= 40 else BLUE)
-            days_left = (datetime.strptime(goal["deadline"], "%Y-%m-%d") - datetime.now()).days
-            months_left = max(1, days_left / 30.44)
-            remaining = goal["target"] - goal["current"]
-            monthly_needed = remaining / months_left if months_left > 0 else 0
+            st.markdown(render_savings_goal_card(goal), unsafe_allow_html=True)
 
-            st.markdown(f"""
-            <div class="card" style="padding:1rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-weight:600;">{goal['name']}</span>
-                    <span class="mono" style="color:{TEXT_DIM};">{fmt(goal['current'])} / {fmt(goal['target'])}</span>
-                </div>
-                <div style="background:{BG_SURFACE}; border-radius:0.5rem; height:8px; margin:0.5rem 0;">
-                    <div style="background:{color}; border-radius:0.5rem; height:100%; width:{min(pct, 100):.0f}%;"></div>
-                </div>
-                <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:{TEXT_DIM};">
-                    <span>{pct:.0f}% complete</span>
-                    <span>{fmt(monthly_needed)}/mo needed · {days_left} days left</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+    render_footer()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # PAGE: INCOME SETUP
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_income():
     st.markdown("# 💰 Income Setup")
@@ -693,6 +890,11 @@ def page_income():
             "State", options=sorted(STATE_TAX_DATA.keys()),
             index=sorted(STATE_TAX_DATA.keys()).index(data["income"]["state"]),
             help="Used for state income tax estimation",
+        )
+        data["income"]["filing_status"] = st.selectbox(
+            "Filing Status", options=FILING_STATUSES,
+            index=FILING_STATUSES.index(data["income"].get("filing_status", "Single")),
+            help="Affects federal tax brackets and standard deduction amount",
         )
 
         st.markdown("### Bonus")
@@ -710,12 +912,11 @@ def page_income():
         st.markdown("### Pre-Tax Deductions")
         data["income"]["contribution_401k"] = st.slider(
             "401(k) Contribution (%)", 0, 100, data["income"]["contribution_401k"],
-            help="Percentage of base salary. 2026 limit: $23,500. Employer match is separate.",
+            help="Percentage of base salary. 2026 employee limit: $23,500. Employer match is separate.",
         )
         contrib_dollar = data["income"]["gross_salary"] * data["income"]["contribution_401k"] / 100
-        limit_2026 = 23500
-        if contrib_dollar > limit_2026:
-            st.warning(f"Your 401(k) contribution ({fmt(contrib_dollar)}) exceeds the 2026 limit of {fmt(limit_2026)}.")
+        if contrib_dollar > 23500:
+            st.warning(f"Your 401(k) contribution ({fmt(contrib_dollar)}) exceeds the 2026 limit of $23,500.")
 
         data["income"]["health_insurance"] = st.number_input(
             "Health Insurance ($/month)", value=data["income"]["health_insurance"],
@@ -724,39 +925,32 @@ def page_income():
         data["income"]["hsa"] = st.number_input(
             "HSA Contribution ($/month)", value=data["income"]["hsa"],
             min_value=0, step=25, format="%d",
-            help="2026 individual limit: ~$4,300/year",
+            help="2026 individual limit: ~$4,300/year. Only available with HDHP.",
         )
 
-    # Results
     st.markdown("---")
-    st.markdown("### 📊 Take-Home Pay Breakdown")
-
+    st.markdown("### Take-Home Pay Breakdown")
     th_local = compute_take_home(data["income"])
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric("Annual Gross", fmt(th_local["annual_gross"]))
     with c2:
-        st.metric("Total Tax", fmt(th_local["total_tax"]), delta=f"-{th_local['effective_rate']:.1f}% effective")
+        st.metric("Total Tax", fmt(th_local["total_tax"]),
+                  delta=f"-{th_local['effective_rate']:.1f}% effective")
     with c3:
         st.metric("Annual Take-Home", fmt(th_local["annual_take_home"]))
     with c4:
         st.metric("Monthly Take-Home", fmt(th_local["monthly_take_home"]))
 
-    # Waterfall chart
     fig = go.Figure(go.Waterfall(
         x=["Gross Salary", "Bonus", "401(k)", "Health Ins.", "HSA",
            "Federal Tax", "State Tax", "FICA", "Take-Home"],
         y=[
             data["income"]["gross_salary"],
             data["income"].get("bonus_amount", 0) if data["income"]["bonus_type"] != "None" else 0,
-            -th_local["contrib_401k"],
-            -th_local["health"],
-            -th_local["hsa"],
-            -th_local["fed_tax"],
-            -th_local["state_tax"],
-            -th_local["fica"],
-            0,
+            -th_local["contrib_401k"], -th_local["health"], -th_local["hsa"],
+            -th_local["fed_tax"], -th_local["state_tax"], -th_local["fica"], 0,
         ],
         measure=["absolute", "relative", "relative", "relative", "relative",
                   "relative", "relative", "relative", "total"],
@@ -767,28 +961,57 @@ def page_income():
         textposition="outside",
         text=[fmt(data["income"]["gross_salary"]),
               fmt(data["income"].get("bonus_amount", 0) if data["income"]["bonus_type"] != "None" else 0),
-              fmt(-th_local["contrib_401k"]),
-              fmt(-th_local["health"]),
-              fmt(-th_local["hsa"]),
-              fmt(-th_local["fed_tax"]),
-              fmt(-th_local["state_tax"]),
-              fmt(-th_local["fica"]),
-              fmt(th_local["annual_take_home"])],
+              fmt(-th_local["contrib_401k"]), fmt(-th_local["health"]), fmt(-th_local["hsa"]),
+              fmt(-th_local["fed_tax"]), fmt(-th_local["state_tax"]),
+              fmt(-th_local["fica"]), fmt(th_local["annual_take_home"])],
         textfont=dict(family="JetBrains Mono", size=11),
     ))
-    fig.update_layout(**default_layout(), height=400, title="Annual Pay Breakdown")
+    fig.update_layout(**default_layout(), height=400, title="Annual Pay Breakdown", hovermode="closest")
     st.plotly_chart(fig, use_container_width=True)
+    render_footer()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # PAGE: BUDGET BUILDER
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_budget():
     st.markdown("# 📋 Budget Builder")
     monthly_income = th["monthly_take_home"]
+    total_all = sum(sum(data["budget"][c].values()) for c in ["needs", "wants", "savings"])
+    remaining = monthly_income - total_all
 
-    st.info(f"Monthly take-home: **{fmt(monthly_income)}** — The 50/30/20 rule suggests **{fmt(monthly_income*0.5)}** needs / **{fmt(monthly_income*0.3)}** wants / **{fmt(monthly_income*0.2)}** savings", icon="💡")
+    # Unallocated banner
+    if remaining > 0:
+        st.markdown(f'''<div class="card" style="border-left:3px solid {GREEN}; padding:1rem 1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="font-weight:600;">Monthly Take-Home: </span>
+                    <span class="mono" style="color:{GREEN};">{fmt(monthly_income)}</span>
+                </div>
+                <div>
+                    <span style="color:{TEXT_DIM};">Unallocated: </span>
+                    <span class="mono" style="color:{GREEN}; font-weight:600;">{fmt(remaining)}</span>
+                </div>
+            </div>
+        </div>''', unsafe_allow_html=True)
+    elif remaining < 0:
+        st.markdown(f'''<div class="card" style="border-left:3px solid {RED}; padding:1rem 1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="font-weight:600;">Monthly Take-Home: </span>
+                    <span class="mono">{fmt(monthly_income)}</span>
+                </div>
+                <div>
+                    <span style="color:{RED}; font-weight:600;">OVER BUDGET by </span>
+                    <span class="mono" style="color:{RED}; font-weight:600;">{fmt(abs(remaining))}</span>
+                </div>
+            </div>
+        </div>''', unsafe_allow_html=True)
+    else:
+        st.success("Every dollar is allocated!")
+
+    st.info(f"50/30/20 guideline: **{fmt(monthly_income*0.5)}** needs / **{fmt(monthly_income*0.3)}** wants / **{fmt(monthly_income*0.2)}** savings", icon="💡")
 
     tabs = st.tabs(["🏠 Needs (50%)", "🎉 Wants (30%)", "💎 Savings & Debt (20%)"])
     targets = {"needs": 0.50, "wants": 0.30, "savings": 0.20}
@@ -807,27 +1030,21 @@ def page_budget():
                 st.metric(f"Guideline ({int(target_pct*100)}%)", fmt(target))
             with c3:
                 color = "normal" if diff >= 0 else "inverse"
-                st.metric("Variance", fmt(abs(diff)), delta=f"{'Under' if diff >= 0 else 'Over'} by {fmt(abs(diff))}", delta_color=color)
+                st.metric("Variance", fmt(abs(diff)),
+                         delta=f"{'Under' if diff >= 0 else 'Over'} by {fmt(abs(diff))}",
+                         delta_color=color)
 
-            # Progress bar
             pct = (total / target * 100) if target else 0
             bar_color = GREEN if pct <= 100 else RED
-            st.markdown(f"""
-            <div style="background:{BG_SURFACE}; border-radius:0.5rem; height:12px; margin:0.5rem 0 1rem;">
-                <div style="background:{bar_color}; border-radius:0.5rem; height:100%; width:{min(pct, 100):.0f}%; transition: width 0.3s;"></div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(progress_bar_html(pct, bar_color, "12px"), unsafe_allow_html=True)
 
             cols = st.columns(2)
             for i, (name, amount) in enumerate(items.items()):
                 with cols[i % 2]:
-                    new_val = st.number_input(
-                        name, value=amount, min_value=0, step=10, format="%d",
-                        key=f"budget_{category}_{name}",
-                    )
+                    new_val = st.number_input(name, value=amount, min_value=0, step=10,
+                                             format="%d", key=f"budget_{category}_{name}")
                     data["budget"][category][name] = new_val
 
-            # Add custom category
             with st.expander("Add Custom Category"):
                 new_name = st.text_input("Category Name", key=f"new_cat_{category}")
                 new_amt = st.number_input("Amount ($)", value=0, min_value=0, step=10, key=f"new_amt_{category}")
@@ -835,7 +1052,7 @@ def page_budget():
                     data["budget"][category][new_name] = new_amt
                     st.rerun()
 
-    # Summary
+    # Summary chart
     st.markdown("---")
     st.markdown("### Budget Summary")
     needs_total = sum(data["budget"]["needs"].values())
@@ -851,46 +1068,82 @@ def page_budget():
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        name="Your Budget", x=["Needs", "Wants", "Savings"],
-        y=actual_pcts,
+        name="Your Budget", x=["Needs", "Wants", "Savings"], y=actual_pcts,
         marker_color=[BLUE, YELLOW, GREEN],
-        text=[f"{p:.0f}%" for p in actual_pcts],
-        textposition="inside",
+        text=[f"{p:.0f}%" for p in actual_pcts], textposition="inside",
         textfont=dict(family="JetBrains Mono", size=14, color="white"),
     ))
     fig.add_trace(go.Scatter(
         name="50/30/20 Guideline", x=["Needs", "Wants", "Savings"],
         y=[50, 30, 20], mode="markers+text",
         marker=dict(color="white", size=12, symbol="diamond"),
-        text=["50%", "30%", "20%"],
-        textposition="top center",
+        text=["50%", "30%", "20%"], textposition="top center",
         textfont=dict(family="JetBrains Mono", size=12, color=TEXT_DIM),
     ))
     fig.update_layout(**default_layout(), height=350, barmode="group",
-                     yaxis_title="% of Budget", legend=dict(orientation="h", y=-0.15))
+                     yaxis_title="% of Budget", legend=dict(orientation="h", y=-0.15),
+                     hovermode="closest")
     st.plotly_chart(fig, use_container_width=True)
-
-    remaining = monthly_income - grand_total
-    if remaining > 0:
-        st.success(f"You have **{fmt(remaining)}** unallocated from your monthly take-home.")
-    elif remaining < 0:
-        st.error(f"You're **{fmt(abs(remaining))}** over your monthly take-home! Consider adjusting your budget.")
-    else:
-        st.success("Your budget is fully allocated. Every dollar has a job!")
+    render_footer()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # PAGE: EXPENSE TRACKER
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_expenses():
     st.markdown("# 💳 Expense Tracker")
 
-    all_cats = (
-        list(data["budget"]["needs"].keys()) +
-        list(data["budget"]["wants"].keys()) +
-        list(data["budget"]["savings"].keys())
-    )
+    all_cats = (list(data["budget"]["needs"].keys()) +
+                list(data["budget"]["wants"].keys()) +
+                list(data["budget"]["savings"].keys()))
+
+    # Recurring templates
+    if data.get("recurring_templates"):
+        with st.expander("🔄 Recurring Templates"):
+            now = datetime.now()
+            cur_month = now.strftime("%Y-%m")
+            existing_notes = {e.get("note", "") for e in data["expenses"] if e["date"][:7] == cur_month}
+
+            templates_due = []
+            for t in data["recurring_templates"]:
+                note = f"{t['name']} (auto)"
+                if note not in existing_notes and now.day >= t["day"]:
+                    templates_due.append(t)
+
+            if templates_due:
+                st.markdown(f"**{len(templates_due)} template(s) due this month:**")
+                for t in templates_due:
+                    st.markdown(f"- {t['name']}: {fmt(t['amount'])} ({t['category']}) on day {t['day']}")
+                if st.button("Apply All Due Templates", type="primary"):
+                    for t in templates_due:
+                        day = min(t["day"], 28)
+                        exp_date = now.replace(day=day).strftime("%Y-%m-%d")
+                        data["expenses"].append({
+                            "id": _make_id(), "date": exp_date,
+                            "amount": t["amount"], "category": t["category"],
+                            "note": f"{t['name']} (auto)",
+                        })
+                    st.rerun()
+            else:
+                st.success("All recurring templates applied for this month.")
+
+            # Manage templates
+            st.markdown("**Manage Templates:**")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                t_name = st.text_input("Template Name", key="tmpl_name")
+            with c2:
+                t_amount = st.number_input("Amount ($)", value=0, min_value=0, step=10, key="tmpl_amt")
+            with c3:
+                t_cat = st.selectbox("Category", all_cats, key="tmpl_cat")
+            with c4:
+                t_day = st.number_input("Day of Month", value=1, min_value=1, max_value=28, key="tmpl_day")
+            if st.button("Add Template") and t_name and t_amount > 0:
+                if "recurring_templates" not in data:
+                    data["recurring_templates"] = []
+                data["recurring_templates"].append({"name": t_name, "amount": t_amount, "category": t_cat, "day": t_day})
+                st.rerun()
 
     # Add expense
     with st.expander("➕ Add New Expense", expanded=True):
@@ -907,28 +1160,35 @@ def page_expenses():
         if st.button("Add Expense", type="primary"):
             if exp_amount > 0:
                 data["expenses"].append({
-                    "date": exp_date.isoformat(),
-                    "amount": exp_amount,
-                    "category": exp_cat,
-                    "note": exp_note,
+                    "id": _make_id(), "date": exp_date.isoformat(),
+                    "amount": exp_amount, "category": exp_cat, "note": exp_note,
                 })
                 st.success(f"Added {fmt(exp_amount, decimals=2)} to {exp_cat}")
                 st.rerun()
+            else:
+                st.warning("Enter an amount greater than $0.")
 
-    # Monthly filter
+    # Monthly filter + category filter
     now = datetime.now()
     months = sorted(set(e["date"][:7] for e in data["expenses"]), reverse=True)
     if not months:
         months = [now.strftime("%Y-%m")]
-    selected_month = st.selectbox("View Month", months)
+
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        selected_month = st.selectbox("View Month", months)
+    with c2:
+        cat_filter = st.multiselect("Filter by Category", all_cats, default=[],
+                                     help="Leave empty to show all categories")
 
     month_expenses = [e for e in data["expenses"] if e["date"][:7] == selected_month]
+    if cat_filter:
+        month_expenses = [e for e in month_expenses if e["category"] in cat_filter]
     total_spent = sum(e["amount"] for e in month_expenses)
 
-    st.metric("Total Spent This Month", fmt(total_spent, decimals=2))
+    st.metric("Total Spent", fmt(total_spent, decimals=2))
 
     if month_expenses:
-        # Category spending vs budget
         st.markdown("### Category Budget Progress")
         cat_spending = {}
         for e in month_expenses:
@@ -941,30 +1201,22 @@ def page_expenses():
             budgeted = budget_cats.get(cat, 0)
             pct = (spent / budgeted * 100) if budgeted > 0 else 100
             if pct >= 100:
-                color = RED
-                label = "OVER"
+                color, label = RED, "OVER"
             elif pct >= 80:
-                color = YELLOW
-                label = f"{pct:.0f}%"
+                color, label = YELLOW, f"{pct:.0f}%"
             else:
-                color = GREEN
-                label = f"{pct:.0f}%"
+                color, label = GREEN, f"{pct:.0f}%"
 
-            st.markdown(f"""
-            <div style="margin-bottom:0.75rem;">
+            st.markdown(f'''<div style="margin-bottom:0.75rem;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
                     <span>{cat}</span>
                     <span class="mono" style="color:{color};">{fmt(spent, decimals=2)} / {fmt(budgeted)} — {label}</span>
                 </div>
-                <div style="background:{BG_SURFACE}; border-radius:0.5rem; height:8px;">
-                    <div style="background:{color}; border-radius:0.5rem; height:100%; width:{min(pct, 100):.0f}%;"></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+                {progress_bar_html(pct, color)}
+            </div>''', unsafe_allow_html=True)
 
         st.markdown("")
 
-        # Charts
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("### Spending by Category")
@@ -976,63 +1228,61 @@ def page_expenses():
                 textfont=dict(family="JetBrains Mono", size=11),
                 marker=dict(colors=px.colors.qualitative.Set3[:len(cats)]),
             )])
-            fig.update_layout(**default_layout(), height=350, showlegend=False)
+            fig.update_layout(**default_layout(), height=350, showlegend=False, hovermode="closest")
             st.plotly_chart(fig, use_container_width=True)
 
         with c2:
             st.markdown("### Daily Spending Trend")
             df = pd.DataFrame(month_expenses)
             df["amount"] = df["amount"].astype(float)
-            daily = df.groupby("date")["amount"].sum().reset_index()
-            daily = daily.sort_values("date")
+            daily = df.groupby("date")["amount"].sum().reset_index().sort_values("date")
             daily["cumulative"] = daily["amount"].cumsum()
             fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=daily["date"], y=daily["amount"],
-                name="Daily", marker_color=BLUE, opacity=0.6,
-            ))
-            fig.add_trace(go.Scatter(
-                x=daily["date"], y=daily["cumulative"],
-                name="Cumulative", line=dict(color=GREEN, width=2),
-                yaxis="y2",
-            ))
-            fig.update_layout(
-                **default_layout(), height=350,
+            fig.add_trace(go.Bar(x=daily["date"], y=daily["amount"], name="Daily",
+                                marker_color=BLUE, opacity=0.6))
+            fig.add_trace(go.Scatter(x=daily["date"], y=daily["cumulative"], name="Cumulative",
+                                    line=dict(color=GREEN, width=2), yaxis="y2"))
+            fig.update_layout(**default_layout(), height=350,
                 yaxis2=dict(overlaying="y", side="right", gridcolor="rgba(0,0,0,0)",
                            tickprefix="$", tickformat=","),
                 yaxis_tickprefix="$", yaxis_tickformat=",",
-                legend=dict(orientation="h", y=-0.15),
-            )
+                legend=dict(orientation="h", y=-0.15))
             st.plotly_chart(fig, use_container_width=True)
 
         # Transaction table
         st.markdown("### Transactions")
-        df = pd.DataFrame(month_expenses)
-        df = df.sort_values("date", ascending=False)
-        df["amount"] = df["amount"].apply(lambda x: f"${x:,.2f}")
-        st.dataframe(df[["date", "category", "amount", "note"]], use_container_width=True, hide_index=True)
+        df = pd.DataFrame(month_expenses).sort_values("date", ascending=False)
+        display_df = df[["date", "category", "amount", "note"]].copy()
+        display_df["amount"] = display_df["amount"].apply(lambda x: f"${x:,.2f}")
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-        # Delete expense
+        # Delete expense by ID
         with st.expander("🗑️ Delete an Expense"):
-            if month_expenses:
-                options = [f"{e['date']} | {e['category']} | ${e['amount']:.2f} | {e.get('note','')}" for e in month_expenses]
-                to_delete = st.selectbox("Select expense to remove", options)
-                if st.button("Delete Selected", type="secondary"):
-                    idx = options.index(to_delete)
+            options = [f"{e['date']}  —  {e['category']}  —  ${e['amount']:.2f}  —  {e.get('note','')}"
+                       for e in month_expenses]
+            to_delete = st.selectbox("Select expense to remove", options)
+            if st.button("Delete Selected", type="secondary"):
+                idx = options.index(to_delete)
+                target_id = month_expenses[idx].get("id")
+                if target_id:
+                    data["expenses"] = [e for e in data["expenses"] if e.get("id") != target_id]
+                else:
                     target = month_expenses[idx]
-                    data["expenses"] = [e for e in data["expenses"] if not (
-                        e["date"] == target["date"] and
-                        e["amount"] == target["amount"] and
-                        e["category"] == target["category"]
-                    )]
-                    st.rerun()
+                    data["expenses"].remove(target)
+                st.rerun()
     else:
-        st.info("No expenses recorded for this month. Add one above!")
+        st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
+            <p style="font-size:2rem; margin:0;">📝</p>
+            <p style="font-weight:600; margin:0.5rem 0;">No expenses for this month</p>
+            <p style="color:{TEXT_DIM}; font-size:0.85rem;">Add your first expense using the form above, or apply recurring templates.</p>
+        </div>''', unsafe_allow_html=True)
+
+    render_footer()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # PAGE: NET WORTH
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_net_worth():
     st.markdown("# 📈 Net Worth Tracker")
@@ -1043,8 +1293,7 @@ def page_net_worth():
         for name in list(data["assets"].keys()):
             data["assets"][name] = st.number_input(
                 name, value=data["assets"][name], min_value=0, step=100,
-                format="%d", key=f"asset_{name}",
-            )
+                format="%d", key=f"asset_{name}")
         with st.expander("Add Asset"):
             new_name = st.text_input("Asset Name", key="new_asset_name")
             new_val = st.number_input("Value ($)", value=0, min_value=0, step=100, key="new_asset_val")
@@ -1057,8 +1306,7 @@ def page_net_worth():
         for name in list(data["liabilities"].keys()):
             data["liabilities"][name] = st.number_input(
                 name, value=data["liabilities"][name], min_value=0, step=100,
-                format="%d", key=f"liability_{name}",
-            )
+                format="%d", key=f"liability_{name}")
         with st.expander("Add Liability"):
             new_name = st.text_input("Liability Name", key="new_liab_name")
             new_val = st.number_input("Balance ($)", value=0, min_value=0, step=100, key="new_liab_val")
@@ -1071,27 +1319,33 @@ def page_net_worth():
     net_worth = total_assets - total_liabilities
 
     st.markdown("---")
+
+    # Show change from last snapshot
+    last_nw = data["net_worth_snapshots"][-1]["net_worth"] if data["net_worth_snapshots"] else None
+    nw_delta = net_worth - last_nw if last_nw is not None else None
+    nw_pct = (nw_delta / last_nw * 100) if last_nw and nw_delta is not None else None
+
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Total Assets", fmt(total_assets))
     with c2:
         st.metric("Total Liabilities", fmt(total_liabilities))
     with c3:
-        st.metric("Net Worth", fmt(net_worth))
+        delta_str = f"{'+' if nw_delta > 0 else ''}{fmt(nw_delta)} ({nw_pct:+.1f}%)" if nw_delta is not None else None
+        st.metric("Net Worth", fmt(net_worth), delta=delta_str,
+                  help="Change since last snapshot" if delta_str else None)
 
     # Bar chart
     fig = go.Figure()
-    asset_names = list(data["assets"].keys())
-    asset_vals = list(data["assets"].values())
-    liab_names = list(data["liabilities"].keys())
-    liab_vals = [-v for v in data["liabilities"].values()]
-
-    fig.add_trace(go.Bar(x=asset_names, y=asset_vals, name="Assets", marker_color=GREEN))
+    fig.add_trace(go.Bar(x=list(data["assets"].keys()), y=list(data["assets"].values()),
+                         name="Assets", marker_color=GREEN))
     if any(v != 0 for v in data["liabilities"].values()):
-        fig.add_trace(go.Bar(x=liab_names, y=liab_vals, name="Liabilities", marker_color=RED))
+        fig.add_trace(go.Bar(x=list(data["liabilities"].keys()),
+                             y=[-v for v in data["liabilities"].values()],
+                             name="Liabilities", marker_color=RED))
     fig.update_layout(**default_layout(), height=350, barmode="relative",
                      yaxis_tickprefix="$", yaxis_tickformat=",",
-                     legend=dict(orientation="h", y=-0.15))
+                     legend=dict(orientation="h", y=-0.15), hovermode="closest")
     st.plotly_chart(fig, use_container_width=True)
 
     # Log snapshot
@@ -1100,9 +1354,7 @@ def page_net_worth():
     if st.button("Save Snapshot", type="primary"):
         data["net_worth_snapshots"].append({
             "date": snap_date.isoformat(),
-            "assets": total_assets,
-            "liabilities": total_liabilities,
-            "net_worth": net_worth,
+            "assets": total_assets, "liabilities": total_liabilities, "net_worth": net_worth,
         })
         st.success(f"Snapshot saved: Net worth {fmt(net_worth)} on {snap_date}")
 
@@ -1111,44 +1363,37 @@ def page_net_worth():
         st.markdown("### Net Worth Over Time")
         nw_df = pd.DataFrame(data["net_worth_snapshots"]).sort_values("date")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=nw_df["date"], y=nw_df["assets"], name="Assets",
-            line=dict(color=GREEN, width=2), stackgroup="one",
-        ))
+        fig.add_trace(go.Scatter(x=nw_df["date"], y=nw_df["assets"], name="Assets",
+                                line=dict(color=GREEN, width=2), stackgroup="one"))
         if nw_df["liabilities"].sum() > 0:
-            fig.add_trace(go.Scatter(
-                x=nw_df["date"], y=nw_df["liabilities"], name="Liabilities",
-                line=dict(color=RED, width=2),
-            ))
-        fig.add_trace(go.Scatter(
-            x=nw_df["date"], y=nw_df["net_worth"], name="Net Worth",
-            line=dict(color=BLUE, width=3),
-        ))
+            fig.add_trace(go.Scatter(x=nw_df["date"], y=nw_df["liabilities"], name="Liabilities",
+                                    line=dict(color=RED, width=2)))
+        fig.add_trace(go.Scatter(x=nw_df["date"], y=nw_df["net_worth"], name="Net Worth",
+                                line=dict(color=BLUE, width=3)))
         fig.update_layout(**default_layout(), height=350,
                          yaxis_tickprefix="$", yaxis_tickformat=",",
                          legend=dict(orientation="h", y=-0.15))
         st.plotly_chart(fig, use_container_width=True)
 
+    render_footer()
 
-# ──────────────────────────────────────────────
+
+# ══════════════════════════════════════════════
 # PAGE: DEBT PAYOFF PLANNER
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_debt():
     st.markdown("# 🏦 Debt Payoff Planner")
 
-    st.markdown("""
-    <div class="card">
-        <p style="color:{0}; margin:0; font-size:0.85rem;">
-            <strong>How it works:</strong> Enter your debts below and an optional extra monthly payment.
-            The planner compares two strategies:
-            <strong>Avalanche</strong> (highest interest first — saves the most money) vs
-            <strong>Snowball</strong> (smallest balance first — fastest psychological wins).
+    st.markdown(f'''<div class="card">
+        <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">
+            <strong>How it works:</strong> Enter your debts and an optional extra monthly payment.
+            Compare two strategies:
+            <strong style="color:{GREEN};">Avalanche</strong> (highest interest first — saves the most money) vs
+            <strong style="color:{BLUE};">Snowball</strong> (smallest balance first — fastest psychological wins).
         </p>
-    </div>
-    """.format(TEXT_DIM), unsafe_allow_html=True)
+    </div>''', unsafe_allow_html=True)
 
-    # Manage debts
     with st.expander("➕ Add / Edit Debts", expanded=not data["debts"]):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -1161,153 +1406,87 @@ def page_debt():
             d_min = st.number_input("Min Payment ($)", value=0, min_value=0, step=10, key="debt_min")
 
         if st.button("Add Debt", type="primary") and d_name and d_balance > 0:
-            data["debts"].append({
-                "name": d_name, "balance": d_balance,
-                "rate": d_rate, "min_payment": d_min,
-            })
+            data["debts"].append({"name": d_name, "balance": d_balance, "rate": d_rate, "min_payment": d_min})
             st.rerun()
 
     if data["debts"]:
-        # Show current debts
         df = pd.DataFrame(data["debts"])
-        df["balance"] = df["balance"].apply(lambda x: f"${x:,.0f}")
-        df["rate"] = df["rate"].apply(lambda x: f"{x:.1f}%")
-        df["min_payment"] = df["min_payment"].apply(lambda x: f"${x:,.0f}")
-        st.dataframe(df.rename(columns={"name": "Debt", "balance": "Balance", "rate": "Rate", "min_payment": "Min Payment"}),
+        df_display = df.copy()
+        df_display["balance"] = df_display["balance"].apply(lambda x: f"${x:,.0f}")
+        df_display["rate"] = df_display["rate"].apply(lambda x: f"{x:.1f}%")
+        df_display["min_payment"] = df_display["min_payment"].apply(lambda x: f"${x:,.0f}")
+        st.dataframe(df_display.rename(columns={"name": "Debt", "balance": "Balance", "rate": "Rate", "min_payment": "Min Payment"}),
                      use_container_width=True, hide_index=True)
 
-        # Delete debt
         with st.expander("🗑️ Remove a Debt"):
-            debt_options = [d["name"] for d in data["debts"]]
-            to_remove = st.selectbox("Select debt", debt_options, key="remove_debt")
+            to_remove = st.selectbox("Select debt", [d["name"] for d in data["debts"]], key="remove_debt")
             if st.button("Remove"):
                 data["debts"] = [d for d in data["debts"] if d["name"] != to_remove]
                 st.rerun()
 
         extra = st.number_input("Extra Monthly Payment ($)", value=200, min_value=0, step=50,
-                                help="Amount above minimum payments to throw at debt each month")
-
-        def simulate_payoff(debts, extra, strategy):
-            """Simulate payoff returning (months, total_interest, schedule)."""
-            balances = {d["name"]: float(d["balance"]) for d in debts}
-            rates = {d["name"]: d["rate"] / 100 / 12 for d in debts}
-            mins = {d["name"]: float(d["min_payment"]) for d in debts}
-            total_interest = 0
-            months = 0
-            schedule = []
-            max_months = 600  # 50 year cap
-
-            while any(b > 0.01 for b in balances.values()) and months < max_months:
-                months += 1
-                month_interest = 0
-                # Apply interest
-                for name in balances:
-                    if balances[name] > 0:
-                        interest = balances[name] * rates[name]
-                        balances[name] += interest
-                        month_interest += interest
-                        total_interest += interest
-
-                # Pay minimums
-                remaining_extra = extra
-                for name in balances:
-                    if balances[name] > 0:
-                        payment = min(mins[name], balances[name])
-                        balances[name] -= payment
-
-                # Apply extra to priority debt
-                if strategy == "avalanche":
-                    order = sorted([n for n in balances if balances[n] > 0],
-                                   key=lambda n: rates[n], reverse=True)
-                else:
-                    order = sorted([n for n in balances if balances[n] > 0],
-                                   key=lambda n: balances[n])
-
-                for name in order:
-                    if remaining_extra <= 0:
-                        break
-                    if balances[name] > 0:
-                        payment = min(remaining_extra, balances[name])
-                        balances[name] -= payment
-                        remaining_extra -= payment
-
-                schedule.append({
-                    "month": months,
-                    "total_balance": sum(max(0, b) for b in balances.values()),
-                    "interest": month_interest,
-                })
-
-            return months, total_interest, schedule
+                                help="Amount above minimum payments to accelerate payoff")
 
         months_av, interest_av, sched_av = simulate_payoff(data["debts"], extra, "avalanche")
         months_sn, interest_sn, sched_sn = simulate_payoff(data["debts"], extra, "snowball")
 
-        st.markdown("### Strategy Comparison")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(f"""
-            <div class="card" style="border-color:{GREEN};">
-                <h4 style="color:{GREEN}; margin:0;">⛰️ Avalanche</h4>
-                <p style="color:{TEXT_DIM}; font-size:0.85rem;">Highest interest rate first</p>
-                <p class="mono" style="font-size:1.5rem; margin:0.5rem 0;">{months_av} months</p>
-                <p class="mono" style="color:{RED};">Total Interest: {fmt(interest_av)}</p>
-            </div>
-            """, unsafe_allow_html=True)
+        if months_av == -1:
+            st.error("Your minimum payments plus extra don't cover the monthly interest. Increase payments to make progress.")
+        else:
+            st.markdown("### Strategy Comparison")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f'''<div class="card" style="border-color:{GREEN};">
+                    <h4 style="color:{GREEN}; margin:0;">⛰️ Avalanche</h4>
+                    <p style="color:{TEXT_DIM}; font-size:0.85rem;">Highest interest rate first</p>
+                    <p class="mono" style="font-size:1.5rem; margin:0.5rem 0;">{months_av} months ({months_av/12:.1f} yrs)</p>
+                    <p class="mono" style="color:{RED};">Total Interest: {fmt(interest_av)}</p>
+                </div>''', unsafe_allow_html=True)
+            with c2:
+                st.markdown(f'''<div class="card" style="border-color:{BLUE};">
+                    <h4 style="color:{BLUE}; margin:0;">☃️ Snowball</h4>
+                    <p style="color:{TEXT_DIM}; font-size:0.85rem;">Smallest balance first</p>
+                    <p class="mono" style="font-size:1.5rem; margin:0.5rem 0;">{months_sn} months ({months_sn/12:.1f} yrs)</p>
+                    <p class="mono" style="color:{RED};">Total Interest: {fmt(interest_sn)}</p>
+                </div>''', unsafe_allow_html=True)
 
-        with c2:
-            st.markdown(f"""
-            <div class="card" style="border-color:{BLUE};">
-                <h4 style="color:{BLUE}; margin:0;">☃️ Snowball</h4>
-                <p style="color:{TEXT_DIM}; font-size:0.85rem;">Smallest balance first</p>
-                <p class="mono" style="font-size:1.5rem; margin:0.5rem 0;">{months_sn} months</p>
-                <p class="mono" style="color:{RED};">Total Interest: {fmt(interest_sn)}</p>
-            </div>
-            """, unsafe_allow_html=True)
+            savings = interest_sn - interest_av
+            if savings > 0:
+                st.success(f"Avalanche saves you **{fmt(savings)}** in interest!")
 
-        savings = interest_sn - interest_av
-        if savings > 0:
-            st.success(f"Avalanche saves you **{fmt(savings)}** in interest compared to Snowball!")
+            fig = go.Figure()
+            df_av = pd.DataFrame(sched_av)
+            df_sn = pd.DataFrame(sched_sn)
+            fig.add_trace(go.Scatter(x=df_av["month"], y=df_av["total_balance"],
+                                    name="Avalanche", line=dict(color=GREEN, width=2)))
+            fig.add_trace(go.Scatter(x=df_sn["month"], y=df_sn["total_balance"],
+                                    name="Snowball", line=dict(color=BLUE, width=2)))
+            fig.update_layout(**default_layout(), height=350,
+                             xaxis_title="Months", yaxis_title="Remaining Balance",
+                             yaxis_tickprefix="$", yaxis_tickformat=",",
+                             legend=dict(orientation="h", y=-0.15))
+            st.plotly_chart(fig, use_container_width=True)
 
-        # Chart
-        fig = go.Figure()
-        df_av = pd.DataFrame(sched_av)
-        df_sn = pd.DataFrame(sched_sn)
-        fig.add_trace(go.Scatter(
-            x=df_av["month"], y=df_av["total_balance"],
-            name="Avalanche", line=dict(color=GREEN, width=2),
-        ))
-        fig.add_trace(go.Scatter(
-            x=df_sn["month"], y=df_sn["total_balance"],
-            name="Snowball", line=dict(color=BLUE, width=2),
-        ))
-        fig.update_layout(**default_layout(), height=350,
-                         xaxis_title="Months", yaxis_title="Remaining Balance",
-                         yaxis_tickprefix="$", yaxis_tickformat=",",
-                         legend=dict(orientation="h", y=-0.15))
-        st.plotly_chart(fig, use_container_width=True)
-
-        # Amortization table
-        with st.expander("📋 Amortization Schedule (Avalanche)"):
-            if sched_av:
-                am_df = pd.DataFrame(sched_av)
-                am_df["total_balance"] = am_df["total_balance"].apply(lambda x: f"${x:,.2f}")
-                am_df["interest"] = am_df["interest"].apply(lambda x: f"${x:,.2f}")
-                st.dataframe(am_df.rename(columns={
-                    "month": "Month", "total_balance": "Balance", "interest": "Monthly Interest"
-                }), use_container_width=True, hide_index=True)
+            with st.expander("📋 Amortization Schedule (Avalanche)"):
+                if sched_av:
+                    am_df = pd.DataFrame(sched_av)
+                    am_df["total_balance"] = am_df["total_balance"].apply(lambda x: f"${x:,.2f}")
+                    am_df["interest"] = am_df["interest"].apply(lambda x: f"${x:,.2f}")
+                    st.dataframe(am_df.rename(columns={"month": "Month", "total_balance": "Balance", "interest": "Monthly Interest"}),
+                                use_container_width=True, hide_index=True)
     else:
-        st.info("No debts added. Use the form above to add debts and see payoff strategies.")
-        st.markdown(f"""
-        <div class="card">
-            <p style="color:{GREEN}; font-weight:600;">🎉 Debt-free is a great place to be!</p>
-            <p style="color:{TEXT_DIM}; font-size:0.85rem;">This planner is ready when you need it. Common debts to track: student loans, car payments, credit card balances, personal loans.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
+            <p style="font-size:2rem; margin:0;">🎉</p>
+            <p style="color:{GREEN}; font-weight:600; margin:0.5rem 0;">Debt-free is a great place to be!</p>
+            <p style="color:{TEXT_DIM}; font-size:0.85rem;">This planner is ready when you need it. Common debts: student loans, car payments, credit cards.</p>
+        </div>''', unsafe_allow_html=True)
+
+    render_footer()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # PAGE: SAVINGS GOALS
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_savings_goals():
     st.markdown("# 🎯 Savings Goals")
@@ -1319,8 +1498,8 @@ def page_savings_goals():
             g_target = st.number_input("Target Amount ($)", value=10000, min_value=0, step=500, key="goal_target")
         with c2:
             g_current = st.number_input("Current Savings ($)", value=0, min_value=0, step=100, key="goal_current")
-            g_deadline = st.date_input("Deadline", value=date(2027, 12, 31), key="goal_deadline")
-
+            g_deadline = st.date_input("Deadline", value=date(2027, 12, 31), key="goal_deadline",
+                                       min_value=date.today())
         g_priority = st.slider("Priority (1 = highest)", 1, 10, 1, key="goal_priority")
 
         if st.button("Add Goal", type="primary") and g_name and g_target > 0:
@@ -1330,20 +1509,37 @@ def page_savings_goals():
             })
             st.rerun()
 
+    # Quick-add templates
+    if not data["savings_goals"]:
+        st.markdown("### Quick Start")
+        c1, c2, c3 = st.columns(3)
+        templates = [
+            ("Emergency Fund", 15000, "2027-12-31"),
+            ("Vacation Fund", 3000, "2026-12-31"),
+            ("Down Payment", 50000, "2030-06-30"),
+        ]
+        for col, (name, target, deadline) in zip([c1, c2, c3], templates):
+            with col:
+                st.markdown(f'''<div class="card" style="text-align:center; padding:1.5rem;">
+                    <p style="font-size:1.5rem; margin:0;">{"🛡️" if "Emergency" in name else "✈️" if "Vacation" in name else "🏠"}</p>
+                    <p style="font-weight:600; margin:0.5rem 0;">{name}</p>
+                    <p class="mono" style="color:{TEXT_DIM};">{fmt(target)}</p>
+                </div>''', unsafe_allow_html=True)
+                if st.button(f"Add {name}", key=f"quick_{name}", use_container_width=True):
+                    data["savings_goals"].append({
+                        "name": name, "target": target, "current": 0,
+                        "deadline": deadline, "priority": len(data["savings_goals"]) + 1,
+                    })
+                    st.rerun()
+
     if data["savings_goals"]:
         for i, goal in enumerate(sorted(data["savings_goals"], key=lambda g: g.get("priority", 99))):
-            pct = (goal["current"] / goal["target"] * 100) if goal["target"] else 0
-            remaining = goal["target"] - goal["current"]
-            days_left = (datetime.strptime(goal["deadline"], "%Y-%m-%d") - datetime.now()).days
-            months_left = max(1, days_left / 30.44)
-            monthly_needed = remaining / months_left if remaining > 0 else 0
-
-            color = GREEN if pct >= 100 else (GREEN if pct >= 75 else (YELLOW if pct >= 40 else BLUE))
+            pct, color, monthly_needed, deadline_label = goal_progress_info(goal)
 
             c1, c2 = st.columns([3, 1])
             with c1:
-                st.markdown(f"""
-                <div class="card">
+                badge = status_badge_html(deadline_label, color)
+                st.markdown(f'''<div class="card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
                         <div>
                             <span style="font-weight:700; font-size:1.1rem;">{goal['name']}</span>
@@ -1351,105 +1547,82 @@ def page_savings_goals():
                         </div>
                         <span class="mono" style="color:{color}; font-size:1.2rem;">{pct:.0f}%</span>
                     </div>
-                    <div style="background:{BG_SURFACE}; border-radius:0.5rem; height:14px; margin:0.5rem 0;">
-                        <div style="background:{color}; border-radius:0.5rem; height:100%; width:{min(pct, 100):.0f}%;"></div>
-                    </div>
+                    {progress_bar_html(pct, color, "14px")}
                     <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:{TEXT_DIM};">
                         <span class="mono">{fmt(goal['current'])} / {fmt(goal['target'])}</span>
-                        <span>{fmt(monthly_needed)}/mo needed · Deadline: {goal['deadline']}</span>
+                        <span>{fmt(monthly_needed)}/mo needed &middot; {badge}</span>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
+                </div>''', unsafe_allow_html=True)
 
             with c2:
-                new_current = st.number_input(
-                    "Update Balance", value=goal["current"], min_value=0, step=100,
-                    key=f"goal_bal_{i}",
-                )
+                new_current = st.number_input("Update Balance", value=goal["current"], min_value=0,
+                                             step=100, key=f"goal_bal_{i}")
                 if new_current != goal["current"]:
-                    # Find and update the goal
                     for g in data["savings_goals"]:
                         if g["name"] == goal["name"]:
                             g["current"] = new_current
                     st.rerun()
 
-        # Delete goal
         with st.expander("🗑️ Remove a Goal"):
-            goal_options = [g["name"] for g in data["savings_goals"]]
-            to_remove = st.selectbox("Select goal", goal_options, key="remove_goal")
+            to_remove = st.selectbox("Select goal", [g["name"] for g in data["savings_goals"]], key="remove_goal")
             if st.button("Remove Goal"):
                 data["savings_goals"] = [g for g in data["savings_goals"] if g["name"] != to_remove]
                 st.rerun()
-    else:
-        st.info("No savings goals yet. Common goals: Emergency Fund, Vacation, Down Payment, Wedding, New Car.")
+
+    render_footer()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # PAGE: INVESTMENT PROJECTOR
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_investments():
-    st.markdown("# 📉 Investment Growth Projector")
+    st.markdown("# 📈 Investment Growth Projector")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         data["investment"]["starting_amount"] = st.number_input(
             "Starting Amount ($)", value=data["investment"]["starting_amount"],
-            min_value=0, step=500, format="%d",
-        )
+            min_value=0, step=500, format="%d")
         data["investment"]["monthly_contribution"] = st.number_input(
             "Monthly Contribution ($)", value=data["investment"]["monthly_contribution"],
-            min_value=0, step=50, format="%d",
-        )
-        data["investment"]["time_horizon"] = st.slider(
-            "Time Horizon (years)", 1, 50, data["investment"]["time_horizon"],
-        )
-
+            min_value=0, step=50, format="%d")
     with c2:
         data["investment"]["annual_return"] = st.number_input(
             "Expected Annual Return (%)", value=data["investment"]["annual_return"],
-            min_value=0.0, max_value=30.0, step=0.5, format="%.1f",
-        )
+            min_value=0.0, max_value=30.0, step=0.5, format="%.1f")
+        data["investment"]["time_horizon"] = st.slider(
+            "Time Horizon (years)", 1, 50, data["investment"]["time_horizon"])
+    with c3:
         data["investment"]["employer_match_pct"] = st.number_input(
-            "Employer 401(k) Match (%)", value=data["investment"]["employer_match_pct"],
+            "Employer Match (%)", value=data["investment"]["employer_match_pct"],
             min_value=0, max_value=100, step=10, format="%d",
-            help="E.g., 50% match means employer contributes $0.50 for every $1 you contribute",
-        )
+            help="E.g., 50% = employer contributes $0.50 per $1 you contribute")
         data["investment"]["employer_match_limit"] = st.number_input(
             "Match Up To (% of salary)", value=data["investment"]["employer_match_limit"],
             min_value=0, max_value=100, step=1, format="%d",
-            help="Employer matches up to this percentage of your salary",
-        )
+            help="Employer matches up to this % of your salary")
+
+    show_real = st.toggle("Show inflation-adjusted (real) returns", value=False,
+                          help="Subtracts ~3% assumed inflation from nominal returns")
+    inflation = 3.0 if show_real else 0.0
 
     inv = data["investment"]
     years = inv["time_horizon"]
 
-    def project(start, monthly, rate, years):
-        values = [start]
-        contributions = [start]
-        r = rate / 100 / 12
-        for m in range(1, years * 12 + 1):
-            prev = values[-1]
-            values.append(prev * (1 + r) + monthly)
-            contributions.append(contributions[-1] + monthly)
-        return values, contributions
-
-    # Scenario comparison
     scenarios = [
-        ("Conservative (5%)", 5.0, BLUE),
-        ("Moderate (7%)", 7.0, GREEN),
-        ("Aggressive (10%)", 10.0, YELLOW),
+        ("Conservative (5%)", 5.0 - inflation, BLUE),
+        ("Moderate (7%)", 7.0 - inflation, GREEN),
+        ("Aggressive (10%)", 10.0 - inflation, YELLOW),
     ]
 
-    st.markdown("### Scenario Comparison")
+    st.markdown("### Scenario Comparison" + (" (Inflation-Adjusted)" if show_real else ""))
     fig = go.Figure()
     x_vals = list(range(years + 1))
-    x_labels = [f"Year {y}" for y in x_vals]
 
     for name, rate, color in scenarios:
-        values, contribs = project(inv["starting_amount"], inv["monthly_contribution"], rate, years)
+        values, contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], max(rate, 0), years)
         yearly_vals = [values[y * 12] for y in range(years + 1)]
-        yearly_contribs = [contribs[y * 12] for y in range(years + 1)]
         fig.add_trace(go.Scatter(
             x=x_vals, y=yearly_vals, name=name,
             line=dict(color=color, width=2),
@@ -1457,68 +1630,64 @@ def page_investments():
             text=[f"{name}<br>Year {y}: {fmt(v)}" for y, v in zip(x_vals, yearly_vals)],
         ))
 
-    # Contributions line
-    _, base_contribs = project(inv["starting_amount"], inv["monthly_contribution"], 0, years)
+    _, base_contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], 0, years)
     yearly_contribs_base = [base_contribs[y * 12] for y in range(years + 1)]
-    fig.add_trace(go.Scatter(
-        x=x_vals, y=yearly_contribs_base, name="Total Contributions",
-        line=dict(color=TEXT_DIM, width=1, dash="dash"),
-    ))
-
-    fig.update_layout(**default_layout(), height=400,
-                     xaxis_title="Years", yaxis_title="Portfolio Value",
-                     yaxis_tickprefix="$", yaxis_tickformat=",",
-                     legend=dict(orientation="h", y=-0.15))
+    fig.add_trace(go.Scatter(x=x_vals, y=yearly_contribs_base, name="Total Contributions",
+                            line=dict(color=TEXT_DIM, width=1, dash="dash")))
+    fig.update_layout(**default_layout(), height=400, xaxis_title="Years", yaxis_title="Portfolio Value",
+                     yaxis_tickprefix="$", yaxis_tickformat=",", legend=dict(orientation="h", y=-0.15))
     st.plotly_chart(fig, use_container_width=True)
 
     # Final values
     c1, c2, c3 = st.columns(3)
     for col, (name, rate, color) in zip([c1, c2, c3], scenarios):
-        vals, contribs = project(inv["starting_amount"], inv["monthly_contribution"], rate, years)
+        vals, contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], max(rate, 0), years)
         final = vals[-1]
         total_contrib = contribs[-1]
         growth = final - total_contrib
         with col:
-            st.markdown(f"""
-            <div class="card" style="border-left:3px solid {color};">
+            st.markdown(f'''<div class="card" style="border-left:3px solid {color};">
                 <p style="color:{color}; font-weight:600; margin:0;">{name}</p>
                 <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(final)}</p>
                 <p style="color:{TEXT_DIM}; font-size:0.85rem; margin:0;">
                     Contributed: {fmt(total_contrib)}<br>
                     Growth: <span style="color:{GREEN};">{fmt(growth)}</span>
                 </p>
-            </div>
-            """, unsafe_allow_html=True)
+            </div>''', unsafe_allow_html=True)
 
     # Cost of waiting
     st.markdown("### Cost of Waiting")
     delays = [0, 1, 3, 5]
-    rate = inv["annual_return"]
+    rate = max(inv["annual_return"] - inflation, 0)
     fig = go.Figure()
-    colors = [GREEN, BLUE, YELLOW, RED]
-    for delay, color in zip(delays, colors):
+    colors_cow = [GREEN, BLUE, YELLOW, RED]
+    for delay, clr in zip(delays, colors_cow):
         effective_years = max(0, years - delay)
-        vals, _ = project(inv["starting_amount"], inv["monthly_contribution"], rate, effective_years)
-        label = "Start Now" if delay == 0 else f"Wait {delay} yr{'s' if delay > 1 else ''}"
-        yearly = [vals[min(y * 12, len(vals) - 1)] for y in range(years + 1)]
-        # Pad with zeros for delayed start
-        padded = [0] * (delay) + yearly[:years + 1 - delay]
-        fig.add_trace(go.Scatter(
-            x=list(range(years + 1)), y=padded[:years + 1], name=label,
-            line=dict(color=color, width=2),
-        ))
+        if effective_years == 0:
+            padded = [inv["starting_amount"]] * (years + 1)
+        else:
+            vals, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, effective_years)
+            yearly = [vals[min(y * 12, len(vals) - 1)] for y in range(effective_years + 1)]
+            padded = [0] * delay + yearly
+            padded = padded[:years + 1]
+            while len(padded) < years + 1:
+                padded.append(padded[-1] if padded else 0)
 
-    fig.update_layout(**default_layout(), height=350,
-                     xaxis_title="Years", yaxis_title="Portfolio Value",
+        label = "Start Now" if delay == 0 else f"Wait {delay} yr{'s' if delay > 1 else ''}"
+        fig.add_trace(go.Scatter(x=list(range(years + 1)), y=padded, name=label,
+                                line=dict(color=clr, width=2)))
+
+    fig.update_layout(**default_layout(), height=350, xaxis_title="Years", yaxis_title="Portfolio Value",
                      yaxis_tickprefix="$", yaxis_tickformat=",",
                      legend=dict(orientation="h", y=-0.15),
-                     title=f"Impact of Delaying at {rate:.0f}% Return")
+                     title=f"Impact of Delaying at {inv['annual_return']:.0f}% Return")
     st.plotly_chart(fig, use_container_width=True)
 
-    vals_now, _ = project(inv["starting_amount"], inv["monthly_contribution"], rate, years)
-    vals_5yr, _ = project(inv["starting_amount"], inv["monthly_contribution"], rate, max(0, years - 5))
-    cost = vals_now[-1] - vals_5yr[-1]
-    st.warning(f"Waiting 5 years costs you approximately **{fmt(cost)}** in potential growth at {rate:.0f}% returns.")
+    if years > 5:
+        vals_now, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, years)
+        vals_5yr, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, years - 5)
+        cost = vals_now[-1] - vals_5yr[-1]
+        st.warning(f"Waiting 5 years costs you approximately **{fmt(cost)}** in potential growth.")
 
     # Employer match
     st.markdown("### 401(k) Employer Match")
@@ -1536,37 +1705,44 @@ def page_investments():
     with c1:
         st.metric("Your Annual 401(k)", fmt(your_annual))
     with c2:
-        st.metric("Employer Match (Annual)", fmt(employer_annual), help="This is free money!")
+        st.metric("Employer Match", fmt(employer_annual), help="Free money from your employer!")
     with c3:
         total_401k_monthly = your_annual / 12 + employer_monthly
-        vals_with_match, _ = project(inv["starting_amount"], total_401k_monthly, rate, years)
-        vals_without_match, _ = project(inv["starting_amount"], your_annual / 12, rate, years)
-        match_value = vals_with_match[-1] - vals_without_match[-1]
-        st.metric("Match Value Over Time", fmt(match_value), help=f"Extra growth from employer match over {years} years")
+        vals_with, _ = project_investment(inv["starting_amount"], total_401k_monthly, rate, years)
+        vals_without, _ = project_investment(inv["starting_amount"], your_annual / 12, rate, years)
+        match_value = vals_with[-1] - vals_without[-1]
+        st.metric("Match Value Over Time", fmt(match_value),
+                  help=f"Extra growth from employer match over {years} years")
 
     if your_contrib_pct < match_limit:
-        st.warning(f"You're contributing {your_contrib_pct}% but your employer matches up to {match_limit}%. You're leaving **{fmt(employer_annual * (match_limit / max(your_contrib_pct, 1) - 1))}**/year on the table!")
+        max_employer = salary * match_limit / 100 * match_pct / 100
+        missed = max_employer - employer_annual
+        st.warning(f"You're contributing {your_contrib_pct}% but your employer matches up to {match_limit}%. "
+                   f"You're leaving **{fmt(missed)}**/year on the table!")
+
+    render_footer()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # PAGE: TAX ESTIMATOR
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 def page_tax():
     st.markdown("# 🧾 Tax Estimator")
 
     th_local = compute_take_home(data["income"])
     gross = th_local["annual_gross"]
+    filing = th_local["filing"]
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric("Federal Tax", fmt(th_local["fed_tax"]))
     with c2:
-        st.metric("State Tax", fmt(th_local["state_tax"]),
-                  help=f"State: {data['income']['state']}")
+        st.metric("State Tax", fmt(th_local["state_tax"]), help=f"State: {data['income']['state']}")
     with c3:
         st.metric("FICA", fmt(th_local["fica"]),
-                  help="Social Security (6.2%) + Medicare (1.45%)")
+                  help=f"Social Security (6.2% up to ${FICA_SS_CAP:,}) + Medicare (1.45%). "
+                       f"Additional 0.9% Medicare surtax on income over $200K.")
     with c4:
         st.metric("Total Tax", fmt(th_local["total_tax"]))
 
@@ -1575,42 +1751,91 @@ def page_tax():
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Tax Rates")
-        st.markdown(f"""
-        <div class="card">
+        st.markdown(f'''<div class="card">
             <div style="display:flex; justify-content:space-between; margin-bottom:1rem;">
                 <div>
                     <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">Effective Tax Rate</p>
                     <p class="mono" style="font-size:1.5rem; margin:0; color:{YELLOW};">{th_local['effective_rate']:.1f}%</p>
-                    <p style="color:{TEXT_DIM}; margin:0; font-size:0.75rem;">Total tax / gross income. What you actually pay.</p>
+                    <p style="color:{TEXT_DIM}; margin:0; font-size:0.75rem;">Total tax / gross income — what you actually pay overall.</p>
                 </div>
                 <div>
                     <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">Marginal Federal Rate</p>
                     <p class="mono" style="font-size:1.5rem; margin:0; color:{RED};">{th_local['marginal_fed']:.0f}%</p>
-                    <p style="color:{TEXT_DIM}; margin:0; font-size:0.75rem;">Tax rate on your next dollar earned.</p>
+                    <p style="color:{TEXT_DIM}; margin:0; font-size:0.75rem;">Tax on your next dollar earned. Affects 401(k) savings.</p>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>''', unsafe_allow_html=True)
 
     with c2:
         st.markdown("### Deduction Breakdown")
-        st.markdown(f"""
-        <div class="card">
+        st.markdown(f'''<div class="card">
+            <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Filing Status:</span> <span class="mono">{filing}</span></p>
             <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">AGI:</span> <span class="mono">{fmt(th_local['agi'])}</span></p>
             <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Standard Deduction:</span> <span class="mono">-{fmt(th_local['std_ded'])}</span></p>
-            <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Taxable Income:</span> <span class="mono">{fmt(th_local['taxable'])}</span></p>
-        </div>
-        """, unsafe_allow_html=True)
+            <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Taxable Income:</span> <span class="mono" style="font-weight:600;">{fmt(th_local['taxable'])}</span></p>
+        </div>''', unsafe_allow_html=True)
 
-    # Tax bracket visualization
-    st.markdown("### Federal Tax Brackets (2026)")
+    # Standard vs Itemized comparison
+    st.markdown("### Standard vs. Itemized Deduction")
+    st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.85rem;">Enter your potential itemized deductions to see which option saves you more.</p>', unsafe_allow_html=True)
+
+    if "itemized" not in data:
+        data["itemized"] = {"salt": 0, "mortgage_interest": 0, "charitable": 0, "medical": 0}
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        data["itemized"]["salt"] = st.number_input("State & Local Taxes (SALT)", value=data["itemized"]["salt"],
+            min_value=0, step=100, format="%d",
+            help=f"Capped at ${SALT_CAP:,} for federal purposes (state + property taxes)")
+    with c2:
+        data["itemized"]["mortgage_interest"] = st.number_input("Mortgage Interest", value=data["itemized"]["mortgage_interest"],
+            min_value=0, step=100, format="%d")
+    with c3:
+        data["itemized"]["charitable"] = st.number_input("Charitable Donations", value=data["itemized"]["charitable"],
+            min_value=0, step=100, format="%d")
+    with c4:
+        data["itemized"]["medical"] = st.number_input("Medical (above 7.5% AGI)", value=data["itemized"]["medical"],
+            min_value=0, step=100, format="%d",
+            help="Only the amount exceeding 7.5% of AGI is deductible")
+
+    salt_capped = min(data["itemized"]["salt"], SALT_CAP)
+    medical_threshold = th_local["agi"] * 0.075
+    medical_deductible = max(0, data["itemized"]["medical"] - medical_threshold)
+    total_itemized = salt_capped + data["itemized"]["mortgage_interest"] + data["itemized"]["charitable"] + medical_deductible
+    standard = th_local["std_ded"]
+
+    better = "Standard" if standard >= total_itemized else "Itemized"
+    diff = abs(standard - total_itemized)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        border = f"border-left:3px solid {GREEN}" if better == "Standard" else ""
+        st.markdown(f'''<div class="card" style="{border}">
+            <p style="font-weight:600; margin:0;">Standard Deduction</p>
+            <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(standard)}</p>
+            {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option</p>" if better == "Standard" else ""}
+        </div>''', unsafe_allow_html=True)
+    with c2:
+        border = f"border-left:3px solid {GREEN}" if better == "Itemized" else ""
+        st.markdown(f'''<div class="card" style="{border}">
+            <p style="font-weight:600; margin:0;">Itemized Deductions</p>
+            <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(total_itemized)}</p>
+            <p style="color:{TEXT_DIM}; font-size:0.8rem; margin:0;">SALT (capped): {fmt(salt_capped)} · Mortgage: {fmt(data["itemized"]["mortgage_interest"])} · Charity: {fmt(data["itemized"]["charitable"])} · Medical: {fmt(medical_deductible)}</p>
+            {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option</p>" if better == "Itemized" else ""}
+        </div>''', unsafe_allow_html=True)
+
+    if better == "Itemized":
+        marginal_combined = th_local["marginal_fed"] / 100
+        tax_savings = diff * marginal_combined
+        st.success(f"Itemizing saves you **{fmt(diff)}** in deductions, worth approximately **{fmt(tax_savings)}** in tax savings at your {th_local['marginal_fed']:.0f}% marginal rate.")
+
+    # Tax brackets
+    st.markdown(f"### Federal Tax Brackets ({filing}, 2026)")
+    brackets = FEDERAL_BRACKETS_2026.get(filing, FEDERAL_BRACKETS_2026["Single"])
     bracket_data = []
     prev = 0
-    for ceiling, rate in FEDERAL_BRACKETS_SINGLE_2026:
-        if ceiling == float("inf"):
-            label = f"${prev:,}+"
-        else:
-            label = f"${prev:,}–${ceiling:,}"
+    for ceiling, rate in brackets:
+        label = f"${prev:,}+" if ceiling == float("inf") else f"${prev:,}–${ceiling:,}"
         bracket_data.append({"Range": label, "Rate": f"{rate*100:.0f}%", "rate_num": rate * 100})
         prev = ceiling
 
@@ -1623,44 +1848,43 @@ def page_tax():
         text=df_brackets["Rate"], textposition="inside",
         textfont=dict(family="JetBrains Mono", size=12, color="white"),
     ))
-    # Mark user's bracket
     fig.update_layout(**default_layout(), height=300, yaxis_title="Tax Rate (%)",
-                     xaxis_tickangle=-45, showlegend=False)
+                     xaxis_tickangle=-45, showlegend=False, hovermode="closest")
     st.plotly_chart(fig, use_container_width=True)
 
     # 401(k) tax savings
     st.markdown("### 401(k) Tax Savings Impact")
     contrib = th_local["contrib_401k"]
     marginal = th_local["marginal_fed"] / 100
-    state_data = STATE_TAX_DATA.get(data["income"]["state"])
+    state_d = STATE_TAX_DATA.get(data["income"]["state"])
     state_marginal = 0
-    if state_data and state_data["brackets"]:
-        state_marginal = state_data["brackets"][-1][1] if th_local["taxable"] > 0 else 0
+    if state_d and state_d["brackets"]:
+        state_marginal = state_d["brackets"][-1][1] if th_local["taxable"] > 0 else 0
 
     tax_saved = contrib * (marginal + state_marginal)
+
+    st.markdown(f'''<div class="card" style="border-left:3px solid {GREEN};">
+        <p style="font-weight:600; margin:0;">Current 401(k): {fmt(contrib)}/year ({data['income']['contribution_401k']}% of salary)</p>
+        <p style="color:{GREEN}; font-size:1.3rem; margin:0.25rem 0;" class="mono">Saves you {fmt(tax_saved)} in taxes</p>
+        <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">At your {marginal*100:.0f}% federal + {state_marginal*100:.1f}% state marginal rate</p>
+    </div>''', unsafe_allow_html=True)
 
     scenarios = [0, 3, 6, 10, 15, 20]
     savings_data = []
     for pct in scenarios:
-        c = data["income"]["gross_salary"] * pct / 100
-        c = min(c, 23500)  # 2026 limit
+        c = min(data["income"]["gross_salary"] * pct / 100, 23500)
         s = c * (marginal + state_marginal)
         savings_data.append({"Contribution %": f"{pct}%", "Annual ($)": fmt(c), "Tax Savings": fmt(s)})
-
-    st.markdown(f"""
-    <div class="card" style="border-left:3px solid {GREEN};">
-        <p style="font-weight:600; margin:0;">Current 401(k): {fmt(contrib)}/year ({data['income']['contribution_401k']}% of salary)</p>
-        <p style="color:{GREEN}; font-size:1.3rem; margin:0.25rem 0;" class="mono">Saves you {fmt(tax_saved)} in taxes</p>
-        <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">At your {marginal*100:.0f}% federal + {state_marginal*100:.1f}% state marginal rate</p>
-    </div>
-    """, unsafe_allow_html=True)
-
     st.dataframe(pd.DataFrame(savings_data), use_container_width=True, hide_index=True)
 
+    render_footer()
 
-# ──────────────────────────────────────────────
+
+# ══════════════════════════════════════════════
 # PAGE: DATA MANAGEMENT
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
+
+REQUIRED_KEYS = {"income", "budget", "expenses", "assets", "liabilities", "debts", "savings_goals", "investment"}
 
 def page_data():
     st.markdown("# 💾 Data Management")
@@ -1668,28 +1892,17 @@ def page_data():
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Export")
-
-        # JSON export
         json_str = json.dumps(data, indent=2, default=str)
-        st.download_button(
-            "📥 Export All Data (JSON)",
-            data=json_str,
+        st.download_button("📥 Export All Data (JSON)", data=json_str,
             file_name=f"budget_backup_{date.today().isoformat()}.json",
-            mime="application/json",
-            use_container_width=True,
-        )
+            mime="application/json", use_container_width=True)
 
-        # CSV export
         if data["expenses"]:
             df = pd.DataFrame(data["expenses"])
             csv = df.to_csv(index=False)
-            st.download_button(
-                "📥 Export Expenses (CSV)",
-                data=csv,
+            st.download_button("📥 Export Expenses (CSV)", data=csv,
                 file_name=f"expenses_{date.today().isoformat()}.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
+                mime="text/csv", use_container_width=True)
         else:
             st.info("No expenses to export.")
 
@@ -1699,15 +1912,31 @@ def page_data():
         if uploaded:
             try:
                 imported = json.load(uploaded)
-                if st.button("📤 Load Imported Data", type="primary"):
-                    st.session_state.data = imported
-                    st.success("Data imported successfully!")
-                    st.rerun()
+                missing = REQUIRED_KEYS - set(imported.keys())
+                if missing:
+                    st.error(f"Invalid backup — missing keys: {', '.join(missing)}")
+                elif not isinstance(imported.get("expenses"), list):
+                    st.error("Invalid format: 'expenses' should be a list.")
+                elif not isinstance(imported.get("budget"), dict):
+                    st.error("Invalid format: 'budget' should be a dict.")
+                else:
+                    _ensure_expense_ids(imported.get("expenses", []))
+                    if "filing_status" not in imported.get("income", {}):
+                        imported["income"]["filing_status"] = "Single"
+                    if "recurring_templates" not in imported:
+                        imported["recurring_templates"] = []
+                    if "itemized" not in imported:
+                        imported["itemized"] = {"salt": 0, "mortgage_interest": 0, "charitable": 0, "medical": 0}
+
+                    st.success(f"Valid backup: {len(imported['expenses'])} expenses, {len(imported['savings_goals'])} goals")
+                    if st.button("📤 Load Imported Data", type="primary"):
+                        st.session_state.data = imported
+                        st.success("Data imported successfully!")
+                        st.rerun()
             except json.JSONDecodeError:
                 st.error("Invalid JSON file.")
 
     st.markdown("---")
-
     st.markdown("### Reset Data")
     c1, c2 = st.columns(2)
     with c1:
@@ -1726,7 +1955,6 @@ def page_data():
                 if st.button("Yes, Reset Everything", type="primary"):
                     st.session_state.data = get_default_state()
                     st.session_state.confirm_reset = False
-                    st.success("All data has been reset.")
                     st.rerun()
             with c2:
                 if st.button("Cancel"):
@@ -1735,20 +1963,21 @@ def page_data():
 
     st.markdown("---")
     st.markdown("### Data Summary")
-    st.markdown(f"""
-    <div class="card">
+    st.markdown(f'''<div class="card">
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Expenses logged:</span> <span class="mono">{len(data['expenses'])}</span></p>
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Net worth snapshots:</span> <span class="mono">{len(data['net_worth_snapshots'])}</span></p>
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Debts tracked:</span> <span class="mono">{len(data['debts'])}</span></p>
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Savings goals:</span> <span class="mono">{len(data['savings_goals'])}</span></p>
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Budget categories:</span> <span class="mono">{sum(len(v) for v in data['budget'].values())}</span></p>
-    </div>
-    """, unsafe_allow_html=True)
+        <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Recurring templates:</span> <span class="mono">{len(data.get('recurring_templates', []))}</span></p>
+    </div>''', unsafe_allow_html=True)
+
+    render_footer()
 
 
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 # ROUTER
-# ──────────────────────────────────────────────
+# ══════════════════════════════════════════════
 
 PAGES = {
     "Dashboard": page_dashboard,
