@@ -93,9 +93,12 @@ section[data-testid="stSidebar"] button[kind="primary"] {
     background: rgba(46,134,171,0.3); border: 1px solid rgba(46,134,171,0.5);
     color: #7DD3FC; font-weight: 600;
 }
-section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] {
-    background: rgba(255,255,255,0.08) !important;
-    border-color: rgba(255,255,255,0.2) !important;
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"],
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] div,
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] section {
+    background: #243B63 !important;
+    background-color: #243B63 !important;
+    border-color: rgba(255,255,255,0.15) !important;
 }
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] * {
     color: #CBD5E1 !important;
