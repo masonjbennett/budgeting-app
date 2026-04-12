@@ -222,33 +222,33 @@ STATE_TAX_DATA = {
     "Connecticut": {"brackets": [(10000, 0.03), (50000, 0.05), (100000, 0.055), (200000, 0.06), (250000, 0.065), (500000, 0.069), (float("inf"), 0.0699)], "deduction": 0},
     "Delaware": {"brackets": [(2000, 0.0), (5000, 0.022), (10000, 0.039), (20000, 0.048), (25000, 0.052), (60000, 0.0555), (float("inf"), 0.066)], "deduction": 3250},
     "Florida": {"brackets": [], "deduction": 0},
-    "Georgia": {"brackets": [(float("inf"), 0.0549)], "deduction": 12000},
+    "Georgia": {"brackets": [(float("inf"), 0.0519)], "deduction": 12000},
     "Hawaii": {"brackets": [(2400, 0.014), (4800, 0.032), (9600, 0.055), (14400, 0.064), (19200, 0.068), (24000, 0.072), (36000, 0.076), (48000, 0.079), (150000, 0.0825), (175000, 0.09), (200000, 0.10), (float("inf"), 0.11)], "deduction": 2200},
     "Idaho": {"brackets": [(float("inf"), 0.058)], "deduction": 14700},
     "Illinois": {"brackets": [(float("inf"), 0.0495)], "deduction": 0},
-    "Indiana": {"brackets": [(float("inf"), 0.0305)], "deduction": 0},
+    "Indiana": {"brackets": [(float("inf"), 0.0295)], "deduction": 0},
     "Iowa": {"brackets": [(6210, 0.044), (31050, 0.0482), (float("inf"), 0.057)], "deduction": 2210},
     "Kansas": {"brackets": [(15000, 0.031), (30000, 0.0525), (float("inf"), 0.057)], "deduction": 3500},
-    "Kentucky": {"brackets": [(float("inf"), 0.04)], "deduction": 3160},
+    "Kentucky": {"brackets": [(float("inf"), 0.035)], "deduction": 3160},
     "Louisiana": {"brackets": [(12500, 0.0185), (50000, 0.035), (float("inf"), 0.0425)], "deduction": 0},
     "Maine": {"brackets": [(24500, 0.058), (58050, 0.0675), (float("inf"), 0.0715)], "deduction": 14600},
     "Maryland": {"brackets": [(1000, 0.02), (2000, 0.03), (3000, 0.04), (100000, 0.0475), (125000, 0.05), (150000, 0.0525), (250000, 0.055), (float("inf"), 0.0575)], "deduction": 2550},
     "Massachusetts": {"brackets": [(float("inf"), 0.05)], "deduction": 0},
     "Michigan": {"brackets": [(float("inf"), 0.0405)], "deduction": 5400},
     "Minnesota": {"brackets": [(31690, 0.0535), (104090, 0.068), (183340, 0.0785), (float("inf"), 0.0985)], "deduction": 14575},
-    "Mississippi": {"brackets": [(10000, 0.047), (float("inf"), 0.05)], "deduction": 2300},
+    "Mississippi": {"brackets": [(10000, 0.04), (float("inf"), 0.04)], "deduction": 2300},
     "Missouri": {"brackets": [(1207, 0.02), (2414, 0.025), (3621, 0.03), (4828, 0.035), (6035, 0.04), (7242, 0.045), (8449, 0.05), (float("inf"), 0.048)], "deduction": 14600},
-    "Montana": {"brackets": [(20500, 0.047), (float("inf"), 0.059)], "deduction": 14600},
-    "Nebraska": {"brackets": [(3700, 0.0246), (22170, 0.0351), (35730, 0.0501), (float("inf"), 0.0584)], "deduction": 8200},
+    "Montana": {"brackets": [(20500, 0.047), (float("inf"), 0.0565)], "deduction": 14600},
+    "Nebraska": {"brackets": [(3700, 0.0246), (22170, 0.0351), (35730, 0.0455), (float("inf"), 0.0455)], "deduction": 8200},
     "Nevada": {"brackets": [], "deduction": 0},
     "New Hampshire": {"brackets": [], "deduction": 0},
     "New Jersey": {"brackets": [(20000, 0.014), (35000, 0.0175), (40000, 0.035), (75000, 0.05525), (500000, 0.0637), (1000000, 0.0897), (float("inf"), 0.1075)], "deduction": 0},
     "New Mexico": {"brackets": [(5500, 0.017), (11000, 0.032), (16000, 0.047), (210000, 0.049), (float("inf"), 0.059)], "deduction": 14600},
     "New York": {"brackets": [(8500, 0.04), (11700, 0.045), (13900, 0.0525), (80650, 0.055), (215400, 0.06), (1077550, 0.0685), (5000000, 0.0965), (25000000, 0.103), (float("inf"), 0.109)], "deduction": 8000},
-    "North Carolina": {"brackets": [(float("inf"), 0.045)], "deduction": 14600},
+    "North Carolina": {"brackets": [(float("inf"), 0.0399)], "deduction": 14600},
     "North Dakota": {"brackets": [(44725, 0.0195), (float("inf"), 0.025)], "deduction": 14600},
-    "Ohio": {"brackets": [(26050, 0.0), (100000, 0.028), (float("inf"), 0.035)], "deduction": 0},
-    "Oklahoma": {"brackets": [(1000, 0.0025), (2500, 0.0075), (3750, 0.0175), (4900, 0.0275), (7200, 0.0375), (float("inf"), 0.0475)], "deduction": 7350},
+    "Ohio": {"brackets": [(26050, 0.0), (float("inf"), 0.0275)], "deduction": 0},
+    "Oklahoma": {"brackets": [(1000, 0.0025), (3750, 0.015), (float("inf"), 0.045)], "deduction": 7350},
     "Oregon": {"brackets": [(4050, 0.0475), (10200, 0.0675), (125000, 0.0875), (float("inf"), 0.099)], "deduction": 2745},
     "Pennsylvania": {"brackets": [(float("inf"), 0.0307)], "deduction": 0},
     "Rhode Island": {"brackets": [(73450, 0.0375), (166950, 0.0475), (float("inf"), 0.0599)], "deduction": 10550},
@@ -271,7 +271,7 @@ FICA_SS_CAP = 184_500  # 2026 Social Security wage base (SSA official)
 FICA_MEDICARE_RATE = 0.0145
 FICA_MEDICARE_SURTAX = 0.009
 FICA_MEDICARE_SURTAX_THRESHOLD = 200_000
-SALT_CAP = 10_000
+SALT_CAP = 40_400  # 2026 OBBBA increased from $10K; phases out above $500K MAGI
 
 
 def calc_bracket_tax(taxable_income, brackets):
