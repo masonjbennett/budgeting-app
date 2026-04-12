@@ -411,14 +411,18 @@ def render_savings_goal_card(goal):
     </div>'''
 
 
-def project_investment(start, monthly, rate, years):
+def project_investment(start, monthly, rate, years, contribution_growth=0):
     values = [start]
     contributions = [start]
     r = rate / 100 / 12
+    g = contribution_growth / 100 / 12  # monthly growth rate
+    current_monthly = monthly
     for m in range(1, years * 12 + 1):
+        if m > 1 and m % 12 == 1:  # annual raise applied at start of each year
+            current_monthly = monthly * (1 + contribution_growth / 100) ** ((m - 1) // 12)
         prev = values[-1]
-        values.append(prev * (1 + r) + monthly)
-        contributions.append(contributions[-1] + monthly)
+        values.append(prev * (1 + r) + current_monthly)
+        contributions.append(contributions[-1] + current_monthly)
     return values, contributions
 
 
@@ -1896,8 +1900,14 @@ def page_investments():
             min_value=0, max_value=100, step=1, format="%d",
             help="Employer matches up to this % of your salary")
 
-    show_real = st.toggle("Show inflation-adjusted (real) returns", value=False,
-                          help="Subtracts ~3% assumed inflation from nominal returns")
+    c1, c2 = st.columns(2)
+    with c1:
+        show_real = st.toggle("Show inflation-adjusted (real) returns", value=False,
+                              help="Subtracts ~3% assumed inflation from nominal returns")
+    with c2:
+        income_growth = st.number_input("Annual Income Growth (%)", value=3.0, min_value=0.0,
+                                         max_value=20.0, step=0.5, format="%.1f", key="income_growth",
+                                         help="Your contributions grow with your salary. 3-5% is typical; IB/PE early career can be 8-15%.")
     inflation = 3.0 if show_real else 0.0
 
     inv = data["investment"]
@@ -1914,7 +1924,7 @@ def page_investments():
     x_vals = list(range(years + 1))
 
     for name, rate, color in scenarios:
-        values, contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], max(rate, 0), years)
+        values, contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], max(rate, 0), years, income_growth)
         yearly_vals = [values[y * 12] for y in range(years + 1)]
         fig.add_trace(go.Scatter(
             x=x_vals, y=yearly_vals, name=name,
@@ -1923,7 +1933,7 @@ def page_investments():
             text=[f"{name}<br>Year {y}: {fmt(v)}" for y, v in zip(x_vals, yearly_vals)],
         ))
 
-    _, base_contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], 0, years)
+    _, base_contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], 0, years, income_growth)
     yearly_contribs_base = [base_contribs[y * 12] for y in range(years + 1)]
     fig.add_trace(go.Scatter(x=x_vals, y=yearly_contribs_base, name="Total Contributions",
                             line=dict(color=TEXT_DIM, width=1, dash="dash")))
@@ -1934,7 +1944,7 @@ def page_investments():
     # Final values
     c1, c2, c3 = st.columns(3)
     for col, (name, rate, color) in zip([c1, c2, c3], scenarios):
-        vals, contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], max(rate, 0), years)
+        vals, contribs = project_investment(inv["starting_amount"], inv["monthly_contribution"], max(rate, 0), years, income_growth)
         final = vals[-1]
         total_contrib = contribs[-1]
         growth = final - total_contrib
@@ -1959,7 +1969,7 @@ def page_investments():
         if effective_years == 0:
             padded = [inv["starting_amount"]] * (years + 1)
         else:
-            vals, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, effective_years)
+            vals, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, effective_years, income_growth)
             yearly = [vals[min(y * 12, len(vals) - 1)] for y in range(effective_years + 1)]
             padded = [0] * delay + yearly
             padded = padded[:years + 1]
@@ -1976,8 +1986,8 @@ def page_investments():
     st.plotly_chart(fig, use_container_width=True)
 
     if years > 5:
-        vals_now, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, years)
-        vals_5yr, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, years - 5)
+        vals_now, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, years, income_growth)
+        vals_5yr, _ = project_investment(inv["starting_amount"], inv["monthly_contribution"], rate, years - 5, income_growth)
         cost = vals_now[-1] - vals_5yr[-1]
         st.warning(f"Waiting 5 years costs you approximately **{fmt(cost)}** in potential growth.")
 
