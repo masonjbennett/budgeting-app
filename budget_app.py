@@ -716,21 +716,27 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    pages = [
-        "Dashboard", "Income Setup", "Budget Builder", "Expense Tracker",
-        "Net Worth", "Debt Payoff", "Savings Goals", "Investments",
-        "FIRE Calculator", "Tax Estimator", "Data Management",
+    nav_groups = [
+        ("OVERVIEW", [("📊", "Dashboard")]),
+        ("MANAGE", [("💰", "Income Setup"), ("📋", "Budget Builder"), ("💳", "Expense Tracker")]),
+        ("GROW", [("📈", "Net Worth"), ("🎯", "Savings Goals"), ("🏦", "Debt Payoff")]),
+        ("PLAN", [("📈", "Investments"), ("🔥", "FIRE Calculator"), ("🧾", "Tax Estimator")]),
+        ("", [("💾", "Data Management")]),
     ]
-    icons = ["📊", "💰", "📋", "💳", "📈", "🏦", "🎯", "📈", "🔥", "🧾", "💾"]
 
-    for i, p in enumerate(pages):
-        if st.sidebar.button(
-            f"{icons[i]}  {p}", key=f"nav_{p}",
-            use_container_width=True,
-            type="primary" if st.session_state.current_page == p else "secondary",
-        ):
-            st.session_state.current_page = p
-            st.rerun()
+    pages = []
+    for group_label, items in nav_groups:
+        if group_label:
+            st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.1em; margin:0.75rem 0 0.25rem 0.5rem; font-weight:600;">{group_label}</p>', unsafe_allow_html=True)
+        for icon, name in items:
+            pages.append(name)
+            if st.sidebar.button(
+                f"{icon}  {name}", key=f"nav_{name}",
+                use_container_width=True,
+                type="primary" if st.session_state.current_page == name else "secondary",
+            ):
+                st.session_state.current_page = name
+                st.rerun()
 
     st.sidebar.markdown("---")
     st.sidebar.markdown(
