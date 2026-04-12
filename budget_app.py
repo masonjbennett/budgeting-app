@@ -925,10 +925,13 @@ def page_dashboard():
             fig = go.Figure(data=[go.Pie(
                 labels=cats, values=vals, hole=0.5,
                 marker=dict(colors=colors),
-                textinfo="label+percent",
+                textinfo="percent",
+                textposition="inside",
+                hoverinfo="label+percent+value",
                 textfont=dict(family="JetBrains Mono", size=11),
             )])
-            fig.update_layout(**default_layout(), height=350, showlegend=False)
+            fig.update_layout(**default_layout(), height=400, showlegend=True,
+                             margin=dict(l=20, r=20, t=20, b=20))
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
@@ -1407,11 +1410,14 @@ def page_expenses():
             vals = list(cat_spending.values())
             fig = go.Figure(data=[go.Pie(
                 labels=cats, values=vals, hole=0.5,
-                textinfo="label+percent",
+                textinfo="percent",
+                textposition="inside",
+                hoverinfo="label+percent+value",
                 textfont=dict(family="JetBrains Mono", size=11),
                 marker=dict(colors=[GREEN, BLUE, YELLOW, RED, PURPLE, "#f472b6", "#38bdf8", "#fb923c", "#a3e635", "#e879f9", "#22d3ee", "#fca5a5"][:len(cats)]),
             )])
-            fig.update_layout(**default_layout(), height=350, showlegend=False)
+            fig.update_layout(**default_layout(), height=400, showlegend=True,
+                             margin=dict(l=20, r=20, t=20, b=20))
             st.plotly_chart(fig, use_container_width=True)
 
         with c2:
