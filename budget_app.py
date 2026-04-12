@@ -923,15 +923,18 @@ def page_dashboard():
             colors = [GREEN if cat in data["budget"]["savings"] else
                       (BLUE if cat in data["budget"]["needs"] else YELLOW)
                       for cat in cats]
+            # Pull out small slices so they're visible
+            total = sum(vals)
+            pull_vals = [0.06 if (v / total) < 0.08 else 0 for v in vals] if total > 0 else [0]*len(vals)
             fig = go.Figure(data=[go.Pie(
                 labels=cats, values=vals, hole=0.5,
-                marker=dict(colors=colors),
+                marker=dict(colors=colors, line=dict(color="#FFFFFF", width=2)),
                 textinfo="percent",
                 textposition="inside",
                 hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
                 textfont=dict(family="JetBrains Mono", size=11),
+                pull=pull_vals,
             )])
-            # Center annotation
             fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
                               showarrow=False, font=dict(size=16, family="JetBrains Mono", color=TEXT), x=0.5, y=0.5)
             layout = default_layout()
@@ -1413,13 +1416,17 @@ def page_expenses():
             st.markdown("### Spending by Category")
             cats = list(cat_spending.keys())
             vals = list(cat_spending.values())
+            pie_colors = [GREEN, BLUE, YELLOW, RED, PURPLE, "#f472b6", "#38bdf8", "#fb923c", "#a3e635", "#e879f9", "#22d3ee", "#fca5a5"][:len(cats)]
+            pie_total = sum(vals)
+            pie_pull = [0.06 if (v / pie_total) < 0.08 else 0 for v in vals] if pie_total > 0 else [0]*len(vals)
             fig = go.Figure(data=[go.Pie(
                 labels=cats, values=vals, hole=0.5,
                 textinfo="percent",
                 textposition="inside",
                 hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
                 textfont=dict(family="JetBrains Mono", size=11),
-                marker=dict(colors=[GREEN, BLUE, YELLOW, RED, PURPLE, "#f472b6", "#38bdf8", "#fb923c", "#a3e635", "#e879f9", "#22d3ee", "#fca5a5"][:len(cats)]),
+                marker=dict(colors=pie_colors, line=dict(color="#FFFFFF", width=2)),
+                pull=pie_pull,
             )])
             fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
                               showarrow=False, font=dict(size=16, family="JetBrains Mono", color=TEXT), x=0.5, y=0.5)
