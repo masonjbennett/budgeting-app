@@ -291,7 +291,7 @@ def default_layout():
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="JetBrains Mono, monospace", color=TEXT, size=12),
         margin=dict(l=40, r=20, t=40, b=40),
-        legend=dict(bgcolor="rgba(0,0,0,0)"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=-0.15),
         xaxis=dict(gridcolor="#2d3348", zerolinecolor="#2d3348"),
         yaxis=dict(gridcolor="#2d3348", zerolinecolor="#2d3348"),
         hovermode="x unified",
@@ -843,8 +843,7 @@ def page_dashboard():
         fig.add_trace(go.Bar(name="This Month", x=all_cats_union, y=cur_vals, marker_color=GREEN, opacity=0.8))
         fig.add_trace(go.Bar(name="Last Month", x=all_cats_union, y=prev_vals, marker_color=BLUE, opacity=0.5))
         fig.update_layout(**default_layout(), height=300, barmode="group",
-                         yaxis_tickprefix="$", yaxis_tickformat=",",
-                         legend=dict(orientation="h", y=-0.2))
+                         yaxis_tickprefix="$", yaxis_tickformat=",")
         st.plotly_chart(fig, use_container_width=True)
 
     # Net worth trend
@@ -1080,7 +1079,7 @@ def page_budget():
         textfont=dict(family="JetBrains Mono", size=12, color=TEXT_DIM),
     ))
     fig.update_layout(**default_layout(), height=350, barmode="group",
-                     yaxis_title="% of Budget", legend=dict(orientation="h", y=-0.15),
+                     yaxis_title="% of Budget",
 )
     st.plotly_chart(fig, use_container_width=True)
     render_footer()
@@ -1244,8 +1243,7 @@ def page_expenses():
             fig.update_layout(**default_layout(), height=350,
                 yaxis2=dict(overlaying="y", side="right", gridcolor="rgba(0,0,0,0)",
                            tickprefix="$", tickformat=","),
-                yaxis_tickprefix="$", yaxis_tickformat=",",
-                legend=dict(orientation="h", y=-0.15))
+                yaxis_tickprefix="$", yaxis_tickformat=",")
             st.plotly_chart(fig, use_container_width=True)
 
         # Transaction table
@@ -1343,8 +1341,7 @@ def page_net_worth():
                              y=[-v for v in data["liabilities"].values()],
                              name="Liabilities", marker_color=RED))
     fig.update_layout(**default_layout(), height=350, barmode="relative",
-                     yaxis_tickprefix="$", yaxis_tickformat=",",
-                     legend=dict(orientation="h", y=-0.15))
+                     yaxis_tickprefix="$", yaxis_tickformat=",")
     st.plotly_chart(fig, use_container_width=True)
 
     # Log snapshot
@@ -1370,8 +1367,7 @@ def page_net_worth():
         fig.add_trace(go.Scatter(x=nw_df["date"], y=nw_df["net_worth"], name="Net Worth",
                                 line=dict(color=BLUE, width=3)))
         fig.update_layout(**default_layout(), height=350,
-                         yaxis_tickprefix="$", yaxis_tickformat=",",
-                         legend=dict(orientation="h", y=-0.15))
+                         yaxis_tickprefix="$", yaxis_tickformat=",")
         st.plotly_chart(fig, use_container_width=True)
 
     render_footer()
@@ -1462,8 +1458,7 @@ def page_debt():
                                     name="Snowball", line=dict(color=BLUE, width=2)))
             fig.update_layout(**default_layout(), height=350,
                              xaxis_title="Months", yaxis_title="Remaining Balance",
-                             yaxis_tickprefix="$", yaxis_tickformat=",",
-                             legend=dict(orientation="h", y=-0.15))
+                             yaxis_tickprefix="$", yaxis_tickformat=",")
             st.plotly_chart(fig, use_container_width=True)
 
             with st.expander("📋 Amortization Schedule (Avalanche)"):
@@ -1634,7 +1629,7 @@ def page_investments():
     fig.add_trace(go.Scatter(x=x_vals, y=yearly_contribs_base, name="Total Contributions",
                             line=dict(color=TEXT_DIM, width=1, dash="dash")))
     fig.update_layout(**default_layout(), height=400, xaxis_title="Years", yaxis_title="Portfolio Value",
-                     yaxis_tickprefix="$", yaxis_tickformat=",", legend=dict(orientation="h", y=-0.15))
+                     yaxis_tickprefix="$", yaxis_tickformat=",")
     st.plotly_chart(fig, use_container_width=True)
 
     # Final values
@@ -1678,7 +1673,6 @@ def page_investments():
 
     fig.update_layout(**default_layout(), height=350, xaxis_title="Years", yaxis_title="Portfolio Value",
                      yaxis_tickprefix="$", yaxis_tickformat=",",
-                     legend=dict(orientation="h", y=-0.15),
                      title=f"Impact of Delaying at {inv['annual_return']:.0f}% Return")
     st.plotly_chart(fig, use_container_width=True)
 
