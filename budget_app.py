@@ -787,13 +787,29 @@ with st.sidebar:
 
     st.sidebar.markdown("---")
 
-    # Quick save in sidebar
+    # Quick save/load in sidebar
     json_str = json.dumps(data, indent=2, default=str)
     st.sidebar.download_button("💾 Save My Data", data=json_str,
         file_name=f"budget_save_{date.today().isoformat()}.json",
         mime="application/json", use_container_width=True)
-    st.sidebar.markdown(f'<p style="color:#94A3C0; font-size:0.72rem; text-align:center;">Load saved data from Data Management</p>',
-        unsafe_allow_html=True)
+    with st.sidebar.expander("📂 Load Saved Data"):
+        uploaded = st.file_uploader("Upload JSON", type=["json"],
+            label_visibility="collapsed", key="sidebar_upload")
+        if uploaded:
+            try:
+                imported = json.load(uploaded)
+                _ensure_expense_ids(imported.get("expenses", []))
+                if "filing_status" not in imported.get("income", {}):
+                    imported["income"]["filing_status"] = "Single"
+                if "recurring_templates" not in imported:
+                    imported["recurring_templates"] = []
+                if "itemized" not in imported:
+                    imported["itemized"] = {"salt": 0, "mortgage_interest": 0, "charitable": 0, "medical": 0}
+                st.session_state.data = imported
+                st.session_state.is_demo = False
+                st.rerun()
+            except (json.JSONDecodeError, KeyError):
+                st.error("Invalid file.")
 
     st.sidebar.markdown(
         '<p style="color:#94A3C0; font-size:0.75rem; text-align:center;">v3.1</p>',
