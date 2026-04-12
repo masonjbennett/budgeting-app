@@ -481,8 +481,9 @@ def render_footer():
     st.markdown(f"""
     <div style="text-align:center; padding:2rem 0 1rem; margin-top:3rem; border-top:1px solid #E2E8F0;">
         <p style="color:{TEXT_DIM}; font-size:0.8rem; margin:0;">
-            Built by <a href="https://masonjbennett.com" target="_blank" style="color:{GREEN}; text-decoration:none;">Mason Bennett</a>
-            &nbsp;&middot;&nbsp; Powered by Streamlit + Plotly
+            <a href="https://masonjbennett.com" target="_blank" style="color:{BLUE}; text-decoration:none; font-weight:500;">Mason Bennett</a>
+            &nbsp;&middot;&nbsp; Streamlit + Plotly &nbsp;&middot;&nbsp;
+            <a href="https://github.com/masonjbennett/budgeting-app" target="_blank" style="color:{TEXT_DIM}; text-decoration:none;">GitHub</a>
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -742,11 +743,11 @@ def get_marginal_rate(taxable, brackets):
 # ──────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown(f"""
-    <div style="text-align:center; margin-bottom:1.5rem;">
-        <h2 style="color:#FFFFFF; margin:0; font-family:'Space Grotesk',sans-serif;">Budget Tracker</h2>
-        <p style="color:#94A3C0; font-size:0.85rem; margin:0;">
-            <a href="https://masonjbennett.com" target="_blank" style="color:#94A3C0; text-decoration:none;">masonjbennett.com</a>
+    st.markdown("""
+    <div style="text-align:center; margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.08);">
+        <p style="color:#7DD3FC; font-size:1.5rem; margin:0; font-family:'Space Grotesk',sans-serif; font-weight:700; letter-spacing:-0.02em;">Budget Tracker</p>
+        <p style="color:#94A3C0; font-size:0.78rem; margin:0.25rem 0 0;">
+            by <a href="https://masonjbennett.com" target="_blank" style="color:#CBD5E1; text-decoration:none; font-weight:500;">Mason Bennett</a>
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -927,9 +928,12 @@ def page_dashboard():
                 marker=dict(colors=colors),
                 textinfo="percent",
                 textposition="inside",
-                hoverinfo="label+percent+value",
+                hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
                 textfont=dict(family="JetBrains Mono", size=11),
             )])
+            # Center annotation
+            fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
+                              showarrow=False, font=dict(size=16, family="JetBrains Mono", color=TEXT), x=0.5, y=0.5)
             layout = default_layout()
             layout["margin"] = dict(l=20, r=20, t=20, b=20)
             fig.update_layout(**layout, height=400, showlegend=True)
@@ -1413,10 +1417,12 @@ def page_expenses():
                 labels=cats, values=vals, hole=0.5,
                 textinfo="percent",
                 textposition="inside",
-                hoverinfo="label+percent+value",
+                hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
                 textfont=dict(family="JetBrains Mono", size=11),
                 marker=dict(colors=[GREEN, BLUE, YELLOW, RED, PURPLE, "#f472b6", "#38bdf8", "#fb923c", "#a3e635", "#e879f9", "#22d3ee", "#fca5a5"][:len(cats)]),
             )])
+            fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
+                              showarrow=False, font=dict(size=16, family="JetBrains Mono", color=TEXT), x=0.5, y=0.5)
             layout2 = default_layout()
             layout2["margin"] = dict(l=20, r=20, t=20, b=20)
             fig.update_layout(**layout2, height=400, showlegend=True)
@@ -2324,6 +2330,26 @@ def page_data():
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Savings goals:</span> <span class="mono">{len(data['savings_goals'])}</span></p>
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Budget categories:</span> <span class="mono">{sum(len(v) for v in data['budget'].values())}</span></p>
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Recurring templates:</span> <span class="mono">{len(data.get('recurring_templates', []))}</span></p>
+    </div>''', unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("### About This App")
+    st.markdown(f'''<div class="card">
+        <p style="margin:0 0 0.75rem;"><strong>Budget Tracker</strong> — a personal finance management tool built by
+            <a href="https://masonjbennett.com" target="_blank" style="color:{BLUE}; text-decoration:none; font-weight:500;">Mason Bennett</a>.</p>
+        <p style="color:{TEXT_DIM}; margin:0 0 0.5rem; font-size:0.85rem;">
+            Designed for early-career finance professionals. Features 11 tools covering income planning,
+            budgeting, expense tracking, net worth, debt payoff optimization, savings goals, investment modeling,
+            FIRE planning, and tax estimation.
+        </p>
+        <p style="color:{TEXT_DIM}; margin:0 0 0.5rem; font-size:0.85rem;">
+            <strong>Tax data:</strong> Official IRS 2026 brackets (Rev. Proc. 2025-32), all 50 states + DC,
+            SALT cap updated per OBBBA. 401(k) limit $24,500, SS wage base $184,500, HSA $4,400.
+        </p>
+        <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">
+            <strong>Built with:</strong> Python, Streamlit, Plotly, Pandas &nbsp;&middot;&nbsp;
+            <a href="https://github.com/masonjbennett/budgeting-app" target="_blank" style="color:{BLUE}; text-decoration:none;">View source on GitHub</a>
+        </p>
     </div>''', unsafe_allow_html=True)
 
     render_footer()
