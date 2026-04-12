@@ -930,8 +930,9 @@ def page_dashboard():
                 hoverinfo="label+percent+value",
                 textfont=dict(family="JetBrains Mono", size=11),
             )])
-            fig.update_layout(**default_layout(), height=400, showlegend=True,
-                             margin=dict(l=20, r=20, t=20, b=20))
+            layout = default_layout()
+            layout["margin"] = dict(l=20, r=20, t=20, b=20)
+            fig.update_layout(**layout, height=400, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
@@ -1416,8 +1417,9 @@ def page_expenses():
                 textfont=dict(family="JetBrains Mono", size=11),
                 marker=dict(colors=[GREEN, BLUE, YELLOW, RED, PURPLE, "#f472b6", "#38bdf8", "#fb923c", "#a3e635", "#e879f9", "#22d3ee", "#fca5a5"][:len(cats)]),
             )])
-            fig.update_layout(**default_layout(), height=400, showlegend=True,
-                             margin=dict(l=20, r=20, t=20, b=20))
+            layout2 = default_layout()
+            layout2["margin"] = dict(l=20, r=20, t=20, b=20)
+            fig.update_layout(**layout2, height=400, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
 
         with c2:
