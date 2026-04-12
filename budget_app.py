@@ -802,8 +802,7 @@ def page_dashboard():
             textposition="outside",
             textfont=dict(family="JetBrains Mono", size=13),
         ))
-        fig.update_layout(**default_layout(), height=350, showlegend=False, yaxis_title="",
-                         hovermode="closest")
+        fig.update_layout(**default_layout(), height=350, showlegend=False, yaxis_title="")
         st.plotly_chart(fig, use_container_width=True)
 
     with c2:
@@ -820,7 +819,7 @@ def page_dashboard():
                 textinfo="label+percent",
                 textfont=dict(family="JetBrains Mono", size=11),
             )])
-            fig.update_layout(**default_layout(), height=350, showlegend=False, hovermode="closest")
+            fig.update_layout(**default_layout(), height=350, showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
@@ -966,7 +965,7 @@ def page_income():
               fmt(-th_local["fica"]), fmt(th_local["annual_take_home"])],
         textfont=dict(family="JetBrains Mono", size=11),
     ))
-    fig.update_layout(**default_layout(), height=400, title="Annual Pay Breakdown", hovermode="closest")
+    fig.update_layout(**default_layout(), height=400, title="Annual Pay Breakdown")
     st.plotly_chart(fig, use_container_width=True)
     render_footer()
 
@@ -1082,7 +1081,7 @@ def page_budget():
     ))
     fig.update_layout(**default_layout(), height=350, barmode="group",
                      yaxis_title="% of Budget", legend=dict(orientation="h", y=-0.15),
-                     hovermode="closest")
+)
     st.plotly_chart(fig, use_container_width=True)
     render_footer()
 
@@ -1228,7 +1227,7 @@ def page_expenses():
                 textfont=dict(family="JetBrains Mono", size=11),
                 marker=dict(colors=px.colors.qualitative.Set3[:len(cats)]),
             )])
-            fig.update_layout(**default_layout(), height=350, showlegend=False, hovermode="closest")
+            fig.update_layout(**default_layout(), height=350, showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
 
         with c2:
@@ -1345,7 +1344,7 @@ def page_net_worth():
                              name="Liabilities", marker_color=RED))
     fig.update_layout(**default_layout(), height=350, barmode="relative",
                      yaxis_tickprefix="$", yaxis_tickformat=",",
-                     legend=dict(orientation="h", y=-0.15), hovermode="closest")
+                     legend=dict(orientation="h", y=-0.15))
     st.plotly_chart(fig, use_container_width=True)
 
     # Log snapshot
@@ -1849,7 +1848,7 @@ def page_tax():
         textfont=dict(family="JetBrains Mono", size=12, color="white"),
     ))
     fig.update_layout(**default_layout(), height=300, yaxis_title="Tax Rate (%)",
-                     xaxis_tickangle=-45, showlegend=False, hovermode="closest")
+                     xaxis_tickangle=-45, showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
     # 401(k) tax savings
