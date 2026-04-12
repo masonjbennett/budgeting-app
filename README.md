@@ -56,9 +56,9 @@ pip install -r requirements.txt
 streamlit run budget_app.py
 ```
 
-## Screenshot
+## Live Demo
 
-![App Screenshot](screenshot.png)
+[Open the app on Streamlit Cloud](https://budgeting-app-masonjbennett.streamlit.app/)
 
 ## License
 

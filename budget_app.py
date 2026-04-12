@@ -661,6 +661,7 @@ def init_state():
     if "data" not in st.session_state:
         st.session_state.data = _generate_demo_data()
         _ensure_expense_ids(st.session_state.data["expenses"])
+        st.session_state.is_demo = True
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Dashboard"
 
@@ -779,6 +780,17 @@ th = compute_take_home()
 def page_dashboard():
     st.markdown("# Financial Health Dashboard")
     st.caption("Your financial overview at a glance — updated as you log expenses and adjust your budget.")
+
+    # Welcome banner for first-time users
+    if st.session_state.get("is_demo"):
+        st.markdown(f'''<div class="card" style="border-left:3px solid {BLUE}; padding:1.25rem;">
+            <p style="font-weight:600; margin:0 0 0.25rem 0;">Welcome — you're viewing sample data</p>
+            <p style="color:{TEXT_DIM}; margin:0; font-size:0.9rem;">
+                Head to <strong>Income Setup</strong> to enter your salary, then <strong>Budget Builder</strong> to set your budget.
+                Once you start adding real numbers, this demo data will be replaced.
+                You can also reset anytime from <strong>Data Management</strong>.
+            </p>
+        </div>''', unsafe_allow_html=True)
 
     monthly_income = th["monthly_take_home"]
     budget_cats = {**data["budget"]["needs"], **data["budget"]["wants"], **data["budget"]["savings"]}
@@ -969,10 +981,13 @@ def page_income():
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Salary & Location")
-        data["income"]["gross_salary"] = st.number_input(
+        new_salary = st.number_input(
             "Annual Gross Salary ($)", value=data["income"]["gross_salary"],
             min_value=0, step=1000, format="%d",
         )
+        if new_salary != data["income"]["gross_salary"]:
+            st.session_state.is_demo = False
+        data["income"]["gross_salary"] = new_salary
         data["income"]["state"] = st.selectbox(
             "State", options=sorted(STATE_TAX_DATA.keys()),
             index=sorted(STATE_TAX_DATA.keys()).index(data["income"]["state"]),
