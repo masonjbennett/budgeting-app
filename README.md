@@ -58,7 +58,7 @@ streamlit run budget_app.py
 
 ## Live Demo
 
-[Open the app on Streamlit Cloud](https://budgeting-app-dniklqhvxodvndbarpuv3k.streamlit.app/)
+[Open the app on Streamlit Cloud](https://masonbennett-budget.streamlit.app/)
 
 ## License
 
