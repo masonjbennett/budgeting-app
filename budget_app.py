@@ -429,15 +429,16 @@ def simulate_payoff(debts, extra, strategy):
     total_interest = 0
     months = 0
     schedule = []
+    payoff_months = {}  # Track when each debt hits $0
     max_months = 600
 
     # Check if payments can make progress
     total_min = sum(mins.values()) + extra
     total_monthly_interest = sum(b * r for b, r in zip(balances.values(), rates.values()) if b > 0)
     if total_min <= 0:
-        return -1, 0, []  # No payments = can't pay off
+        return -1, 0, [], {}
     if total_min <= total_monthly_interest and total_monthly_interest > 0:
-        return -1, 0, []  # Can't cover interest
+        return -1, 0, [], {}
 
     while any(b > 0.01 for b in balances.values()) and months < max_months:
         months += 1
@@ -468,13 +469,18 @@ def simulate_payoff(debts, extra, strategy):
                 balances[name] -= payment
                 remaining_extra -= payment
 
+        # Check if any debt just got paid off
+        for name in balances:
+            if balances[name] <= 0.01 and name not in payoff_months:
+                payoff_months[name] = months
+
         schedule.append({
             "month": months,
             "total_balance": sum(max(0, b) for b in balances.values()),
             "interest": month_interest,
         })
 
-    return months, total_interest, schedule
+    return months, total_interest, schedule, payoff_months
 
 
 def render_footer():
@@ -1631,8 +1637,8 @@ def page_debt():
         extra = st.number_input("Extra Monthly Payment ($)", value=200, min_value=0, step=50,
                                 help="Amount above minimum payments to accelerate payoff")
 
-        months_av, interest_av, sched_av = simulate_payoff(data["debts"], extra, "avalanche")
-        months_sn, interest_sn, sched_sn = simulate_payoff(data["debts"], extra, "snowball")
+        months_av, interest_av, sched_av, payoffs_av = simulate_payoff(data["debts"], extra, "avalanche")
+        months_sn, interest_sn, sched_sn, payoffs_sn = simulate_payoff(data["debts"], extra, "snowball")
 
         if months_av == -1:
             st.error("Your minimum payments plus extra don't cover the monthly interest. Increase payments to make progress.")
@@ -1665,7 +1671,16 @@ def page_debt():
                                     name="Avalanche", line=dict(color=GREEN, width=2)))
             fig.add_trace(go.Scatter(x=df_sn["month"], y=df_sn["total_balance"],
                                     name="Snowball", line=dict(color=BLUE, width=2)))
-            fig.update_layout(**default_layout(), height=350,
+            # Add payoff markers for each debt (Avalanche strategy)
+            marker_colors = [GREEN, BLUE, YELLOW, RED, PURPLE]
+            for i, (debt_name, month) in enumerate(sorted(payoffs_av.items(), key=lambda x: x[1])):
+                clr = marker_colors[i % len(marker_colors)]
+                fig.add_vline(x=month, line_dash="dot", line_color=clr, line_width=1)
+                fig.add_annotation(x=month, y=0, text=f"{debt_name} paid off",
+                                  showarrow=True, arrowhead=2, arrowsize=0.8,
+                                  ax=0, ay=-30, font=dict(size=10, color=clr),
+                                  bgcolor="rgba(255,255,255,0.9)", bordercolor=clr, borderwidth=1)
+            fig.update_layout(**default_layout(), height=400,
                              xaxis_title="Months", yaxis_title="Remaining Balance",
                              yaxis_tickprefix="$", yaxis_tickformat=",")
             st.plotly_chart(fig, use_container_width=True)
