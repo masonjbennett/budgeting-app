@@ -752,7 +752,8 @@ with st.sidebar:
     st.markdown("""
     <div style="text-align:center; margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.08);">
         <p style="color:#7DD3FC; font-size:1.5rem; margin:0; font-family:'Space Grotesk',sans-serif; font-weight:700; letter-spacing:-0.02em;">Budget Tracker</p>
-        <p style="color:#94A3C0; font-size:0.78rem; margin:0.25rem 0 0;">
+        <p style="color:#E2E8F0; font-size:0.82rem; margin:0.35rem 0 0.25rem; font-style:italic; opacity:0.85;">Track your money. Plan your future.</p>
+        <p style="color:#94A3C0; font-size:0.72rem; margin:0;">
             by <a href="https://masonjbennett.com" target="_blank" style="color:#CBD5E1; text-decoration:none; font-weight:500;">Mason Bennett</a>
         </p>
     </div>
@@ -781,8 +782,32 @@ with st.sidebar:
                 st.rerun()
 
     st.sidebar.markdown("---")
+
+    # Quick save/load in sidebar
+    json_str = json.dumps(data, indent=2, default=str)
+    st.sidebar.download_button("💾 Save My Data", data=json_str,
+        file_name=f"budget_save_{date.today().isoformat()}.json",
+        mime="application/json", use_container_width=True)
+    uploaded = st.sidebar.file_uploader("Load saved data", type=["json"],
+        label_visibility="collapsed", key="sidebar_upload")
+    if uploaded:
+        try:
+            imported = json.load(uploaded)
+            _ensure_expense_ids(imported.get("expenses", []))
+            if "filing_status" not in imported.get("income", {}):
+                imported["income"]["filing_status"] = "Single"
+            if "recurring_templates" not in imported:
+                imported["recurring_templates"] = []
+            if "itemized" not in imported:
+                imported["itemized"] = {"salt": 0, "mortgage_interest": 0, "charitable": 0, "medical": 0}
+            st.session_state.data = imported
+            st.session_state.is_demo = False
+            st.rerun()
+        except (json.JSONDecodeError, KeyError):
+            st.sidebar.error("Invalid file.")
+
     st.sidebar.markdown(
-        f'<p style="color:#94A3C0; font-size:0.75rem; text-align:center;">v3.0</p>',
+        '<p style="color:#94A3C0; font-size:0.75rem; text-align:center;">v3.1</p>',
         unsafe_allow_html=True,
     )
 
@@ -801,11 +826,15 @@ def page_dashboard():
     # Welcome banner for first-time users
     if st.session_state.get("is_demo"):
         st.markdown(f'''<div class="card" style="border-left:3px solid {BLUE}; padding:1.25rem;">
-            <p style="font-weight:600; margin:0 0 0.25rem 0;">Welcome — you're viewing sample data</p>
-            <p style="color:{TEXT_DIM}; margin:0; font-size:0.9rem;">
-                Head to <strong>Income Setup</strong> to enter your salary, then <strong>Budget Builder</strong> to set your budget.
-                Once you start adding real numbers, this demo data will be replaced.
-                You can also reset anytime from <strong>Data Management</strong>.
+            <p style="font-weight:600; margin:0 0 0.5rem 0;">Welcome — you're viewing sample data</p>
+            <p style="color:{TEXT_DIM}; margin:0 0 0.75rem; font-size:0.9rem;">Get started in 3 steps:</p>
+            <p style="color:{TEXT_DIM}; margin:0 0 0.3rem; font-size:0.88rem;">
+                <strong style="color:{BLUE};">1.</strong> <strong>Income Setup</strong> — enter your salary and deductions<br>
+                <strong style="color:{BLUE};">2.</strong> <strong>Budget Builder</strong> — allocate your take-home pay<br>
+                <strong style="color:{BLUE};">3.</strong> <strong>Expense Tracker</strong> — start logging what you spend
+            </p>
+            <p style="color:{TEXT_DIM}; margin:0.5rem 0 0; font-size:0.82rem;">
+                Everything else builds on those three. You can reset to this demo anytime from Data Management.
             </p>
         </div>''', unsafe_allow_html=True)
 
