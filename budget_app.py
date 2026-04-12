@@ -93,6 +93,12 @@ section[data-testid="stSidebar"] button[kind="primary"] {
     background: rgba(46,134,171,0.3); border: 1px solid rgba(46,134,171,0.5);
     color: #7DD3FC; font-weight: 600;
 }
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] span,
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] small,
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] button span,
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] p {
+    color: #1B2A4A !important;
+}
 
 /* ── Metrics ── */
 div[data-testid="stMetric"] {
