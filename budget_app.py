@@ -541,7 +541,20 @@ def get_default_state():
     }
 
 
-DEMO_DATA = {
+def _generate_demo_data():
+    """Generate demo data with dates relative to today so it's always fresh."""
+    today = date.today()
+    cur_month_1st = today.replace(day=1)
+    prev_month_1st = (cur_month_1st - timedelta(days=1)).replace(day=1)
+    def _d(day_offset):
+        return (today - timedelta(days=day_offset)).isoformat()
+    def _month_start(months_ago):
+        d = cur_month_1st
+        for _ in range(months_ago):
+            d = (d - timedelta(days=1)).replace(day=1)
+        return d.isoformat()
+
+    return {
     "income": {
         "gross_salary": 95000,
         "state": "New York",
@@ -569,26 +582,28 @@ DEMO_DATA = {
         },
     },
     "expenses": [
-        {"id": "demo-01", "date": "2026-04-01", "amount": 1900, "category": "Rent", "note": "April rent"},
-        {"id": "demo-02", "date": "2026-04-02", "amount": 52.30, "category": "Groceries", "note": "Trader Joe's"},
-        {"id": "demo-03", "date": "2026-04-03", "amount": 45.00, "category": "Dining Out", "note": "Dinner with friends"},
-        {"id": "demo-04", "date": "2026-04-04", "amount": 127.00, "category": "Transportation", "note": "Monthly metro pass"},
-        {"id": "demo-05", "date": "2026-04-05", "amount": 15.99, "category": "Subscriptions", "note": "Spotify + iCloud"},
-        {"id": "demo-06", "date": "2026-04-06", "amount": 68.40, "category": "Groceries", "note": "Whole Foods"},
-        {"id": "demo-07", "date": "2026-04-07", "amount": 22.00, "category": "Entertainment", "note": "Movie tickets"},
-        {"id": "demo-08", "date": "2026-04-08", "amount": 130.00, "category": "Utilities", "note": "Electric + Internet"},
-        {"id": "demo-09", "date": "2026-04-09", "amount": 89.99, "category": "Shopping", "note": "Running shoes"},
-        {"id": "demo-10", "date": "2026-04-10", "amount": 35.50, "category": "Dining Out", "note": "Lunch meeting"},
-        {"id": "demo-11", "date": "2026-04-11", "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
-        {"id": "demo-12", "date": "2026-04-12", "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
-        {"id": "demo-13", "date": "2026-03-01", "amount": 1900, "category": "Rent", "note": "March rent"},
-        {"id": "demo-14", "date": "2026-03-05", "amount": 95.20, "category": "Groceries", "note": "Weekly groceries"},
-        {"id": "demo-15", "date": "2026-03-10", "amount": 127.00, "category": "Transportation", "note": "Metro pass"},
-        {"id": "demo-16", "date": "2026-03-12", "amount": 62.00, "category": "Dining Out", "note": "Brunch"},
-        {"id": "demo-17", "date": "2026-03-15", "amount": 130.00, "category": "Utilities", "note": "Electric + Internet"},
-        {"id": "demo-18", "date": "2026-03-20", "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
-        {"id": "demo-19", "date": "2026-03-22", "amount": 210.00, "category": "Shopping", "note": "New jacket"},
-        {"id": "demo-20", "date": "2026-03-28", "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
+        # Current month expenses
+        {"id": "demo-01", "date": cur_month_1st.isoformat(), "amount": 1900, "category": "Rent", "note": "Monthly rent"},
+        {"id": "demo-02", "date": _d(max(today.day - 2, 0)), "amount": 52.30, "category": "Groceries", "note": "Trader Joe's"},
+        {"id": "demo-03", "date": _d(max(today.day - 3, 0)), "amount": 45.00, "category": "Dining Out", "note": "Dinner with friends"},
+        {"id": "demo-04", "date": _d(max(today.day - 4, 0)), "amount": 127.00, "category": "Transportation", "note": "Monthly metro pass"},
+        {"id": "demo-05", "date": _d(max(today.day - 5, 0)), "amount": 15.99, "category": "Subscriptions", "note": "Spotify + iCloud"},
+        {"id": "demo-06", "date": _d(max(today.day - 6, 0)), "amount": 68.40, "category": "Groceries", "note": "Whole Foods"},
+        {"id": "demo-07", "date": _d(max(today.day - 7, 0)), "amount": 22.00, "category": "Entertainment", "note": "Movie tickets"},
+        {"id": "demo-08", "date": _d(max(today.day - 8, 0)), "amount": 130.00, "category": "Utilities", "note": "Electric + Internet"},
+        {"id": "demo-09", "date": _d(max(today.day - 9, 0)), "amount": 89.99, "category": "Shopping", "note": "Running shoes"},
+        {"id": "demo-10", "date": _d(max(today.day - 10, 0)), "amount": 35.50, "category": "Dining Out", "note": "Lunch meeting"},
+        {"id": "demo-11", "date": _d(max(today.day - 11, 0)), "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
+        {"id": "demo-12", "date": _d(max(today.day - 12, 0)), "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
+        # Previous month expenses
+        {"id": "demo-13", "date": prev_month_1st.isoformat(), "amount": 1900, "category": "Rent", "note": "Monthly rent"},
+        {"id": "demo-14", "date": (prev_month_1st + timedelta(days=4)).isoformat(), "amount": 95.20, "category": "Groceries", "note": "Weekly groceries"},
+        {"id": "demo-15", "date": (prev_month_1st + timedelta(days=9)).isoformat(), "amount": 127.00, "category": "Transportation", "note": "Metro pass"},
+        {"id": "demo-16", "date": (prev_month_1st + timedelta(days=11)).isoformat(), "amount": 62.00, "category": "Dining Out", "note": "Brunch"},
+        {"id": "demo-17", "date": (prev_month_1st + timedelta(days=14)).isoformat(), "amount": 130.00, "category": "Utilities", "note": "Electric + Internet"},
+        {"id": "demo-18", "date": (prev_month_1st + timedelta(days=19)).isoformat(), "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
+        {"id": "demo-19", "date": (prev_month_1st + timedelta(days=21)).isoformat(), "amount": 210.00, "category": "Shopping", "note": "New jacket"},
+        {"id": "demo-20", "date": (prev_month_1st + timedelta(days=27)).isoformat(), "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
     ],
     "recurring_templates": [
         {"name": "Rent", "amount": 1900, "category": "Rent", "day": 1},
@@ -597,10 +612,10 @@ DEMO_DATA = {
         {"name": "Phone Bill", "amount": 75, "category": "Phone", "day": 11},
     ],
     "net_worth_snapshots": [
-        {"date": "2026-01-01", "assets": 17500, "liabilities": 0, "net_worth": 17500},
-        {"date": "2026-02-01", "assets": 19200, "liabilities": 0, "net_worth": 19200},
-        {"date": "2026-03-01", "assets": 21800, "liabilities": 0, "net_worth": 21800},
-        {"date": "2026-04-01", "assets": 23500, "liabilities": 0, "net_worth": 23500},
+        {"date": _month_start(3), "assets": 17500, "liabilities": 0, "net_worth": 17500},
+        {"date": _month_start(2), "assets": 19200, "liabilities": 0, "net_worth": 19200},
+        {"date": _month_start(1), "assets": 21800, "liabilities": 0, "net_worth": 21800},
+        {"date": cur_month_1st.isoformat(), "assets": 23500, "liabilities": 0, "net_worth": 23500},
     ],
     "assets": {
         "Checking": 6200, "Savings": 9500, "401(k)": 4800,
@@ -613,9 +628,12 @@ DEMO_DATA = {
         {"name": "Example Student Loan", "balance": 35000, "rate": 5.5, "min_payment": 370},
     ],
     "savings_goals": [
-        {"name": "Emergency Fund", "target": 15000, "current": 9500, "deadline": "2027-12-31", "priority": 1},
-        {"name": "Vacation Fund", "target": 3000, "current": 800, "deadline": "2026-12-31", "priority": 2},
-        {"name": "Down Payment", "target": 50000, "current": 1800, "deadline": "2030-06-30", "priority": 3},
+        {"name": "Emergency Fund", "target": 15000, "current": 9500,
+         "deadline": (today + timedelta(days=600)).isoformat(), "priority": 1},
+        {"name": "Vacation Fund", "target": 3000, "current": 800,
+         "deadline": (today + timedelta(days=250)).isoformat(), "priority": 2},
+        {"name": "Down Payment", "target": 50000, "current": 1800,
+         "deadline": (today + timedelta(days=1500)).isoformat(), "priority": 3},
     ],
     "investment": {
         "starting_amount": 4800,
@@ -641,7 +659,7 @@ def _ensure_expense_ids(expenses):
 
 def init_state():
     if "data" not in st.session_state:
-        st.session_state.data = deepcopy(DEMO_DATA)
+        st.session_state.data = _generate_demo_data()
         _ensure_expense_ids(st.session_state.data["expenses"])
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Dashboard"
@@ -834,25 +852,27 @@ def page_dashboard():
 
     st.divider()
 
-    # YTD Summary
+    # YTD Summary — based on actual logged expenses, not extrapolated
     cur_year = now.strftime("%Y")
     ytd_expenses = [e for e in data["expenses"] if e["date"][:4] == cur_year]
     ytd_spent = sum(e["amount"] for e in ytd_expenses)
-    ytd_income = monthly_income * now.month
-    ytd_saved = ytd_income - ytd_spent
-    months_elapsed = now.month
+    # Count months with actual expense data this year
+    ytd_months_with_data = len(set(e["date"][:7] for e in ytd_expenses)) or 1
+    ytd_est_income = monthly_income * ytd_months_with_data
+    ytd_saved = ytd_est_income - ytd_spent
 
     st.markdown("### Year-to-Date Summary")
+    st.caption(f"Based on {ytd_months_with_data} month{'s' if ytd_months_with_data != 1 else ''} of logged expenses.")
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric(f"YTD Income ({months_elapsed}mo)", fmt(ytd_income))
+        st.metric(f"Est. Income ({ytd_months_with_data}mo)", fmt(ytd_est_income))
     with c2:
-        st.metric("YTD Spending", fmt(ytd_spent))
+        st.metric("Total Spending", fmt(ytd_spent))
     with c3:
-        st.metric("YTD Saved", fmt(ytd_saved))
+        st.metric("Est. Saved", fmt(ytd_saved))
     with c4:
-        ytd_rate = (ytd_saved / ytd_income * 100) if ytd_income else 0
-        st.metric("YTD Savings Rate", f"{ytd_rate:.1f}%")
+        ytd_rate = (ytd_saved / ytd_est_income * 100) if ytd_est_income else 0
+        st.metric("Savings Rate", f"{ytd_rate:.1f}%")
 
     st.divider()
 
@@ -1069,11 +1089,13 @@ def page_income():
         marginal = th_local["marginal_fed"] / 100
         state_d = STATE_TAX_DATA.get(data["income"]["state"])
         state_m = state_d["brackets"][-1][1] if (state_d and state_d.get("brackets")) else 0
-        after_tax_diff = lifetime_diff * (1 - marginal - state_m - 0.0765)
+        # Use actual FICA calculation for accuracy
+        fica_rate = calc_fica(negotiated) / negotiated if negotiated > 0 else 0.0765
+        after_tax_diff = lifetime_diff * (1 - marginal - state_m - fica_rate)
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            st.metric("Year 1 Difference", fmt(neg_increase), delta=f"+{fmt(neg_increase * (1 - marginal - state_m - 0.0765))} after tax")
+            st.metric("Year 1 Difference", fmt(neg_increase), delta=f"+{fmt(neg_increase * (1 - marginal - state_m - fica_rate))} after tax")
         with c2:
             st.metric(f"Lifetime Delta ({neg_years}yr)", fmt(lifetime_diff))
         with c3:
@@ -1883,6 +1905,8 @@ def page_fire():
         fire_return = st.number_input("Expected Return (%)", value=7.0, min_value=0.0, max_value=20.0,
                                        step=0.5, format="%.1f", key="fire_return")
     with c3:
+        fire_age = st.number_input("Current Age", value=24, min_value=18, max_value=80,
+                                    step=1, format="%d", key="fire_age")
         fire_withdrawal = st.number_input("Safe Withdrawal Rate (%)", value=4.0, min_value=1.0, max_value=10.0,
                                            step=0.25, format="%.2f", key="fire_swr",
                                            help="4% is the classic 'Trinity Study' rule. 3.5% is more conservative.")
@@ -1925,8 +1949,8 @@ def page_fire():
             f"Portfolio needed to withdraw {fmt(fire_expenses)}/yr safely."), unsafe_allow_html=True)
     with c3:
         if years_to_fire > 0:
-            fire_age = 24 + years_to_fire  # approximate
-            st.markdown(metric_card_html("Years to FIRE", str(years_to_fire), f"~Age {fire_age}", GREEN,
+            fi_age = fire_age + years_to_fire
+            st.markdown(metric_card_html("Years to FIRE", str(years_to_fire), f"Age {fi_age}", GREEN,
                 f"When your portfolio covers {fmt(fire_expenses)}/yr at {fire_withdrawal:.1f}% withdrawal."), unsafe_allow_html=True)
         else:
             st.markdown(metric_card_html("Years to FIRE", "100+", "Increase savings", RED,
@@ -1995,7 +2019,7 @@ def page_fire():
                 break
         scenarios_data.append({"Scenario": label, "Annual Savings": fmt(adj_savings),
                                "Years to FIRE": f"{yrs if yrs > 0 else '100+'}",
-                               "FIRE Age": f"~{24 + yrs}" if yrs > 0 else "N/A"})
+                               "FIRE Age": f"Age {fire_age + yrs}" if yrs > 0 else "N/A"})
 
     st.dataframe(pd.DataFrame(scenarios_data), use_container_width=True, hide_index=True)
 
@@ -2229,7 +2253,7 @@ def page_data():
     c1, c2 = st.columns(2)
     with c1:
         if st.button("🔄 Load Demo Data", use_container_width=True):
-            st.session_state.data = deepcopy(DEMO_DATA)
+            st.session_state.data = _generate_demo_data()
             st.success("Demo data loaded!")
             st.rerun()
     with c2:
