@@ -97,7 +97,7 @@ section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] span,
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] small,
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] button span,
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] p {
-    color: #1B2A4A !important;
+    color: #000000 !important;
 }
 
 /* ── Metrics ── */
