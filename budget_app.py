@@ -36,228 +36,139 @@ CUSTOM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
+/* ── Base ── */
 :root {
-    --bg-dark: #0f1117;
-    --bg-card: #1a1d29;
-    --bg-surface: #252836;
-    --green: #34d399;
-    --red: #f87171;
-    --blue: #60a5fa;
-    --yellow: #fbbf24;
-    --text: #e2e8f0;
-    --text-dim: #94a3b8;
+    --bg-dark: #0f1117; --bg-card: #1a1d29; --bg-surface: #252836;
+    --green: #34d399; --red: #f87171; --blue: #60a5fa;
+    --yellow: #fbbf24; --text: #e2e8f0; --text-dim: #94a3b8;
+    --border: #2d3348; --radius: 0.75rem;
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
+.stApp { background-color: var(--bg-dark); }
 
-.stApp {
-    background-color: var(--bg-dark);
-}
+/* ── Content width ── */
+div[data-testid="stMainBlockContainer"] { max-width: 1200px; margin: 0 auto; }
 
-section[data-testid="stSidebar"] {
-    background-color: var(--bg-card);
-    border-right: 1px solid #2d3348;
-}
+/* ── Typography ── */
+h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; letter-spacing: -0.02em; }
+h2, h3 { font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
+p, span, label, div { color: var(--text); }
+.mono { font-family: 'JetBrains Mono', monospace; }
+div[data-testid="stCaptionContainer"] { color: var(--text-dim); opacity: 0.85; }
 
-.stMetric {
-    background: linear-gradient(145deg, #1a1d29, #151823);
-    padding: 1rem;
-    border-radius: 0.75rem;
-    border: 1px solid #2d3348;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
-}
-
-.stMetric [data-testid="stMetricValue"] {
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 600;
-}
-
-.stMetric [data-testid="stMetricDelta"] {
-    font-family: 'JetBrains Mono', monospace;
-}
-
-div[data-testid="stNumberInput"] input,
-div[data-testid="stTextInput"] input {
-    font-family: 'JetBrains Mono', monospace;
-}
-
-h1 {
-    font-family: 'Space Grotesk', 'Inter', sans-serif;
-    font-weight: 700;
-}
-
-h2, h3 {
-    font-family: 'Space Grotesk', 'Inter', sans-serif;
-    font-weight: 600;
-}
-
+/* ── Cards ── */
 .card {
     background: linear-gradient(145deg, #1a1d29, #151823);
-    border: 1px solid #2d3348;
-    border-top: 1px solid rgba(255,255,255,0.05);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 4px 6px -1px rgba(0,0,0,0.3);
-    animation: fadeIn 0.3s ease-out;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.5rem; margin-bottom: 1rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease);
+    animation: fadeIn 0.35s ease-out;
 }
+.card:hover { border-color: rgba(52,211,153,0.3); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.status-green { color: var(--green); font-weight: 600; }
-.status-red { color: var(--red); font-weight: 600; }
-.status-yellow { color: var(--yellow); font-weight: 600; }
-.status-blue { color: var(--blue); font-weight: 600; }
-
-.mono {
-    font-family: 'JetBrains Mono', monospace;
-}
-
+/* ── Badges ── */
 .badge {
-    display: inline-block;
-    padding: 0.2rem 0.6rem;
-    border-radius: 1rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    font-family: 'JetBrains Mono', monospace;
+    display:inline-block; padding:0.2rem 0.6rem; border-radius:1rem;
+    font-size:0.8rem; font-weight:600; font-family:'JetBrains Mono',monospace;
 }
 
-div[data-testid="stExpander"] {
-    background: linear-gradient(145deg, #1a1d29, #151823);
-    border: 1px solid #2d3348;
-    border-radius: 0.75rem;
+/* ── Sidebar ── */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1a1d29 0%, #151823 100%);
+    border-right: 1px solid var(--border);
 }
-
-.stTabs [data-baseweb="tab-list"] {
-    gap: 0.5rem;
-}
-
-.stTabs [data-baseweb="tab"] {
-    background-color: var(--bg-surface);
-    border-radius: 0.5rem;
-    padding: 0.5rem 1rem;
-}
-
-footer { visibility: hidden; }
-
-/* ── Force light text on dark background everywhere ── */
-.stApp, .stApp p, .stApp span, .stApp label, .stApp div {
-    color: #e2e8f0;
-}
-
-/* Sidebar text */
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] p {
-    color: #e2e8f0;
-}
-
-/* Sidebar nav buttons */
 section[data-testid="stSidebar"] button {
-    color: #e2e8f0 !important;
+    transition: all 0.25s var(--ease); border-radius: 0.5rem;
 }
 section[data-testid="stSidebar"] button[kind="secondary"] {
-    background-color: #252836 !important;
-    border: 1px solid #2d3348 !important;
-    color: #e2e8f0 !important;
+    background: transparent; border: 1px solid transparent; color: var(--text-dim);
+}
+section[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    background: rgba(52,211,153,0.08); border-color: rgba(52,211,153,0.2); color: var(--text);
 }
 section[data-testid="stSidebar"] button[kind="primary"] {
-    background-color: #34d399 !important;
-    color: #0f1117 !important;
-    border: none !important;
-}
-section[data-testid="stSidebar"] button span,
-section[data-testid="stSidebar"] button p {
-    color: inherit !important;
+    background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3);
+    color: var(--green); font-weight: 600;
 }
 
-/* Input labels */
-div[data-testid="stNumberInput"] label,
-div[data-testid="stTextInput"] label,
-div[data-testid="stSelectbox"] label,
-div[data-testid="stDateInput"] label,
-div[data-testid="stSlider"] label,
-div[data-testid="stMultiSelect"] label,
-div[data-testid="stFileUploader"] label,
-div[data-testid="stCheckbox"] label {
-    color: #e2e8f0 !important;
+/* ── Metrics ── */
+div[data-testid="stMetric"] {
+    background: linear-gradient(145deg, #1a1d29, #151823);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.25rem; transition: all 0.3s var(--ease);
+}
+div[data-testid="stMetric"]:hover {
+    border-color: rgba(52,211,153,0.25); transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+div[data-testid="stMetricDelta"] { font-family: 'JetBrains Mono', monospace; }
+div[data-testid="stMetricLabel"] p {
+    text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.78rem;
+    color: var(--text-dim); font-weight: 500;
 }
 
-/* Input fields */
+/* ── Inputs ── */
 div[data-testid="stNumberInput"] input,
-div[data-testid="stTextInput"] input,
-div[data-testid="stDateInput"] input,
-div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
-div[data-testid="stMultiSelect"] div[data-baseweb="select"] span {
-    color: #e2e8f0 !important;
+div[data-testid="stTextInput"] input {
+    font-family: 'JetBrains Mono', monospace; color: var(--text);
+    transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
-
-/* Selectbox dropdown */
-div[data-baseweb="select"] > div {
-    color: #e2e8f0 !important;
-    background-color: #1a1d29 !important;
+input:focus, div[data-baseweb="input"]:focus-within {
+    border-color: var(--green); box-shadow: 0 0 0 3px rgba(52,211,153,0.12);
 }
+div[data-baseweb="select"] > div { color: var(--text); }
+li[role="option"] { color: var(--text); }
+li[role="option"]:hover { background: rgba(52,211,153,0.1); }
 
-/* Dropdown options */
-li[role="option"] {
-    color: #e2e8f0 !important;
-}
-
-/* Dataframe / table text */
-div[data-testid="stDataFrame"] td,
-div[data-testid="stDataFrame"] th,
-div[data-testid="stDataFrame"] span,
-.stDataFrame td, .stDataFrame th {
-    color: #e2e8f0 !important;
-}
-
-/* Metric labels */
-div[data-testid="stMetricLabel"] label,
-div[data-testid="stMetricLabel"] p,
-div[data-testid="stMetricLabel"] div {
-    color: #94a3b8 !important;
-}
-
-/* Tabs text */
-.stTabs [data-baseweb="tab"] p,
-.stTabs [data-baseweb="tab"] span,
+/* ── Tabs ── */
+.stTabs [data-baseweb="tab-list"] { gap: 0.25rem; border-bottom: 1px solid var(--border); }
 .stTabs [data-baseweb="tab"] {
-    color: #e2e8f0 !important;
+    background: transparent; border-radius: 0.5rem 0.5rem 0 0;
+    padding: 0.6rem 1.2rem; color: var(--text-dim);
+    border-bottom: 2px solid transparent; transition: all 0.25s var(--ease);
+}
+.stTabs [data-baseweb="tab"]:hover { color: var(--text); background: rgba(52,211,153,0.05); }
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    color: var(--green); border-bottom-color: var(--green); background: rgba(52,211,153,0.08);
 }
 
-/* Expander header text */
-div[data-testid="stExpander"] summary span,
-div[data-testid="stExpander"] summary p {
-    color: #e2e8f0 !important;
+/* ── Expanders ── */
+div[data-testid="stExpander"] {
+    background: linear-gradient(145deg, #1a1d29, #151823);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    transition: border-color 0.25s var(--ease);
+}
+div[data-testid="stExpander"]:hover { border-color: rgba(52,211,153,0.25); }
+
+/* ── Dividers ── */
+hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+/* ── Dataframes ── */
+div[data-testid="stDataFrame"] {
+    border: 1px solid var(--border); border-radius: 0.5rem; overflow: hidden;
 }
 
-/* Download button text */
-div[data-testid="stDownloadButton"] button span {
-    color: #e2e8f0 !important;
-}
+/* ── Buttons ── */
+button[kind="primary"] { transition: all 0.25s var(--ease); }
+button[kind="primary"]:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(52,211,153,0.25); }
+button[kind="secondary"] { transition: all 0.25s var(--ease); }
+button[kind="secondary"]:hover { border-color: var(--green); color: var(--green); }
 
-/* Toggle / checkbox */
-div[data-testid="stToggle"] label span {
-    color: #e2e8f0 !important;
-}
+/* ── Alerts ── */
+div[data-testid="stAlert"] { border-radius: 0.5rem; }
 
-/* Slider value */
-div[data-testid="stSlider"] div[data-testid="stTickBarMin"],
-div[data-testid="stSlider"] div[data-testid="stTickBarMax"] {
-    color: #94a3b8 !important;
-}
+/* ── Hide default footer ── */
+footer { visibility: hidden; }
 
-/* Info/warning/success/error boxes */
-div[data-testid="stAlert"] p {
-    color: #e2e8f0 !important;
-}
-
-/* File uploader */
-div[data-testid="stFileUploader"] span,
-div[data-testid="stFileUploader"] p,
-div[data-testid="stFileUploader"] small {
-    color: #e2e8f0 !important;
+/* ── Mobile ── */
+@media (max-width: 768px) {
+    div[data-testid="stMainBlockContainer"] { padding: 0.75rem; }
+    div[data-testid="stMetric"] { padding: 0.75rem; }
+    div[data-testid="stMetricValue"] { font-size: 1.3rem; }
+    .card { padding: 1rem; }
 }
 </style>
 """
@@ -821,7 +732,7 @@ with st.sidebar:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown(
-        f'<p style="color:{TEXT_DIM}; font-size:0.75rem; text-align:center;">v2.0 — Built with Streamlit + Plotly</p>',
+        f'<p style="color:{TEXT_DIM}; font-size:0.75rem; text-align:center;">v3.0</p>',
         unsafe_allow_html=True,
     )
 
@@ -834,7 +745,8 @@ th = compute_take_home()
 # ══════════════════════════════════════════════
 
 def page_dashboard():
-    st.markdown("# 📊 Financial Health Dashboard")
+    st.markdown("# Financial Health Dashboard")
+    st.caption("Your financial overview at a glance — updated as you log expenses and adjust your budget.")
 
     monthly_income = th["monthly_take_home"]
     budget_cats = {**data["budget"]["needs"], **data["budget"]["wants"], **data["budget"]["savings"]}
@@ -870,7 +782,7 @@ def page_dashboard():
     monthly_needs = sum(data["budget"]["needs"].values())
     ef_months = data["assets"].get("Savings", 0) / monthly_needs if monthly_needs else 0
 
-    # Row 1: Key metrics
+    # Key metrics
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.metric("Monthly Take-Home", fmt(monthly_income),
@@ -886,9 +798,9 @@ def page_dashboard():
         st.metric("Budget Adherence", f"{adherence:.0f}%",
                   help="Percentage of budget categories on track this month")
 
-    st.markdown("")
+    st.divider()
 
-    # Row 2: Ratios
+    # Financial health ratios
     c1, c2, c3 = st.columns(3)
     with c1:
         color = GREEN if savings_rate >= 20 else (YELLOW if savings_rate >= 10 else RED)
@@ -906,7 +818,7 @@ def page_dashboard():
         st.markdown(metric_card_html("Emergency Fund", f"{ef_months:.1f} mo", status, color,
             "6+ months of essential expenses is the gold standard. 3-6 is a solid start."), unsafe_allow_html=True)
 
-    st.markdown("")
+    st.divider()
 
     # YTD Summary
     cur_year = now.strftime("%Y")
@@ -928,7 +840,7 @@ def page_dashboard():
         ytd_rate = (ytd_saved / ytd_income * 100) if ytd_income else 0
         st.metric("YTD Savings Rate", f"{ytd_rate:.1f}%")
 
-    st.markdown("")
+    st.divider()
 
     # Charts
     c1, c2 = st.columns(2)
@@ -1017,7 +929,8 @@ def page_dashboard():
 # ══════════════════════════════════════════════
 
 def page_income():
-    st.markdown("# 💰 Income Setup")
+    st.markdown("# Income Setup")
+    st.caption("Configure your salary, deductions, and tax situation to calculate your true take-home pay.")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -1068,8 +981,9 @@ def page_income():
             help="2026 individual limit: ~$4,300/year. Only available with HDHP.",
         )
 
-    st.markdown("---")
+    st.divider()
     st.markdown("### Take-Home Pay Breakdown")
+    st.caption("Your estimated net pay after all taxes and deductions.")
     th_local = compute_take_home(data["income"])
 
     c1, c2, c3, c4 = st.columns(4)
@@ -1110,68 +1024,67 @@ def page_income():
     st.plotly_chart(fig, use_container_width=True)
 
     # Salary Negotiation Modeler
-    st.markdown("---")
-    st.markdown("### Salary Negotiation Impact")
-    st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.85rem;">See how negotiating a higher salary compounds over your career.</p>', unsafe_allow_html=True)
+    st.divider()
+    with st.expander("### Salary Negotiation Modeler", expanded=False):
+        st.caption("See how negotiating a higher salary compounds over your career.")
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        neg_increase = st.number_input("Negotiated Raise ($)", value=10000, min_value=0, step=1000, format="%d",
-                                        key="neg_raise", help="How much more you'd negotiate")
-    with c2:
-        neg_years = st.slider("Career Horizon (years)", 1, 40, 25, key="neg_years")
-    with c3:
-        annual_raise_pct = st.number_input("Annual Raise (%)", value=3.0, min_value=0.0, step=0.5, format="%.1f",
-                                            key="neg_annual_raise", help="Expected annual salary increases")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            neg_increase = st.number_input("Negotiated Raise ($)", value=10000, min_value=0, step=1000, format="%d",
+                                            key="neg_raise", help="How much more you'd negotiate")
+        with c2:
+            neg_years = st.slider("Career Horizon (years)", 1, 40, 25, key="neg_years")
+        with c3:
+            annual_raise_pct = st.number_input("Annual Raise (%)", value=3.0, min_value=0.0, step=0.5, format="%.1f",
+                                                key="neg_annual_raise", help="Expected annual salary increases")
 
-    base = data["income"]["gross_salary"]
-    negotiated = base + neg_increase
+        base = data["income"]["gross_salary"]
+        negotiated = base + neg_increase
 
-    base_cum, neg_cum = 0, 0
-    base_series, neg_series = [], []
-    for y in range(neg_years):
-        base_year = base * (1 + annual_raise_pct / 100) ** y
-        neg_year = negotiated * (1 + annual_raise_pct / 100) ** y
-        base_cum += base_year
-        neg_cum += neg_year
-        base_series.append(base_cum)
-        neg_series.append(neg_cum)
+        base_cum, neg_cum = 0, 0
+        base_series, neg_series = [], []
+        for y in range(neg_years):
+            base_year = base * (1 + annual_raise_pct / 100) ** y
+            neg_year = negotiated * (1 + annual_raise_pct / 100) ** y
+            base_cum += base_year
+            neg_cum += neg_year
+            base_series.append(base_cum)
+            neg_series.append(neg_cum)
 
-    lifetime_diff = neg_cum - base_cum
-    # After-tax approximation
-    marginal = th_local["marginal_fed"] / 100
-    state_d = STATE_TAX_DATA.get(data["income"]["state"])
-    state_m = state_d["brackets"][-1][1] if state_d and state_d["brackets"] else 0
-    after_tax_diff = lifetime_diff * (1 - marginal - state_m - 0.0765)
+        lifetime_diff = neg_cum - base_cum
+        marginal = th_local["marginal_fed"] / 100
+        state_d = STATE_TAX_DATA.get(data["income"]["state"])
+        state_m = state_d["brackets"][-1][1] if state_d and state_d["brackets"] else 0
+        after_tax_diff = lifetime_diff * (1 - marginal - state_m - 0.0765)
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Year 1 Difference", fmt(neg_increase), delta=f"+{fmt(neg_increase * (1 - marginal - state_m - 0.0765))} after tax")
-    with c2:
-        st.metric(f"Lifetime Earnings Delta ({neg_years}yr)", fmt(lifetime_diff))
-    with c3:
-        st.metric("After-Tax Lifetime Impact", fmt(after_tax_diff),
-                  help="Approximate after federal, state, and FICA taxes")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Year 1 Difference", fmt(neg_increase), delta=f"+{fmt(neg_increase * (1 - marginal - state_m - 0.0765))} after tax")
+        with c2:
+            st.metric(f"Lifetime Delta ({neg_years}yr)", fmt(lifetime_diff))
+        with c3:
+            st.metric("After-Tax Impact", fmt(after_tax_diff),
+                      help="Approximate after federal, state, and FICA taxes")
 
-    fig = go.Figure()
-    x = list(range(1, neg_years + 1))
-    fig.add_trace(go.Scatter(x=x, y=neg_series, name=f"Negotiated ({fmt(negotiated)})",
-                            line=dict(color=GREEN, width=2), fill="tonexty"))
-    fig.add_trace(go.Scatter(x=x, y=base_series, name=f"Current ({fmt(base)})",
-                            line=dict(color=BLUE, width=2), fill="tozeroy",
-                            fillcolor="rgba(96,165,250,0.1)"))
-    fig.update_layout(**default_layout(), height=300, xaxis_title="Years",
-                     yaxis_title="Cumulative Earnings", yaxis_tickprefix="$", yaxis_tickformat=",")
-    st.plotly_chart(fig, use_container_width=True)
+        fig = go.Figure()
+        x = list(range(1, neg_years + 1))
+        fig.add_trace(go.Scatter(x=x, y=neg_series, name=f"Negotiated ({fmt(negotiated)})",
+                                line=dict(color=GREEN, width=2), fill="tonexty"))
+        fig.add_trace(go.Scatter(x=x, y=base_series, name=f"Current ({fmt(base)})",
+                                line=dict(color=BLUE, width=2), fill="tozeroy",
+                                fillcolor="rgba(96,165,250,0.1)"))
+        fig.update_layout(**default_layout(), height=300, xaxis_title="Years",
+                         yaxis_title="Cumulative Earnings", yaxis_tickprefix="$", yaxis_tickformat=",")
+        st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown(f'''<div class="card" style="border-left:3px solid {GREEN};">
-        <p style="margin:0; font-weight:600;">Bottom Line</p>
-        <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.9rem;">
-            Negotiating <span class="mono" style="color:{GREEN};">{fmt(neg_increase)}</span> more today is worth
-            <span class="mono" style="color:{GREEN}; font-weight:600;">{fmt(after_tax_diff)}</span> after taxes over {neg_years} years
-            — assuming {annual_raise_pct:.0f}% annual raises compound on the higher base.
-        </p>
-    </div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="card" style="border-left:3px solid {GREEN};">
+            <p style="margin:0; font-weight:600;">Bottom Line</p>
+            <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.9rem;">
+                Negotiating <span class="mono" style="color:{GREEN};">{fmt(neg_increase)}</span> more today is worth
+                <span class="mono" style="color:{GREEN}; font-weight:600;">{fmt(after_tax_diff)}</span> after taxes over {neg_years} years
+                — assuming {annual_raise_pct:.0f}% annual raises compound on the higher base.
+            </p>
+        </div>''', unsafe_allow_html=True)
 
     render_footer()
 
@@ -1181,7 +1094,8 @@ def page_income():
 # ══════════════════════════════════════════════
 
 def page_budget():
-    st.markdown("# 📋 Budget Builder")
+    st.markdown("# Budget Builder")
+    st.caption("Allocate your take-home pay using the 50/30/20 framework — or customize it to fit your life.")
     monthly_income = th["monthly_take_home"]
     total_all = sum(sum(data["budget"][c].values()) for c in ["needs", "wants", "savings"])
     remaining = monthly_income - total_all
@@ -1258,7 +1172,7 @@ def page_budget():
                     st.rerun()
 
     # Summary chart
-    st.markdown("---")
+    st.divider()
     st.markdown("### Budget Summary")
     needs_total = sum(data["budget"]["needs"].values())
     wants_total = sum(data["budget"]["wants"].values())
@@ -1297,7 +1211,8 @@ def page_budget():
 # ══════════════════════════════════════════════
 
 def page_expenses():
-    st.markdown("# 💳 Expense Tracker")
+    st.markdown("# Expense Tracker")
+    st.caption("Log expenses, track spending against your budget, and spot trends over time.")
 
     all_cats = (list(data["budget"]["needs"].keys()) +
                 list(data["budget"]["wants"].keys()) +
@@ -1351,15 +1266,13 @@ def page_expenses():
                 st.rerun()
 
     # Add expense
-    with st.expander("➕ Add New Expense", expanded=True):
-        c1, c2, c3, c4 = st.columns(4)
+    with st.expander("Add New Expense", expanded=True):
+        c1, c2 = st.columns(2)
         with c1:
             exp_date = st.date_input("Date", value=date.today())
+            exp_cat = st.selectbox("Category", all_cats)
         with c2:
             exp_amount = st.number_input("Amount ($)", value=0.0, min_value=0.0, step=0.01, format="%.2f")
-        with c3:
-            exp_cat = st.selectbox("Category", all_cats)
-        with c4:
             exp_note = st.text_input("Note (optional)")
 
         if st.button("Add Expense", type="primary"):
@@ -1435,7 +1348,7 @@ def page_expenses():
                 labels=cats, values=vals, hole=0.5,
                 textinfo="label+percent",
                 textfont=dict(family="JetBrains Mono", size=11),
-                marker=dict(colors=px.colors.qualitative.Set3[:len(cats)]),
+                marker=dict(colors=[GREEN, BLUE, YELLOW, RED, PURPLE, "#f472b6", "#38bdf8", "#fb923c", "#a3e635", "#e879f9", "#22d3ee", "#fca5a5"][:len(cats)]),
             )])
             fig.update_layout(**default_layout(), height=350, showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
@@ -1493,7 +1406,8 @@ def page_expenses():
 # ══════════════════════════════════════════════
 
 def page_net_worth():
-    st.markdown("# 📈 Net Worth Tracker")
+    st.markdown("# Net Worth Tracker")
+    st.caption("Track your assets, liabilities, and net worth over time. Log monthly snapshots to see your progress.")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -1526,7 +1440,7 @@ def page_net_worth():
     total_liabilities = sum(data["liabilities"].values())
     net_worth = total_assets - total_liabilities
 
-    st.markdown("---")
+    st.divider()
 
     # Show change from last snapshot
     last_nw = data["net_worth_snapshots"][-1]["net_worth"] if data["net_worth_snapshots"] else None
@@ -1589,7 +1503,8 @@ def page_net_worth():
 # ══════════════════════════════════════════════
 
 def page_debt():
-    st.markdown("# 🏦 Debt Payoff Planner")
+    st.markdown("# Debt Payoff Planner")
+    st.caption("Compare payoff strategies and see how extra payments accelerate your path to debt-free.")
 
     st.markdown(f'''<div class="card">
         <p style="color:{TEXT_DIM}; margin:0; font-size:0.85rem;">
@@ -1694,7 +1609,8 @@ def page_debt():
 # ══════════════════════════════════════════════
 
 def page_savings_goals():
-    st.markdown("# 🎯 Savings Goals")
+    st.markdown("# Savings Goals")
+    st.caption("Set targets, track your progress, and see exactly how much to save each month to stay on track.")
 
     with st.expander("➕ Add New Goal", expanded=not data["savings_goals"]):
         c1, c2 = st.columns(2)
@@ -1782,7 +1698,8 @@ def page_savings_goals():
 # ══════════════════════════════════════════════
 
 def page_investments():
-    st.markdown("# 📈 Investment Growth Projector")
+    st.markdown("# Investment Growth Projector")
+    st.caption("Model compound growth across scenarios and see the true cost of waiting to invest.")
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -1932,8 +1849,8 @@ def page_investments():
 # ══════════════════════════════════════════════
 
 def page_fire():
-    st.markdown("# 🔥 FIRE Calculator")
-    st.markdown(f'<p style="color:{TEXT_DIM};">Financial Independence, Retire Early — calculate when you can live off your investments.</p>', unsafe_allow_html=True)
+    st.markdown("# FIRE Calculator")
+    st.caption("Financial Independence, Retire Early — calculate when your portfolio can sustain your lifestyle.")
 
     monthly_income = th["monthly_take_home"]
 
@@ -1982,7 +1899,7 @@ def page_fire():
         years_to_fire = -1
 
     # Key metrics
-    st.markdown("---")
+    st.divider()
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         sr_color = GREEN if savings_rate >= 50 else (YELLOW if savings_rate >= 20 else RED)
@@ -2022,7 +1939,7 @@ def page_fire():
 
     # Savings rate sensitivity
     st.markdown("### Savings Rate vs. Years to FIRE")
-    st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.85rem;">How your savings rate dramatically affects your timeline — the math is non-linear.</p>', unsafe_allow_html=True)
+    st.caption("How your savings rate dramatically affects your timeline — the math is non-linear.")
 
     rates = list(range(10, 85, 5))
     years_list = []
@@ -2085,7 +2002,8 @@ def page_fire():
 # ══════════════════════════════════════════════
 
 def page_tax():
-    st.markdown("# 🧾 Tax Estimator")
+    st.markdown("# Tax Estimator")
+    st.caption("Estimate your federal and state tax liability, compare deduction strategies, and optimize 401(k) contributions.")
 
     th_local = compute_take_home(data["income"])
     gross = th_local["annual_gross"]
@@ -2134,23 +2052,21 @@ def page_tax():
 
     # Standard vs Itemized comparison
     st.markdown("### Standard vs. Itemized Deduction")
-    st.markdown(f'<p style="color:{TEXT_DIM}; font-size:0.85rem;">Enter your potential itemized deductions to see which option saves you more.</p>', unsafe_allow_html=True)
+    st.caption("Enter your potential itemized deductions to see which option saves you more.")
 
     if "itemized" not in data:
         data["itemized"] = {"salt": 0, "mortgage_interest": 0, "charitable": 0, "medical": 0}
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2 = st.columns(2)
     with c1:
         data["itemized"]["salt"] = st.number_input("State & Local Taxes (SALT)", value=data["itemized"]["salt"],
             min_value=0, step=100, format="%d",
             help=f"Capped at ${SALT_CAP:,} for federal purposes (state + property taxes)")
-    with c2:
         data["itemized"]["mortgage_interest"] = st.number_input("Mortgage Interest", value=data["itemized"]["mortgage_interest"],
             min_value=0, step=100, format="%d")
-    with c3:
+    with c2:
         data["itemized"]["charitable"] = st.number_input("Charitable Donations", value=data["itemized"]["charitable"],
             min_value=0, step=100, format="%d")
-    with c4:
         data["itemized"]["medical"] = st.number_input("Medical (above 7.5% AGI)", value=data["itemized"]["medical"],
             min_value=0, step=100, format="%d",
             help="Only the amount exceeding 7.5% of AGI is deductible")
@@ -2244,7 +2160,8 @@ def page_tax():
 REQUIRED_KEYS = {"income", "budget", "expenses", "assets", "liabilities", "debts", "savings_goals", "investment"}
 
 def page_data():
-    st.markdown("# 💾 Data Management")
+    st.markdown("# Data Management")
+    st.caption("Export your data as a backup, import a previous save, or reset to start fresh.")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -2293,7 +2210,7 @@ def page_data():
             except json.JSONDecodeError:
                 st.error("Invalid JSON file.")
 
-    st.markdown("---")
+    st.divider()
     st.markdown("### Reset Data")
     c1, c2 = st.columns(2)
     with c1:
@@ -2318,7 +2235,7 @@ def page_data():
                     st.session_state.confirm_reset = False
                     st.rerun()
 
-    st.markdown("---")
+    st.divider()
     st.markdown("### Data Summary")
     st.markdown(f'''<div class="card">
         <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Expenses logged:</span> <span class="mono">{len(data['expenses'])}</span></p>
