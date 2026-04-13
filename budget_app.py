@@ -1286,21 +1286,23 @@ def page_dashboard():
                       for cat in cats]
             # Pull out small slices so they're visible
             total = sum(vals)
-            pull_vals = [0.06 if (v / total) < 0.08 else 0 for v in vals] if total > 0 else [0]*len(vals)
+            pull_vals = [0.08 if (v / total) < 0.06 else 0 for v in vals] if total > 0 else [0]*len(vals)
+            # Only show percentage text on slices > 5%
+            text_labels = [f"{v/total*100:.0f}%" if total > 0 and v/total >= 0.05 else "" for v in vals]
             fig = go.Figure(data=[go.Pie(
-                labels=cats, values=vals, hole=0.5,
+                labels=cats, values=vals, hole=0.45,
                 marker=dict(colors=colors, line=dict(color="#FFFFFF", width=2)),
-                textinfo="percent",
+                text=text_labels, textinfo="text",
                 textposition="inside",
                 hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
-                textfont=dict(family="Inter", size=11),
+                textfont=dict(family="Inter", size=13),
                 pull=pull_vals,
             )])
             fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
-                              showarrow=False, font=dict(size=16, family="Inter", color=TEXT), x=0.5, y=0.5)
-            layout = default_layout()
-            layout["margin"] = dict(l=20, r=20, t=20, b=20)
-            fig.update_layout(**layout, height=400, showlegend=True)
+                              showarrow=False, font=dict(size=18, family="Inter", color=TEXT), x=0.5, y=0.5)
+            pie_layout = default_layout()
+            pie_layout["margin"] = dict(l=10, r=10, t=10, b=10)
+            fig.update_layout(**pie_layout, height=500, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
@@ -1323,7 +1325,10 @@ def page_dashboard():
         fig = go.Figure()
         fig.add_trace(go.Bar(name="This Month", x=all_cats_union, y=cur_vals, marker_color=GREEN, opacity=0.8))
         fig.add_trace(go.Bar(name="Last Month", x=all_cats_union, y=prev_vals, marker_color=BLUE, opacity=0.5))
-        fig.update_layout(**default_layout(), height=350, barmode="group",
+        mom_layout = default_layout()
+        mom_layout["legend"] = dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=1.05, x=0.5, xanchor="center")
+        mom_layout["margin"] = dict(l=50, r=20, t=40, b=100)
+        fig.update_layout(**mom_layout, height=400, barmode="group",
                          yaxis_tickprefix="$", yaxis_tickformat=",",
                          xaxis_tickangle=-45)
         st.plotly_chart(fig, use_container_width=True)
@@ -1831,21 +1836,22 @@ def page_expenses():
             vals = list(cat_spending.values())
             pie_colors = [GREEN, BLUE, YELLOW, RED, PURPLE, "#f472b6", "#38bdf8", "#fb923c", "#a3e635", "#e879f9", "#22d3ee", "#fca5a5"][:len(cats)]
             pie_total = sum(vals)
-            pie_pull = [0.06 if (v / pie_total) < 0.08 else 0 for v in vals] if pie_total > 0 else [0]*len(vals)
+            pie_pull = [0.08 if (v / pie_total) < 0.06 else 0 for v in vals] if pie_total > 0 else [0]*len(vals)
+            pie_text = [f"{v/pie_total*100:.0f}%" if pie_total > 0 and v/pie_total >= 0.05 else "" for v in vals]
             fig = go.Figure(data=[go.Pie(
-                labels=cats, values=vals, hole=0.5,
-                textinfo="percent",
+                labels=cats, values=vals, hole=0.45,
+                text=pie_text, textinfo="text",
                 textposition="inside",
                 hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
-                textfont=dict(family="Inter", size=11),
+                textfont=dict(family="Inter", size=13),
                 marker=dict(colors=pie_colors, line=dict(color="#FFFFFF", width=2)),
                 pull=pie_pull,
             )])
             fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
-                              showarrow=False, font=dict(size=16, family="Inter", color=TEXT), x=0.5, y=0.5)
+                              showarrow=False, font=dict(size=18, family="Inter", color=TEXT), x=0.5, y=0.5)
             layout2 = default_layout()
-            layout2["margin"] = dict(l=20, r=20, t=20, b=20)
-            fig.update_layout(**layout2, height=400, showlegend=True)
+            layout2["margin"] = dict(l=10, r=10, t=10, b=10)
+            fig.update_layout(**layout2, height=500, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
 
         with c2:
