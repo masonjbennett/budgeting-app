@@ -1295,12 +1295,11 @@ def page_dashboard():
                 textfont=dict(family="Inter", size=12),
                 pull=pull_vals,
             )])
-            fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
-                              showarrow=False, font=dict(size=18, family="Inter", color=TEXT), x=0.5, y=0.5)
             pie_layout = default_layout()
             pie_layout["margin"] = dict(l=10, r=10, t=10, b=10)
             fig.update_layout(**pie_layout, height=450, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
+            st.markdown(f'<p style="text-align:center; color:{TEXT_DIM}; font-size:0.85rem; margin-top:-0.5rem;">Total: <strong>{fmt(total_spent)}</strong></p>', unsafe_allow_html=True)
         else:
             st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
                 <p style="font-size:2rem; margin:0;">💳</p>
@@ -1844,12 +1843,11 @@ def page_expenses():
                 marker=dict(colors=pie_colors, line=dict(color="#FFFFFF", width=2)),
                 pull=pie_pull,
             )])
-            fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
-                              showarrow=False, font=dict(size=18, family="Inter", color=TEXT), x=0.5, y=0.5)
             layout2 = default_layout()
             layout2["margin"] = dict(l=10, r=10, t=10, b=10)
-            fig.update_layout(**layout2, height=500, showlegend=True)
+            fig.update_layout(**layout2, height=450, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
+            st.markdown(f'<p style="text-align:center; color:{TEXT_DIM}; font-size:0.85rem; margin-top:-0.5rem;">Total: <strong>{fmt(total_spent)}</strong></p>', unsafe_allow_html=True)
 
         with c2:
             st.markdown("### Daily Spending Trend")
