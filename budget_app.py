@@ -233,9 +233,11 @@ STATE_TAX_DATA = {
     "Alaska": {"brackets": [], "deduction": 0},
     "Arizona": {"brackets": [(float("inf"), 0.025)], "deduction": 14600},
     "Arkansas": {"brackets": [(4400, 0.02), (8800, 0.04), (float("inf"), 0.044)], "deduction": 2340},
-    "California": {"brackets": [(10412, 0.01), (24684, 0.02), (38959, 0.04), (54081, 0.06), (68350, 0.08), (349137, 0.093), (418961, 0.103), (698271, 0.113), (float("inf"), 0.123)], "deduction": 5540},
+    "California": {"brackets": [(10412, 0.01), (24684, 0.02), (38959, 0.04), (54081, 0.06), (68350, 0.08), (349137, 0.093), (418961, 0.103), (698271, 0.113), (float("inf"), 0.123)], "deduction": 5540, "deduction_mfj": 11080},
     "Colorado": {"brackets": [(float("inf"), 0.044)], "deduction": 15700},
-    "Connecticut": {"brackets": [(10000, 0.03), (50000, 0.05), (100000, 0.055), (200000, 0.06), (250000, 0.065), (500000, 0.069), (float("inf"), 0.0699)], "deduction": 0},
+    "Connecticut": {"brackets": [(10000, 0.03), (50000, 0.05), (100000, 0.055), (200000, 0.06), (250000, 0.065), (500000, 0.069), (float("inf"), 0.0699)],
+                     "brackets_mfj": [(20000, 0.03), (100000, 0.05), (200000, 0.055), (400000, 0.06), (500000, 0.065), (1000000, 0.069), (float("inf"), 0.0699)],
+                     "deduction": 0, "deduction_mfj": 0},
     "Delaware": {"brackets": [(2000, 0.0), (5000, 0.022), (10000, 0.039), (20000, 0.048), (25000, 0.052), (60000, 0.0555), (float("inf"), 0.066)], "deduction": 3250},
     "Florida": {"brackets": [], "deduction": 0},
     "Georgia": {"brackets": [(float("inf"), 0.0519)], "deduction": 12000},
@@ -248,7 +250,7 @@ STATE_TAX_DATA = {
     "Kentucky": {"brackets": [(float("inf"), 0.035)], "deduction": 3160},
     "Louisiana": {"brackets": [(12500, 0.0185), (50000, 0.035), (float("inf"), 0.0425)], "deduction": 0},
     "Maine": {"brackets": [(24500, 0.058), (58050, 0.0675), (float("inf"), 0.0715)], "deduction": 14600},
-    "Maryland": {"brackets": [(1000, 0.02), (2000, 0.03), (3000, 0.04), (100000, 0.0475), (125000, 0.05), (150000, 0.0525), (250000, 0.055), (float("inf"), 0.0575)], "deduction": 2550},
+    "Maryland": {"brackets": [(1000, 0.02), (2000, 0.03), (3000, 0.04), (100000, 0.0475), (125000, 0.05), (150000, 0.0525), (250000, 0.055), (float("inf"), 0.0575)], "deduction": 2550, "deduction_mfj": 5100},
     "Massachusetts": {"brackets": [(float("inf"), 0.05)], "deduction": 0},
     "Michigan": {"brackets": [(float("inf"), 0.0405)], "deduction": 5400},
     "Minnesota": {"brackets": [(31690, 0.0535), (104090, 0.068), (183340, 0.0785), (float("inf"), 0.0985)], "deduction": 14575},
@@ -258,9 +260,13 @@ STATE_TAX_DATA = {
     "Nebraska": {"brackets": [(3700, 0.0246), (22170, 0.0351), (35730, 0.0455), (float("inf"), 0.0455)], "deduction": 8200},
     "Nevada": {"brackets": [], "deduction": 0},
     "New Hampshire": {"brackets": [], "deduction": 0},
-    "New Jersey": {"brackets": [(20000, 0.014), (35000, 0.0175), (40000, 0.035), (75000, 0.05525), (500000, 0.0637), (1000000, 0.0897), (float("inf"), 0.1075)], "deduction": 0},
+    "New Jersey": {"brackets": [(20000, 0.014), (35000, 0.0175), (40000, 0.035), (75000, 0.05525), (500000, 0.0637), (1000000, 0.0897), (float("inf"), 0.1075)],
+                    "brackets_mfj": [(20000, 0.014), (50000, 0.0175), (70000, 0.035), (80000, 0.05525), (150000, 0.0637), (500000, 0.0897), (1000000, 0.1075), (float("inf"), 0.1075)],
+                    "deduction": 0, "deduction_mfj": 0},
     "New Mexico": {"brackets": [(5500, 0.017), (11000, 0.032), (16000, 0.047), (210000, 0.049), (float("inf"), 0.059)], "deduction": 14600},
-    "New York": {"brackets": [(8500, 0.04), (11700, 0.045), (13900, 0.0525), (80650, 0.055), (215400, 0.06), (1077550, 0.0685), (5000000, 0.0965), (25000000, 0.103), (float("inf"), 0.109)], "deduction": 8000},
+    "New York": {"brackets": [(8500, 0.04), (11700, 0.045), (13900, 0.0525), (80650, 0.055), (215400, 0.06), (1077550, 0.0685), (5000000, 0.0965), (25000000, 0.103), (float("inf"), 0.109)],
+                  "brackets_mfj": [(17150, 0.04), (23600, 0.045), (27900, 0.0525), (161550, 0.055), (323200, 0.06), (2155350, 0.0685), (5000000, 0.0965), (25000000, 0.103), (float("inf"), 0.109)],
+                  "deduction": 8000, "deduction_mfj": 16050},
     "North Carolina": {"brackets": [(float("inf"), 0.0399)], "deduction": 14600},
     "North Dakota": {"brackets": [(44725, 0.0195), (float("inf"), 0.025)], "deduction": 14600},
     "Ohio": {"brackets": [(26050, 0.0), (float("inf"), 0.0275)], "deduction": 0},
@@ -396,13 +402,31 @@ def calc_federal_tax(gross, deductions_401k=0, other_pretax=0, filing="Single", 
     return tax, agi, taxable, standard
 
 
-def calc_state_tax(gross, state, deductions_401k=0, other_pretax=0):
+def _get_state_brackets_for_filing(sdata, filing):
+    """Get the appropriate brackets and deduction for a filing status."""
+    is_joint = filing == "Married Filing Jointly"
+    if not is_joint:
+        return sdata["brackets"], sdata["deduction"]
+    # Check for explicit MFJ brackets first
+    if "brackets_mfj" in sdata:
+        return sdata["brackets_mfj"], sdata.get("deduction_mfj", sdata["deduction"] * 2)
+    # Auto-double the bracket ceilings for MFJ (standard for most states)
+    mfj_brackets = []
+    for ceiling, rate in sdata["brackets"]:
+        mfj_ceiling = ceiling * 2 if ceiling != float("inf") else float("inf")
+        mfj_brackets.append((mfj_ceiling, rate))
+    mfj_deduction = sdata.get("deduction_mfj", sdata["deduction"] * 2)
+    return mfj_brackets, mfj_deduction
+
+
+def calc_state_tax(gross, state, deductions_401k=0, other_pretax=0, filing="Single"):
     sdata = STATE_TAX_DATA.get(state)
     if not sdata or not sdata["brackets"]:
         return 0.0
     agi = gross - deductions_401k - other_pretax
-    taxable = max(0, agi - sdata["deduction"])
-    return calc_bracket_tax(taxable, sdata["brackets"])
+    brackets, deduction = _get_state_brackets_for_filing(sdata, filing)
+    taxable = max(0, agi - deduction)
+    return calc_bracket_tax(taxable, brackets)
 
 
 def calc_fica(gross):
@@ -802,7 +826,7 @@ def compute_take_home(d=None):
     pretax = contrib_401k_annual + health_annual + hsa_annual
 
     fed_tax, agi, taxable, std_ded = calc_federal_tax(annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing, sl_interest)
-    state_tax = calc_state_tax(annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual)
+    state_tax = calc_state_tax(annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual, filing)
     fica = calc_fica(annual_gross)
 
     total_tax = fed_tax + state_tax + fica
