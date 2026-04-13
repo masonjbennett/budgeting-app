@@ -287,7 +287,23 @@ FICA_SS_CAP = 184_500  # 2026 Social Security wage base (SSA official)
 FICA_MEDICARE_RATE = 0.0145
 FICA_MEDICARE_SURTAX = 0.009
 FICA_MEDICARE_SURTAX_THRESHOLD = 200_000
-SALT_CAP = 40_400  # 2026 OBBBA increased from $10K; phases out above $500K MAGI
+SALT_CAP_BASE = 40_400       # 2026 OBBBA base cap
+SALT_CAP_FLOOR = 10_000      # Cap can never go below this
+SALT_PHASEOUT_THRESHOLD = {   # MAGI where phase-out begins
+    "Single": 505_000, "Head of Household": 505_000,
+    "Married Filing Jointly": 505_000, "Married Filing Separately": 252_500,
+}
+SALT_PHASEOUT_RATE = 0.30     # 30% of MAGI above threshold
+
+
+def calc_salt_cap(magi, filing="Single"):
+    """Calculate effective SALT cap after OBBBA phase-out."""
+    threshold = SALT_PHASEOUT_THRESHOLD.get(filing, 505_000)
+    mfs_cap = SALT_CAP_BASE // 2 if filing == "Married Filing Separately" else SALT_CAP_BASE
+    if magi <= threshold:
+        return mfs_cap
+    reduction = SALT_PHASEOUT_RATE * (magi - threshold)
+    return max(SALT_CAP_FLOOR, mfs_cap - reduction)
 
 
 def calc_bracket_tax(taxable_income, brackets):
@@ -303,10 +319,30 @@ def calc_bracket_tax(taxable_income, brackets):
     return tax
 
 
-def calc_federal_tax(gross, deductions_401k=0, other_pretax=0, filing="Single"):
+def calc_student_loan_deduction(interest_paid, magi, filing="Single"):
+    """Calculate above-the-line student loan interest deduction (max $2,500)."""
+    if filing == "Married Filing Separately":
+        return 0  # MFS cannot claim
+    max_ded = 2_500
+    if filing == "Married Filing Jointly":
+        lower, upper = 175_000, 205_000
+    else:  # Single, HoH
+        lower, upper = 85_000, 100_000
+    if magi <= lower:
+        return min(interest_paid, max_ded)
+    if magi >= upper:
+        return 0
+    reduction = (magi - lower) / (upper - lower)
+    return min(interest_paid, max_ded) * (1 - reduction)
+
+
+def calc_federal_tax(gross, deductions_401k=0, other_pretax=0, filing="Single", student_loan_interest=0):
     brackets = FEDERAL_BRACKETS_2026.get(filing, FEDERAL_BRACKETS_2026["Single"])
     standard = STANDARD_DEDUCTION_2026.get(filing, 15_700)
     agi = gross - deductions_401k - other_pretax
+    # Student loan interest is above-the-line (reduces AGI)
+    sl_deduction = calc_student_loan_deduction(student_loan_interest, agi, filing)
+    agi -= sl_deduction
     taxable = max(0, agi - standard)
     tax = calc_bracket_tax(taxable, brackets)
     return tax, agi, taxable, standard
@@ -524,6 +560,7 @@ def get_default_state():
             "hsa": 0,
             "bonus_amount": 0,
             "bonus_type": "None",
+            "student_loan_interest": 0,
         },
         "budget": {
             "needs": {
@@ -591,6 +628,7 @@ def _generate_demo_data():
         "hsa": 100,
         "bonus_amount": 10000,
         "bonus_type": "Annual (spread monthly)",
+        "student_loan_interest": 0,
     },
     "budget": {
         "needs": {
@@ -712,9 +750,10 @@ def compute_take_home(d=None):
     contrib_401k_annual = min(gross * d["contribution_401k"] / 100, 24_500)  # 2026 IRS limit
     health_annual = d["health_insurance"] * 12
     hsa_annual = d["hsa"] * 12
+    sl_interest = d.get("student_loan_interest", 0)
     pretax = contrib_401k_annual + health_annual + hsa_annual
 
-    fed_tax, agi, taxable, std_ded = calc_federal_tax(annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing)
+    fed_tax, agi, taxable, std_ded = calc_federal_tax(annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing, sl_interest)
     state_tax = calc_state_tax(annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual)
     fica = calc_fica(annual_gross)
 
@@ -807,6 +846,8 @@ with st.sidebar:
                 _ensure_expense_ids(imported.get("expenses", []))
                 if "filing_status" not in imported.get("income", {}):
                     imported["income"]["filing_status"] = "Single"
+                if "student_loan_interest" not in imported.get("income", {}):
+                    imported["income"]["student_loan_interest"] = 0
                 if "recurring_templates" not in imported:
                     imported["recurring_templates"] = []
                 if "itemized" not in imported:
@@ -1105,6 +1146,11 @@ def page_income():
             "HSA Contribution ($/month)", value=data["income"]["hsa"],
             min_value=0, step=25, format="%d",
             help="2026 individual limit: $4,400/year. Only available with HDHP.",
+        )
+        data["income"]["student_loan_interest"] = st.number_input(
+            "Student Loan Interest ($/year)", value=data["income"].get("student_loan_interest", 0),
+            min_value=0, max_value=2500, step=100, format="%d",
+            help="Above-the-line deduction, max $2,500/yr. Phases out at $85K-$100K (Single) or $175K-$205K (MFJ).",
         )
 
     st.divider()
@@ -2278,9 +2324,10 @@ def page_tax():
 
     c1, c2 = st.columns(2)
     with c1:
+        effective_salt_cap = calc_salt_cap(th_local["agi"], th_local["filing"])
         data["itemized"]["salt"] = st.number_input("State & Local Taxes (SALT)", value=data["itemized"]["salt"],
             min_value=0, step=100, format="%d",
-            help=f"Capped at ${SALT_CAP:,} for federal purposes (state + property taxes)")
+            help=f"Your effective SALT cap: ${effective_salt_cap:,.0f} (phases out above ${SALT_PHASEOUT_THRESHOLD.get(th_local['filing'], 505_000):,} MAGI)")
         data["itemized"]["mortgage_interest"] = st.number_input("Mortgage Interest", value=data["itemized"]["mortgage_interest"],
             min_value=0, step=100, format="%d")
     with c2:
@@ -2290,7 +2337,7 @@ def page_tax():
             min_value=0, step=100, format="%d",
             help="Only the amount exceeding 7.5% of AGI is deductible")
 
-    salt_capped = min(data["itemized"]["salt"], SALT_CAP)
+    salt_capped = min(data["itemized"]["salt"], effective_salt_cap)
     medical_threshold = max(0, th_local["agi"]) * 0.075
     medical_deductible = max(0, data["itemized"]["medical"] - medical_threshold) if th_local["agi"] > 0 else 0
     total_itemized = salt_capped + data["itemized"]["mortgage_interest"] + data["itemized"]["charitable"] + medical_deductible
@@ -2416,6 +2463,8 @@ def page_data():
                     _ensure_expense_ids(imported.get("expenses", []))
                     if "filing_status" not in imported.get("income", {}):
                         imported["income"]["filing_status"] = "Single"
+                    if "student_loan_interest" not in imported.get("income", {}):
+                        imported["income"]["student_loan_interest"] = 0
                     if "recurring_templates" not in imported:
                         imported["recurring_templates"] = []
                     if "itemized" not in imported:
