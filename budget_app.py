@@ -6,8 +6,10 @@ import numpy as np
 import json
 import uuid
 import math
+import time
 from datetime import datetime, date, timedelta
 from copy import deepcopy
+from supabase import create_client, Client
 
 # ──────────────────────────────────────────────
 # PAGE CONFIG & THEME
@@ -19,6 +21,131 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ──────────────────────────────────────────────
+# SUPABASE CLIENT
+# ──────────────────────────────────────────────
+
+@st.cache_resource
+def _init_supabase() -> Client:
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["key"]
+    return create_client(url, key)
+
+supabase: Client = _init_supabase()
+
+
+# ──────────────────────────────────────────────
+# AUTHENTICATION
+# ──────────────────────────────────────────────
+
+def auth_sign_up(email: str, password: str) -> dict:
+    try:
+        response = supabase.auth.sign_up({"email": email, "password": password})
+        if response.user:
+            st.session_state["user"] = {"id": response.user.id, "email": response.user.email}
+            st.session_state["access_token"] = response.session.access_token
+            return {"success": True}
+        return {"success": False, "error": "Sign up failed — try a different email."}
+    except Exception as e:
+        msg = str(e)
+        if "already registered" in msg.lower():
+            return {"success": False, "error": "An account with this email already exists."}
+        return {"success": False, "error": msg}
+
+
+def auth_sign_in(email: str, password: str) -> dict:
+    try:
+        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        if response.user:
+            st.session_state["user"] = {"id": response.user.id, "email": response.user.email}
+            st.session_state["access_token"] = response.session.access_token
+            return {"success": True}
+        return {"success": False, "error": "Invalid email or password."}
+    except Exception:
+        return {"success": False, "error": "Invalid email or password."}
+
+
+def auth_sign_out():
+    try:
+        supabase.auth.sign_out()
+    except Exception:
+        pass
+    for key in ["user", "access_token"]:
+        st.session_state.pop(key, None)
+
+
+def is_logged_in() -> bool:
+    return "user" in st.session_state and st.session_state["user"] is not None
+
+
+def get_user_id():
+    return st.session_state["user"]["id"] if is_logged_in() else None
+
+
+# ──────────────────────────────────────────────
+# CLOUD SAVE / LOAD
+# ──────────────────────────────────────────────
+
+def cloud_save(save_data: dict) -> bool:
+    user_id = get_user_id()
+    if not user_id:
+        return False
+    try:
+        json_str = json.dumps(save_data, default=str)
+        json_data = json.loads(json_str)
+        response = (
+            supabase.table("user_data")
+            .upsert({"user_id": user_id, "app_data": json_data}, on_conflict="user_id")
+            .execute()
+        )
+        return len(response.data) > 0
+    except Exception as e:
+        st.error(f"Save failed: {e}")
+        return False
+
+
+def cloud_load():
+    user_id = get_user_id()
+    if not user_id:
+        return None
+    try:
+        response = (
+            supabase.table("user_data")
+            .select("app_data")
+            .eq("user_id", user_id)
+            .single()
+            .execute()
+        )
+        return response.data["app_data"] if response.data else None
+    except Exception:
+        return None
+
+
+def _migrate_imported(imported):
+    """Apply schema migrations to loaded data (handles old saves)."""
+    _ensure_expense_ids(imported.get("expenses", []))
+    inc = imported.get("income", {})
+    if "filing_status" not in inc:
+        inc["filing_status"] = "Single"
+    if "student_loan_interest" not in inc:
+        inc["student_loan_interest"] = 0
+    if "recurring_templates" not in imported:
+        imported["recurring_templates"] = []
+    if "itemized" not in imported:
+        imported["itemized"] = {"salt": 0, "mortgage_interest": 0, "charitable": 0, "medical": 0}
+    return imported
+
+
+def auto_save_debounced(save_data: dict, interval: float = 10.0):
+    if not is_logged_in():
+        return
+    now = time.time()
+    last = st.session_state.get("_last_cloud_save", 0)
+    if now - last >= interval:
+        if cloud_save(save_data):
+            st.session_state["_last_cloud_save"] = now
+
 
 # Color palette — light theme (matches portfolio app)
 GREEN = "#2ECC71"
@@ -927,34 +1054,76 @@ with st.sidebar:
 
     st.sidebar.markdown("---")
 
-    # Quick save/load in sidebar
-    json_str = json.dumps(data, indent=2, default=str)
-    st.sidebar.download_button("💾 Save My Data", data=json_str,
-        file_name=f"budget_save_{date.today().isoformat()}.json",
-        mime="application/json", use_container_width=True)
-    with st.sidebar.expander("📂 Load Saved Data"):
-        uploaded = st.file_uploader("Upload JSON", type=["json"],
-            label_visibility="collapsed", key="sidebar_upload")
-        if uploaded:
-            try:
-                imported = json.load(uploaded)
-                _ensure_expense_ids(imported.get("expenses", []))
-                if "filing_status" not in imported.get("income", {}):
-                    imported["income"]["filing_status"] = "Single"
-                if "student_loan_interest" not in imported.get("income", {}):
-                    imported["income"]["student_loan_interest"] = 0
-                if "recurring_templates" not in imported:
-                    imported["recurring_templates"] = []
-                if "itemized" not in imported:
-                    imported["itemized"] = {"salt": 0, "mortgage_interest": 0, "charitable": 0, "medical": 0}
-                st.session_state.data = imported
-                st.session_state.is_demo = False
+    # Auth + cloud save
+    if is_logged_in():
+        user_email = st.session_state["user"]["email"]
+        st.sidebar.markdown(f'''<div style="padding:0.25rem 0 0.5rem;">
+            <span style="color:#2ECC71;">●</span>
+            <span style="color:#CBD5E1; font-size:0.82rem;">{user_email}</span>
+        </div>''', unsafe_allow_html=True)
+        c1, c2 = st.sidebar.columns(2)
+        with c1:
+            if st.button("💾 Save", use_container_width=True, key="cloud_save_btn"):
+                if cloud_save(data):
+                    st.toast("Saved to cloud!", icon="✅")
+                else:
+                    st.error("Save failed")
+        with c2:
+            if st.button("🚪 Logout", use_container_width=True, key="logout_btn"):
+                auth_sign_out()
                 st.rerun()
-            except (json.JSONDecodeError, KeyError):
-                st.error("Invalid file.")
+        # JSON backup download
+        json_str = json.dumps(data, indent=2, default=str)
+        st.sidebar.download_button("📥 Download Backup", data=json_str,
+            file_name=f"budget_backup_{date.today().isoformat()}.json",
+            mime="application/json", use_container_width=True)
+    else:
+        auth_mode = st.sidebar.radio("Account", ["Login", "Sign Up"],
+                                      horizontal=True, label_visibility="collapsed")
+        if auth_mode == "Login":
+            email = st.sidebar.text_input("Email", key="login_email")
+            password = st.sidebar.text_input("Password", type="password", key="login_pw")
+            if st.sidebar.button("Log In", type="primary", use_container_width=True):
+                if email and password:
+                    result = auth_sign_in(email, password)
+                    if result["success"]:
+                        saved = cloud_load()
+                        if saved:
+                            st.session_state.data = _migrate_imported(saved)
+                            st.session_state.is_demo = False
+                            st.toast("Data loaded from cloud!", icon="📂")
+                        st.rerun()
+                    else:
+                        st.sidebar.error(result["error"])
+                else:
+                    st.sidebar.warning("Enter email and password")
+        else:
+            email = st.sidebar.text_input("Email", key="signup_email")
+            pw = st.sidebar.text_input("Password", type="password", key="signup_pw")
+            pw2 = st.sidebar.text_input("Confirm", type="password", key="signup_pw2")
+            if st.sidebar.button("Create Account", type="primary", use_container_width=True):
+                if not email or not pw:
+                    st.sidebar.warning("Enter email and password")
+                elif pw != pw2:
+                    st.sidebar.error("Passwords don't match")
+                elif len(pw) < 6:
+                    st.sidebar.error("Password must be 6+ characters")
+                else:
+                    result = auth_sign_up(email, pw)
+                    if result["success"]:
+                        st.toast("Account created!", icon="🎉")
+                        st.rerun()
+                    else:
+                        st.sidebar.error(result["error"])
+        st.sidebar.caption("Create an account to save your data to the cloud.")
+        # Still offer JSON save for anonymous users
+        json_str = json.dumps(data, indent=2, default=str)
+        st.sidebar.download_button("💾 Save as JSON", data=json_str,
+            file_name=f"budget_save_{date.today().isoformat()}.json",
+            mime="application/json", use_container_width=True)
 
     st.sidebar.markdown(
-        '<p style="color:#94A3C0; font-size:0.75rem; text-align:center;">v3.1</p>',
+        '<p style="color:#94A3C0; font-size:0.75rem; text-align:center;">v4.0</p>',
         unsafe_allow_html=True,
     )
 
@@ -1180,6 +1349,7 @@ def page_dashboard():
         for goal in sorted(data["savings_goals"], key=lambda g: g.get("priority", 99)):
             st.markdown(render_savings_goal_card(goal), unsafe_allow_html=True)
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -1358,6 +1528,7 @@ def page_income():
             </p>
         </div>''', unsafe_allow_html=True)
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -1482,6 +1653,7 @@ def page_budget():
                      yaxis_title="% of Budget",
 )
     st.plotly_chart(fig, use_container_width=True)
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -1721,6 +1893,7 @@ def page_expenses():
             <p style="color:{TEXT_DIM}; font-size:0.85rem;">Add your first expense using the form above, or apply recurring templates.</p>
         </div>''', unsafe_allow_html=True)
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -1828,6 +2001,7 @@ def page_net_worth():
                          yaxis_tickprefix="$", yaxis_tickformat=",")
         st.plotly_chart(fig, use_container_width=True)
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -1944,6 +2118,7 @@ def page_debt():
             <p style="color:{TEXT_DIM}; font-size:0.85rem;">This planner is ready when you need it. Common debts: student loans, car payments, credit cards.</p>
         </div>''', unsafe_allow_html=True)
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -2033,6 +2208,7 @@ def page_savings_goals():
                 data["savings_goals"] = [g for g in data["savings_goals"] if g["name"] != to_remove]
                 st.rerun()
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -2219,6 +2395,7 @@ def page_investments():
         st.warning(f"You're contributing {your_contrib_pct}% but your employer matches up to {match_limit}%. "
                    f"You're leaving **{fmt(missed)}**/year on the table!")
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -2602,6 +2779,7 @@ def page_fire():
                               "Monthly": fmt(monthly), "Annual": fmt(monthly * 12)})
     st.dataframe(pd.DataFrame(ss_comparison), use_container_width=True, hide_index=True)
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -2859,6 +3037,7 @@ def page_tax():
             </p>
         </div>''', unsafe_allow_html=True)
 
+    auto_save_debounced(data)
     render_footer()
 
 
@@ -2977,6 +3156,7 @@ def page_data():
         </p>
     </div>''', unsafe_allow_html=True)
 
+    auto_save_debounced(data)
     render_footer()
 
 
