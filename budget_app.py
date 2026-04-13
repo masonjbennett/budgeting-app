@@ -1273,7 +1273,7 @@ def page_dashboard():
             textposition="outside",
             textfont=dict(family="Inter", size=13),
         ))
-        fig.update_layout(**default_layout(), height=350, showlegend=False, yaxis_title="")
+        fig.update_layout(**default_layout(), height=450, showlegend=False, yaxis_title="")
         st.plotly_chart(fig, use_container_width=True)
 
     with c2:
@@ -1284,25 +1284,22 @@ def page_dashboard():
             colors = [GREEN if cat in data["budget"]["savings"] else
                       (BLUE if cat in data["budget"]["needs"] else YELLOW)
                       for cat in cats]
-            # Pull out small slices so they're visible
             total = sum(vals)
             pull_vals = [0.08 if (v / total) < 0.06 else 0 for v in vals] if total > 0 else [0]*len(vals)
-            # Only show percentage text on slices > 5%
-            text_labels = [f"{v/total*100:.0f}%" if total > 0 and v/total >= 0.05 else "" for v in vals]
             fig = go.Figure(data=[go.Pie(
                 labels=cats, values=vals, hole=0.45,
                 marker=dict(colors=colors, line=dict(color="#FFFFFF", width=2)),
-                text=text_labels, textinfo="text",
+                textinfo="percent",
                 textposition="inside",
                 hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
-                textfont=dict(family="Inter", size=13),
+                textfont=dict(family="Inter", size=12),
                 pull=pull_vals,
             )])
             fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
                               showarrow=False, font=dict(size=18, family="Inter", color=TEXT), x=0.5, y=0.5)
             pie_layout = default_layout()
             pie_layout["margin"] = dict(l=10, r=10, t=10, b=10)
-            fig.update_layout(**pie_layout, height=500, showlegend=True)
+            fig.update_layout(**pie_layout, height=450, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.markdown(f'''<div class="card" style="text-align:center; padding:3rem;">
