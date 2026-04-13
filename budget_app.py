@@ -1229,6 +1229,9 @@ def page_income():
             min_value=0, step=25, format="%d",
             help="2026 individual limit: $4,400/year. Only available with HDHP.",
         )
+        hsa_annual_check = data["income"]["hsa"] * 12
+        if hsa_annual_check > 4400:
+            st.warning(f"Your HSA contribution (${hsa_annual_check:,}/yr) exceeds the 2026 individual limit of $4,400.")
         data["income"]["student_loan_interest"] = st.number_input(
             "Student Loan Interest ($/year)", value=data["income"].get("student_loan_interest", 0),
             min_value=0, max_value=2500, step=100, format="%d",
@@ -1723,12 +1726,17 @@ def page_net_worth():
             data["assets"][name] = st.number_input(
                 name, value=data["assets"][name], min_value=0, step=100,
                 format="%d", key=f"asset_{name}")
-        with st.expander("Add Asset"):
+        with st.expander("Add / Remove Asset"):
             new_name = st.text_input("Asset Name", key="new_asset_name")
             new_val = st.number_input("Value ($)", value=0, min_value=0, step=100, key="new_asset_val")
             if st.button("Add Asset") and new_name:
                 data["assets"][new_name] = new_val
                 st.rerun()
+            if len(data["assets"]) > 1:
+                remove_asset = st.selectbox("Remove Asset", list(data["assets"].keys()), key="rm_asset")
+                if st.button("Remove", key="rm_asset_btn"):
+                    del data["assets"][remove_asset]
+                    st.rerun()
 
     with c2:
         st.markdown("### Liabilities")
@@ -1736,12 +1744,17 @@ def page_net_worth():
             data["liabilities"][name] = st.number_input(
                 name, value=data["liabilities"][name], min_value=0, step=100,
                 format="%d", key=f"liability_{name}")
-        with st.expander("Add Liability"):
+        with st.expander("Add / Remove Liability"):
             new_name = st.text_input("Liability Name", key="new_liab_name")
             new_val = st.number_input("Balance ($)", value=0, min_value=0, step=100, key="new_liab_val")
             if st.button("Add Liability") and new_name:
                 data["liabilities"][new_name] = new_val
                 st.rerun()
+            if len(data["liabilities"]) > 1:
+                remove_liab = st.selectbox("Remove Liability", list(data["liabilities"].keys()), key="rm_liab")
+                if st.button("Remove", key="rm_liab_btn"):
+                    del data["liabilities"][remove_liab]
+                    st.rerun()
 
     total_assets = sum(data["assets"].values())
     total_liabilities = sum(data["liabilities"].values())
@@ -2149,7 +2162,7 @@ def page_investments():
     match_pct = inv["employer_match_pct"]
     match_limit = inv["employer_match_limit"]
 
-    your_annual = salary * your_contrib_pct / 100
+    your_annual = min(salary * your_contrib_pct / 100, 24_500)  # capped at IRS limit
     matchable = salary * match_limit / 100
     employer_annual = min(your_annual, matchable) * match_pct / 100
     employer_monthly = employer_annual / 12
@@ -2315,7 +2328,8 @@ def page_fire():
         yrs = 0
         for y in range(1, 101):
             p = p * (1 + real_return / 100) + ann_save
-            if p >= fi_num:
+            fi_target = fi_num * (1 + fire_inflation / 100) ** y
+            if p >= fi_target:
                 yrs = y
                 break
         years_list.append(yrs if yrs > 0 else 100)
@@ -2662,8 +2676,15 @@ def page_tax():
     salt_capped = min(data["itemized"]["salt"], effective_salt_cap)
     medical_threshold = max(0, th_local["agi"]) * 0.075
     medical_deductible = max(0, data["itemized"]["medical"] - medical_threshold) if th_local["agi"] > 0 else 0
-    total_itemized = salt_capped + data["itemized"]["mortgage_interest"] + data["itemized"]["charitable"] + medical_deductible
+    # OBBBA 2026: charitable deductions subject to 0.5% AGI floor for itemizers
+    charitable_floor = max(0, th_local["agi"]) * 0.005
+    charitable_deductible = max(0, data["itemized"]["charitable"] - charitable_floor)
+    total_itemized = salt_capped + data["itemized"]["mortgage_interest"] + charitable_deductible + medical_deductible
     standard = th_local["std_ded"]
+
+    # OBBBA 2026: non-itemizer charitable deduction (above-the-line)
+    non_itemizer_charitable_limit = 2000 if th_local["filing"] == "Married Filing Jointly" else 1000
+    non_itemizer_charitable = min(data["itemized"]["charitable"], non_itemizer_charitable_limit)
 
     better = "Standard" if standard >= total_itemized else "Itemized"
     diff = abs(standard - total_itemized)
@@ -2671,17 +2692,19 @@ def page_tax():
     c1, c2 = st.columns(2)
     with c1:
         border = f"border-left:3px solid {GREEN}" if better == "Standard" else ""
+        non_itemizer_note = f"<br><span style='color:{BLUE};'>+ {fmt(non_itemizer_charitable)} non-itemizer charitable deduction (above-the-line)</span>" if non_itemizer_charitable > 0 and better == "Standard" else ""
         st.markdown(f'''<div class="card" style="{border}">
             <p style="font-weight:600; margin:0;">Standard Deduction</p>
             <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(standard)}</p>
-            {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option</p>" if better == "Standard" else ""}
+            {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option" + non_itemizer_note + "</p>" if better == "Standard" else ""}
         </div>''', unsafe_allow_html=True)
     with c2:
         border = f"border-left:3px solid {GREEN}" if better == "Itemized" else ""
+        charity_note = f" (after 0.5% AGI floor)" if charitable_floor > 0 and charitable_deductible < data["itemized"]["charitable"] else ""
         st.markdown(f'''<div class="card" style="{border}">
             <p style="font-weight:600; margin:0;">Itemized Deductions</p>
             <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(total_itemized)}</p>
-            <p style="color:{TEXT_DIM}; font-size:0.8rem; margin:0;">SALT (capped): {fmt(salt_capped)} · Mortgage: {fmt(data["itemized"]["mortgage_interest"])} · Charity: {fmt(data["itemized"]["charitable"])} · Medical: {fmt(medical_deductible)}</p>
+            <p style="color:{TEXT_DIM}; font-size:0.8rem; margin:0;">SALT: {fmt(salt_capped)} · Mortgage: {fmt(data["itemized"]["mortgage_interest"])} · Charity: {fmt(charitable_deductible)}{charity_note} · Medical: {fmt(medical_deductible)}</p>
             {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option</p>" if better == "Itemized" else ""}
         </div>''', unsafe_allow_html=True)
 
