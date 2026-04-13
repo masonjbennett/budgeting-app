@@ -242,7 +242,7 @@ STATE_TAX_DATA = {
     "Florida": {"brackets": [], "deduction": 0},
     "Georgia": {"brackets": [(float("inf"), 0.0519)], "deduction": 12000},
     "Hawaii": {"brackets": [(2400, 0.014), (4800, 0.032), (9600, 0.055), (14400, 0.064), (19200, 0.068), (24000, 0.072), (36000, 0.076), (48000, 0.079), (150000, 0.0825), (175000, 0.09), (200000, 0.10), (float("inf"), 0.11)], "deduction": 2200},
-    "Idaho": {"brackets": [(float("inf"), 0.058)], "deduction": 14700},
+    "Idaho": {"brackets": [(float("inf"), 0.053)], "deduction": 14700},
     "Illinois": {"brackets": [(float("inf"), 0.0495)], "deduction": 0},
     "Indiana": {"brackets": [(float("inf"), 0.0295)], "deduction": 0},
     "Iowa": {"brackets": [(float("inf"), 0.0295)], "deduction": 2210},
@@ -302,7 +302,10 @@ FICA_SS_RATE = 0.062
 FICA_SS_CAP = 184_500  # 2026 Social Security wage base (SSA official)
 FICA_MEDICARE_RATE = 0.0145
 FICA_MEDICARE_SURTAX = 0.009
-FICA_MEDICARE_SURTAX_THRESHOLD = 200_000
+FICA_MEDICARE_SURTAX_THRESHOLDS = {
+    "Single": 200_000, "Head of Household": 200_000,
+    "Married Filing Jointly": 250_000, "Married Filing Separately": 125_000,
+}
 SALT_CAP_BASE = 40_400       # 2026 OBBBA base cap
 SALT_CAP_FLOOR = 10_000      # Cap can never go below this
 SALT_PHASEOUT_THRESHOLD = {   # MAGI where phase-out begins
@@ -400,13 +403,18 @@ def calc_student_loan_deduction(interest_paid, magi, filing="Single"):
     return min(interest_paid, max_ded) * (1 - reduction)
 
 
-def calc_federal_tax(gross, deductions_401k=0, other_pretax=0, filing="Single", student_loan_interest=0):
+def calc_federal_tax(gross, deductions_401k=0, other_pretax=0, filing="Single",
+                     student_loan_interest=0, charitable_cash=0):
     brackets = FEDERAL_BRACKETS_2026.get(filing, FEDERAL_BRACKETS_2026["Single"])
     standard = STANDARD_DEDUCTION_2026.get(filing, 15_700)
     agi = gross - deductions_401k - other_pretax
-    # Student loan interest is above-the-line (reduces AGI)
+    # Above-the-line deductions (reduce AGI)
     sl_deduction = calc_student_loan_deduction(student_loan_interest, agi, filing)
     agi -= sl_deduction
+    # OBBBA 2026: non-itemizer charitable deduction (above-the-line, standard deduction filers)
+    non_itemizer_limit = 2000 if filing == "Married Filing Jointly" else 1000
+    charitable_atl = min(charitable_cash, non_itemizer_limit)
+    agi -= charitable_atl
     taxable = max(0, agi - standard)
     tax = calc_bracket_tax(taxable, brackets)
     return tax, agi, taxable, standard
@@ -439,11 +447,12 @@ def calc_state_tax(gross, state, deductions_401k=0, other_pretax=0, filing="Sing
     return calc_bracket_tax(taxable, brackets)
 
 
-def calc_fica(gross):
+def calc_fica(gross, filing="Single"):
     ss = min(gross, FICA_SS_CAP) * FICA_SS_RATE
     medicare = gross * FICA_MEDICARE_RATE
-    if gross > FICA_MEDICARE_SURTAX_THRESHOLD:
-        medicare += (gross - FICA_MEDICARE_SURTAX_THRESHOLD) * FICA_MEDICARE_SURTAX
+    surtax_threshold = FICA_MEDICARE_SURTAX_THRESHOLDS.get(filing, 200_000)
+    if gross > surtax_threshold:
+        medicare += (gross - surtax_threshold) * FICA_MEDICARE_SURTAX
     return ss + medicare
 
 
@@ -835,9 +844,13 @@ def compute_take_home(d=None):
     sl_interest = d.get("student_loan_interest", 0)
     pretax = contrib_401k_annual + health_annual + hsa_annual
 
-    fed_tax, agi, taxable, std_ded = calc_federal_tax(annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing, sl_interest)
+    try:
+        charitable = data.get("itemized", {}).get("charitable", 0)
+    except (NameError, AttributeError):
+        charitable = 0
+    fed_tax, agi, taxable, std_ded = calc_federal_tax(annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing, sl_interest, charitable)
     state_tax = calc_state_tax(annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual, filing)
-    fica = calc_fica(annual_gross)
+    fica = calc_fica(annual_gross, filing)
 
     total_tax = fed_tax + state_tax + fica
     annual_take_home = annual_gross - pretax - total_tax
@@ -2244,7 +2257,8 @@ def page_fire():
                                           step=0.5, format="%.1f", key="fire_inflation")
 
     # Healthcare costs for early retirees (pre-65, ACA unsubsidized averages)
-    healthcare_defaults = {(18,29): 4800, (30,39): 5400, (40,49): 7200, (50,59): 10800, (60,64): 14400, (65,80): 2400}
+    # 2026 ACA unsubsidized estimates (Silver plan, post-enhanced-subsidy expiration)
+    healthcare_defaults = {(18,29): 6000, (30,39): 7200, (40,49): 9600, (50,59): 13200, (60,64): 18000, (65,80): 3000}
     default_hc = next((v for (lo, hi), v in healthcare_defaults.items() if lo <= fire_age <= hi), 7200)
     fire_healthcare = st.number_input("Annual Healthcare Cost ($)", value=default_hc,
         min_value=0, step=500, format="%d", key="fire_healthcare",
