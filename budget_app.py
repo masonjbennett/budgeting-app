@@ -250,7 +250,7 @@ div[data-testid="stMetricLabel"] p {
 /* ── Inputs ── */
 div[data-testid="stNumberInput"] input,
 div[data-testid="stTextInput"] input {
-    font-family: 'JetBrains Mono', monospace; border-radius: 8px;
+    font-family: 'Inter', -apple-system, sans-serif; border-radius: 8px;
     transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 input:focus, div[data-baseweb="input"]:focus-within {
