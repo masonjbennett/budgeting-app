@@ -161,7 +161,7 @@ TEXT_DIM = "#6C7A96"
 
 CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 /* ── Base ── */
 :root {
@@ -177,7 +177,7 @@ html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
 /* ── Typography ── */
 h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; letter-spacing: -0.02em; color: var(--primary); }
 h2, h3 { font-family: 'Space Grotesk', sans-serif; font-weight: 600; color: var(--primary); }
-.mono { font-family: 'JetBrains Mono', monospace; }
+.mono { font-family: 'Inter', monospace; }
 
 /* ── Cards ── */
 .card {
@@ -197,7 +197,7 @@ h2, h3 { font-family: 'Space Grotesk', sans-serif; font-weight: 600; color: var(
 /* ── Badges ── */
 .badge {
     display:inline-block; padding:0.2rem 0.6rem; border-radius:1rem;
-    font-size:0.8rem; font-weight:600; font-family:'JetBrains Mono',monospace;
+    font-size:0.8rem; font-weight:600; font-family:'Inter',monospace;
 }
 
 /* ── Sidebar ── */
@@ -238,10 +238,10 @@ div[data-testid="stMetric"]:hover {
     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 div[data-testid="stMetricValue"] {
-    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-family: 'Inter', monospace; font-weight: 700;
     font-size: 1.25rem; color: var(--primary);
 }
-div[data-testid="stMetricDelta"] { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
+div[data-testid="stMetricDelta"] { font-family: 'Inter', monospace; font-size: 0.78rem; }
 div[data-testid="stMetricLabel"] p {
     text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem;
     color: var(--text-dim); font-weight: 500;
@@ -1271,7 +1271,7 @@ def page_dashboard():
             marker_color=[GREEN, RED, BLUE if net_savings >= 0 else RED],
             text=[fmt(monthly_income), fmt(total_spent), fmt(net_savings)],
             textposition="outside",
-            textfont=dict(family="JetBrains Mono", size=13),
+            textfont=dict(family="Inter", size=13),
         ))
         fig.update_layout(**default_layout(), height=350, showlegend=False, yaxis_title="")
         st.plotly_chart(fig, use_container_width=True)
@@ -1293,11 +1293,11 @@ def page_dashboard():
                 textinfo="percent",
                 textposition="inside",
                 hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
-                textfont=dict(family="JetBrains Mono", size=11),
+                textfont=dict(family="Inter", size=11),
                 pull=pull_vals,
             )])
             fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
-                              showarrow=False, font=dict(size=16, family="JetBrains Mono", color=TEXT), x=0.5, y=0.5)
+                              showarrow=False, font=dict(size=16, family="Inter", color=TEXT), x=0.5, y=0.5)
             layout = default_layout()
             layout["margin"] = dict(l=20, r=20, t=20, b=20)
             fig.update_layout(**layout, height=400, showlegend=True)
@@ -1458,7 +1458,7 @@ def page_income():
               fmt(-th_local["contrib_401k"]), fmt(-th_local["health"]), fmt(-th_local["hsa"]),
               fmt(-th_local["fed_tax"]), fmt(-th_local["state_tax"]),
               fmt(-th_local["fica"]), fmt(th_local["annual_take_home"])],
-        textfont=dict(family="JetBrains Mono", size=11),
+        textfont=dict(family="Inter", size=11),
     ))
     fig.update_layout(**default_layout(), height=400, title="Annual Pay Breakdown")
     st.plotly_chart(fig, use_container_width=True)
@@ -1640,14 +1640,14 @@ def page_budget():
         name="Your Budget", x=["Needs", "Wants", "Savings"], y=actual_pcts,
         marker_color=[BLUE, YELLOW, GREEN],
         text=[f"{p:.0f}%" for p in actual_pcts], textposition="inside",
-        textfont=dict(family="JetBrains Mono", size=14, color="white"),
+        textfont=dict(family="Inter", size=14, color="white"),
     ))
     fig.add_trace(go.Scatter(
         name="50/30/20 Guideline", x=["Needs", "Wants", "Savings"],
         y=[50, 30, 20], mode="markers+text",
         marker=dict(color=TEXT, size=12, symbol="diamond"),
         text=["50%", "30%", "20%"], textposition="top center",
-        textfont=dict(family="JetBrains Mono", size=12, color=TEXT_DIM),
+        textfont=dict(family="Inter", size=12, color=TEXT_DIM),
     ))
     fig.update_layout(**default_layout(), height=350, barmode="group",
                      yaxis_title="% of Budget",
@@ -1837,12 +1837,12 @@ def page_expenses():
                 textinfo="percent",
                 textposition="inside",
                 hovertemplate="<b>%{label}</b><br>%{value:$,.2f}<br>%{percent}<extra></extra>",
-                textfont=dict(family="JetBrains Mono", size=11),
+                textfont=dict(family="Inter", size=11),
                 marker=dict(colors=pie_colors, line=dict(color="#FFFFFF", width=2)),
                 pull=pie_pull,
             )])
             fig.add_annotation(text=f"<b>{fmt(total_spent)}</b><br><span style='font-size:11px;color:{TEXT_DIM}'>total</span>",
-                              showarrow=False, font=dict(size=16, family="JetBrains Mono", color=TEXT), x=0.5, y=0.5)
+                              showarrow=False, font=dict(size=16, family="Inter", color=TEXT), x=0.5, y=0.5)
             layout2 = default_layout()
             layout2["margin"] = dict(l=20, r=20, t=20, b=20)
             fig.update_layout(**layout2, height=400, showlegend=True)
@@ -2529,7 +2529,7 @@ def page_fire():
     bar_colors = [GREEN if y <= 15 else (YELLOW if y <= 30 else (BLUE if y <= 50 else RED)) for y in years_list]
     fig.add_trace(go.Bar(x=[f"{r}%" for r in rates], y=years_list, marker_color=bar_colors,
                         text=[f"{y}yr" for y in years_list], textposition="outside",
-                        textfont=dict(family="JetBrains Mono", size=10)))
+                        textfont=dict(family="Inter", size=10)))
     # Mark current savings rate
     fig.update_layout(**default_layout(), height=350, xaxis_title="Savings Rate",
                      yaxis_title="Years to FIRE", xaxis_tickangle=-45)
@@ -2922,7 +2922,7 @@ def page_tax():
         marker_color=[GREEN if r <= 12 else (BLUE if r <= 24 else (YELLOW if r <= 32 else RED))
                       for r in df_brackets["rate_num"]],
         text=df_brackets["Rate"], textposition="inside",
-        textfont=dict(family="JetBrains Mono", size=12, color="white"),
+        textfont=dict(family="Inter", size=12, color="white"),
     ))
     fig.update_layout(**default_layout(), height=300, yaxis_title="Tax Rate (%)",
                      xaxis_tickangle=-45, showlegend=False)
