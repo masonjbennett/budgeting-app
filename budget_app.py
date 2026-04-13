@@ -2361,81 +2361,181 @@ def page_fire():
     # Monte Carlo simulation
     st.divider()
     st.markdown("### Monte Carlo Retirement Simulation")
-    st.caption("Runs 1,000 randomized market scenarios to show your probability of success — more realistic than a flat return assumption.")
+    st.caption("Runs randomized market scenarios with correlated stock/bond returns to test your plan's resilience across accumulation and retirement phases.")
 
-    mc_sims = 1000
-    mc_years = max(1, 50 - (fire_age - 24)) if fire_age < 74 else 30  # simulate through ~age 74-80
-    mc_mean = fire_return / 100
-    mc_std = 0.18 if fire_return >= 7 else 0.11  # stocks ~18% vol, balanced ~11%
-    mc_withdrawal = total_fire_expenses
-
-    np.random.seed(42)
-    successes = 0
-    ending_values = []
-    paths_to_plot = []
-
-    for i in range(mc_sims):
-        portfolio_val = float(fire_portfolio)
-        annual_returns = np.random.normal(mc_mean, mc_std, mc_years)
-        path = [portfolio_val]
-        failed = False
-        for yr in range(mc_years):
-            portfolio_val = portfolio_val * (1 + annual_returns[yr])
-            if yr * 12 >= years_to_fire * 12 if years_to_fire > 0 else yr >= 0:
-                # Only withdraw after FIRE date; before that, add savings
-                if years_to_fire > 0 and yr < years_to_fire:
-                    portfolio_val += annual_savings
-                else:
-                    portfolio_val -= mc_withdrawal * (1 + fire_inflation / 100) ** yr
-            else:
-                portfolio_val += annual_savings
-            if portfolio_val <= 0:
-                portfolio_val = 0
-                failed = True
-            path.append(portfolio_val)
-        if not failed and portfolio_val > 0:
-            successes += 1
-        ending_values.append(portfolio_val)
-        if i < 100:  # plot first 100 paths
-            paths_to_plot.append(path)
-
-    success_rate = successes / mc_sims * 100
-
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
-        sr_color = GREEN if success_rate >= 90 else (YELLOW if success_rate >= 75 else RED)
-        sr_status = "Strong" if success_rate >= 90 else ("Moderate" if success_rate >= 75 else "At Risk")
-        st.markdown(metric_card_html("Success Rate", f"{success_rate:.0f}%", sr_status, sr_color,
-            f"Portfolio survives in {successes:,} of {mc_sims:,} simulated scenarios."), unsafe_allow_html=True)
+        mc_stock_pct = st.slider("Stock Allocation", 0, 100, 80, 5, format="%d%%", key="mc_stocks")
     with c2:
-        median_end = np.median(ending_values)
-        st.metric("Median Ending Balance", fmt(median_end))
+        mc_retire_age = st.number_input("Retirement Age", 25, 80,
+            value=min(80, fire_age + years_to_fire) if years_to_fire > 0 else 65,
+            key="mc_retire_age")
     with c3:
-        p10 = np.percentile(ending_values, 10)
-        st.metric("Worst 10% Scenario", fmt(max(0, p10)),
-                  help="Your portfolio balance at the 10th percentile — 90% of outcomes are better than this")
+        mc_end_age = st.number_input("Plan Through Age", 70, 100, 95, key="mc_end_age")
+    with c4:
+        mc_n_sims = st.selectbox("Simulations", [500, 1000, 2000, 5000], index=1, key="mc_nsims")
 
-    # Plot paths
-    fig = go.Figure()
-    x_years = list(range(mc_years + 1))
-    for path in paths_to_plot:
-        color = "rgba(46,204,113,0.08)" if path[-1] > 0 else "rgba(231,76,60,0.15)"
-        fig.add_trace(go.Scatter(x=x_years, y=path, mode="lines",
-                                line=dict(width=0.5, color=color), showlegend=False))
-    # Median path
-    median_path = np.median(paths_to_plot, axis=0)
-    fig.add_trace(go.Scatter(x=x_years, y=median_path.tolist(), name="Median",
-                            line=dict(color=BLUE, width=3)))
-    # Zero line
-    fig.add_hline(y=0, line_dash="dash", line_color=RED, line_width=1)
-    fig.update_layout(**default_layout(), height=400, xaxis_title="Years in Retirement",
-                     yaxis_title="Portfolio Value", yaxis_tickprefix="$", yaxis_tickformat=",",
-                     showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    if st.button("Run Simulation", type="primary", key="mc_run"):
+        with st.spinner("Running simulation..."):
+            stock_alloc = mc_stock_pct / 100
+            bond_alloc = 1.0 - stock_alloc
+            total_mc_years = mc_end_age - fire_age
+            yrs_to_retire = mc_retire_age - fire_age
+            inflation_mean = fire_inflation / 100
 
-    st.caption(f"Simulation assumes {mc_mean*100:.0f}% mean annual return with {mc_std*100:.0f}% standard deviation "
-               f"(typical for {'equity-heavy' if mc_std > 0.15 else 'balanced'} portfolios). "
-               f"Green paths survive; red paths deplete before the end of the simulation period.")
+            # Correlated returns via Cholesky decomposition
+            corr_matrix = np.array([[1.0, 0.05], [0.05, 1.0]])
+            cholesky = np.linalg.cholesky(corr_matrix)
+
+            paths = np.zeros((mc_n_sims, total_mc_years + 1))
+            paths[:, 0] = fire_portfolio
+            failure_ages = []
+
+            for sim in range(mc_n_sims):
+                portfolio = float(fire_portfolio)
+                failed = False
+                for year in range(1, total_mc_years + 1):
+                    if failed:
+                        paths[sim, year] = 0
+                        continue
+                    z = np.random.normal(size=2)
+                    correlated = cholesky @ z
+                    stock_ret = 0.10 + 0.18 * correlated[0]
+                    bond_ret = 0.05 + 0.06 * correlated[1]
+                    port_ret = stock_alloc * stock_ret + bond_alloc * bond_ret
+                    yr_inflation = max(0, np.random.normal(inflation_mean, 0.015))
+
+                    age = fire_age + year
+                    if age <= mc_retire_age:
+                        inf_factor = (1 + inflation_mean) ** year
+                        portfolio = portfolio * (1 + port_ret) + annual_savings * inf_factor
+                    else:
+                        yrs_retired = age - mc_retire_age
+                        inf_factor = (1 + yr_inflation) ** yrs_retired
+                        portfolio = portfolio * (1 + port_ret) - total_fire_expenses * inf_factor
+
+                    if portfolio <= 0:
+                        portfolio = 0
+                        failed = True
+                        failure_ages.append(age)
+                    paths[sim, year] = portfolio
+
+            success_count = int(np.sum(paths[:, -1] > 0))
+            success_rate = success_count / mc_n_sims * 100
+            ages = list(range(fire_age, mc_end_age + 1))
+            p5 = np.percentile(paths, 5, axis=0)
+            p10 = np.percentile(paths, 10, axis=0)
+            p25 = np.percentile(paths, 25, axis=0)
+            p50 = np.percentile(paths, 50, axis=0)
+            p75 = np.percentile(paths, 75, axis=0)
+            p90 = np.percentile(paths, 90, axis=0)
+            p95 = np.percentile(paths, 95, axis=0)
+            ending = paths[:, -1]
+
+        # Store in session so user can scroll without re-running
+        st.session_state.mc_results = {
+            "paths": paths, "ages": ages, "success_rate": success_rate,
+            "success_count": success_count, "n_sims": mc_n_sims,
+            "p5": p5, "p10": p10, "p25": p25, "p50": p50, "p75": p75, "p90": p90, "p95": p95,
+            "ending": ending, "failure_ages": failure_ages,
+            "retire_age": mc_retire_age, "stock_pct": mc_stock_pct,
+        }
+
+    # Display results if available
+    if "mc_results" in st.session_state:
+        r = st.session_state.mc_results
+        sr = r["success_rate"]
+
+        # Metrics
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            sr_color = GREEN if sr >= 85 else (YELLOW if sr >= 70 else RED)
+            sr_status = "Strong" if sr >= 85 else ("Moderate" if sr >= 70 else "At Risk")
+            st.markdown(metric_card_html("Success Rate", f"{sr:.0f}%", sr_status, sr_color,
+                f"Plan survives in {r['success_count']:,} of {r['n_sims']:,} scenarios."), unsafe_allow_html=True)
+        with c2:
+            st.metric("Median Ending Balance", fmt(float(np.median(r["ending"]))))
+        with c3:
+            st.metric("Worst 10% Scenario", fmt(max(0, float(np.percentile(r["ending"], 10)))),
+                      help="90% of outcomes are better than this")
+        with c4:
+            st.metric("Best 10% Scenario", fmt(float(np.percentile(r["ending"], 90))))
+
+        # Fan chart
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["p90"].tolist(), mode="lines", line=dict(width=0),
+                                showlegend=False, hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["p10"].tolist(), mode="lines", line=dict(width=0),
+                                fill="tonexty", fillcolor="rgba(46,134,171,0.12)",
+                                name="10th-90th percentile", hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["p75"].tolist(), mode="lines", line=dict(width=0),
+                                showlegend=False, hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["p25"].tolist(), mode="lines", line=dict(width=0),
+                                fill="tonexty", fillcolor="rgba(46,134,171,0.25)",
+                                name="25th-75th percentile", hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["p50"].tolist(), mode="lines",
+                                line=dict(color=BLUE, width=2.5), name="Median",
+                                hovertemplate="Age %{x}: %{y:$,.0f}<extra></extra>"))
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["p5"].tolist(), mode="lines",
+                                line=dict(color=RED, width=1.5, dash="dot"),
+                                name="5th percentile", hovertemplate="Age %{x}: %{y:$,.0f}<extra></extra>"))
+        fig.add_vline(x=r["retire_age"], line_dash="dash", line_color=YELLOW, line_width=1.5,
+                     annotation_text="Retirement", annotation_position="top")
+        fig.add_hline(y=0, line_dash="dash", line_color=RED, line_width=1, opacity=0.5)
+        fig.update_layout(**default_layout(), height=450, xaxis_title="Age",
+                         yaxis_title="Portfolio Value", yaxis_tickformat="$,.0f")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Histogram + sample paths
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("#### Ending Balance Distribution")
+            successes = r["ending"][r["ending"] > 0]
+            failures = r["ending"][r["ending"] <= 0]
+            fig2 = go.Figure()
+            if len(successes) > 0:
+                fig2.add_trace(go.Histogram(x=successes, nbinsx=40, marker_color=BLUE, opacity=0.7, name="Survived"))
+            if len(failures) > 0:
+                fig2.add_trace(go.Histogram(x=failures, nbinsx=5, marker_color=RED, opacity=0.7, name="Ran out"))
+            fig2.add_vline(x=float(np.median(r["ending"])), line_dash="dash", line_color=BLUE,
+                          annotation_text="Median", annotation_position="top")
+            fig2.update_layout(**default_layout(), height=350, xaxis_title="Ending Portfolio",
+                             xaxis_tickformat="$,.0f", yaxis_title="Simulations", barmode="overlay",
+                             showlegend=True)
+            st.plotly_chart(fig2, use_container_width=True)
+
+        with c2:
+            st.markdown("#### Sample Paths")
+            fig3 = go.Figure()
+            sample_idx = np.random.choice(r["paths"].shape[0], size=min(50, r["paths"].shape[0]), replace=False)
+            for i in sample_idx:
+                fig3.add_trace(go.Scatter(x=r["ages"], y=r["paths"][i].tolist(), mode="lines",
+                    line=dict(color=BLUE, width=0.5), opacity=0.15, showlegend=False, hoverinfo="skip"))
+            fig3.add_trace(go.Scatter(x=r["ages"], y=r["p50"].tolist(), mode="lines",
+                                    line=dict(color=BLUE, width=2.5), name="Median"))
+            fig3.add_hline(y=0, line_dash="dash", line_color=RED, line_width=1)
+            fig3.update_layout(**default_layout(), height=350, xaxis_title="Age",
+                             yaxis_title="Portfolio Value", yaxis_tickformat="$,.0f", showlegend=False)
+            st.plotly_chart(fig3, use_container_width=True)
+
+        # Interpretation card
+        st.markdown(f'''<div class="card" style="border-left:3px solid {sr_color};">
+            <p style="font-weight:600; margin:0;">What This Means</p>
+            <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.9rem;">
+                Out of {r["n_sims"]:,} simulated market scenarios, your portfolio survived in
+                <strong style="color:{sr_color};">{r["success_count"]:,}</strong> ({sr:.0f}%).
+                The median ending balance was <strong>{fmt(float(np.median(r["ending"])))}</strong>,
+                but in the worst 10% of scenarios it was {fmt(max(0, float(np.percentile(r["ending"], 10))))}.
+            </p>
+            <p style="color:{TEXT_DIM}; margin:0.5rem 0 0; font-size:0.82rem;">
+                Assumes {r["stock_pct"]}% stocks / {100-r["stock_pct"]}% bonds with correlated returns
+                (Cholesky decomposition). Stock returns: 10% mean, 18% stdev (S&P 500 historical).
+                Bond returns: 5% mean, 6% stdev. Inflation randomized at 3% mean.
+                Source: Trinity Study (1998), Shiller/Ibbotson historical data.
+            </p>
+        </div>''', unsafe_allow_html=True)
+    else:
+        st.info("Click 'Run Simulation' above to generate results.")
 
     # Social Security estimation
     st.divider()
