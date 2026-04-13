@@ -306,6 +306,28 @@ def calc_salt_cap(magi, filing="Single"):
     return max(SALT_CAP_FLOOR, mfs_cap - reduction)
 
 
+# Cost of living index by metro area (US avg = 100)
+# Source: AdvisorSmith / BEA Regional Price Parities, 2024-2025 data
+COL_INDEX = {
+    "National Average": 100.0,
+    "New York, NY": 187.2, "San Francisco, CA": 179.6, "Los Angeles, CA": 166.2,
+    "Washington, DC": 152.1, "Boston, MA": 148.4, "San Diego, CA": 146.5,
+    "Seattle, WA": 143.3, "Miami, FL": 133.8, "Denver, CO": 128.9,
+    "Chicago, IL": 117.3, "Portland, OR": 120.4, "Austin, TX": 103.4,
+    "Philadelphia, PA": 114.8, "Minneapolis, MN": 108.2, "Nashville, TN": 103.1,
+    "Atlanta, GA": 105.7, "Dallas, TX": 104.8, "Houston, TX": 96.5,
+    "Charlotte, NC": 98.4, "Phoenix, AZ": 100.7, "Las Vegas, NV": 102.3,
+    "Tampa, FL": 99.5, "Raleigh, NC": 102.9, "Columbus, OH": 93.8,
+    "Salt Lake City, UT": 104.2, "Detroit, MI": 89.4, "St. Louis, MO": 87.1,
+    "Kansas City, MO": 91.2, "Indianapolis, IN": 90.3, "Cincinnati, OH": 90.9,
+    "Pittsburgh, PA": 92.4, "Cleveland, OH": 88.7, "San Antonio, TX": 89.9,
+    "Jacksonville, FL": 96.1, "Oklahoma City, OK": 87.3, "Louisville, KY": 91.8,
+    "Memphis, TN": 84.2, "Birmingham, AL": 88.1, "Buffalo, NY": 93.5,
+    "Richmond, VA": 101.3, "Honolulu, HI": 192.9, "Anchorage, AK": 127.4,
+    "Fayetteville, AR": 84.5,
+}
+
+
 def calc_bracket_tax(taxable_income, brackets):
     tax = 0.0
     prev = 0
@@ -317,6 +339,32 @@ def calc_bracket_tax(taxable_income, brackets):
         taxable_income -= span
         prev = ceiling
     return tax
+
+
+def calc_social_security(annual_salary, claiming_age=67):
+    """Estimate monthly SS benefit using 2026 bend points. Simplified: assumes salary = career avg."""
+    # 2026 bend points (for workers turning 62 in 2026)
+    aime = min(annual_salary, FICA_SS_CAP) / 12  # Average Indexed Monthly Earnings
+    # PIA = 90% of first $1,286 + 32% of $1,286-$7,749 + 15% above $7,749
+    if aime <= 1286:
+        pia = aime * 0.90
+    elif aime <= 7749:
+        pia = 1286 * 0.90 + (aime - 1286) * 0.32
+    else:
+        pia = 1286 * 0.90 + (7749 - 1286) * 0.32 + (aime - 7749) * 0.15
+    # Adjust for claiming age (FRA = 67 for anyone born 1960+)
+    fra = 67
+    if claiming_age < fra:
+        months_early = (fra - claiming_age) * 12
+        if months_early <= 36:
+            reduction = months_early * (5/9/100)  # 5/9% per month for first 36
+        else:
+            reduction = 36 * (5/9/100) + (months_early - 36) * (5/12/100)
+        pia *= (1 - reduction)
+    elif claiming_age > fra:
+        months_late = min((claiming_age - fra) * 12, 36)  # max age 70
+        pia *= (1 + months_late * (8/12/100))  # 8% per year delayed
+    return max(0, pia)
 
 
 def calc_student_loan_deduction(interest_paid, magi, filing="Single"):
@@ -1271,6 +1319,13 @@ def page_budget():
     st.markdown("# Budget Builder")
     st.caption("Allocate your take-home pay using the 50/30/20 framework — or customize it to fit your life.")
     monthly_income = th["monthly_take_home"]
+
+    col_city = st.selectbox("Your Metro Area (for cost-of-living context)", list(COL_INDEX.keys()), index=0, key="col_city")
+    col_factor = COL_INDEX[col_city] / 100
+    if col_city != "National Average":
+        adj = "above" if col_factor > 1 else "below"
+        st.caption(f"{col_city} is {abs(COL_INDEX[col_city] - 100):.0f}% {adj} the national average cost of living. "
+                   f"The 50/30/20 guideline amounts below are adjusted for your location.")
     total_all = sum(sum(data["budget"][c].values()) for c in ["needs", "wants", "savings"])
     remaining = monthly_income - total_all
 
@@ -1953,26 +2008,34 @@ def page_investments():
             min_value=0, max_value=100, step=1, format="%d",
             help="Employer matches up to this % of your salary")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
-        show_real = st.toggle("Show inflation-adjusted (real) returns", value=False,
+        show_real = st.toggle("Inflation-adjusted returns", value=False,
                               help="Subtracts ~3% assumed inflation from nominal returns")
     with c2:
-        income_growth = st.number_input("Annual Income Growth (%)", value=3.0, min_value=0.0,
+        taxable_account = st.toggle("Taxable account (not 401k/IRA)", value=False,
+                                     help="Applies ~0.7% annual tax drag for capital gains and dividends in taxable brokerage accounts")
+    with c3:
+        income_growth = st.number_input("Income Growth (%/yr)", value=3.0, min_value=0.0,
                                          max_value=20.0, step=0.5, format="%.1f", key="income_growth",
-                                         help="Your contributions grow with your salary. 3-5% is typical; IB/PE early career can be 8-15%.")
+                                         help="Contributions grow with salary. 3-5% typical; IB/PE early career 8-15%.")
     inflation = 3.0 if show_real else 0.0
+    tax_drag = 0.7 if taxable_account else 0.0  # ~0.7% annual drag for index funds in taxable
 
     inv = data["investment"]
     years = inv["time_horizon"]
 
     scenarios = [
-        ("Conservative (5%)", 5.0 - inflation, BLUE),
-        ("Moderate (7%)", 7.0 - inflation, GREEN),
-        ("Aggressive (10%)", 10.0 - inflation, YELLOW),
+        ("Conservative (5%)", 5.0 - inflation - tax_drag, BLUE),
+        ("Moderate (7%)", 7.0 - inflation - tax_drag, GREEN),
+        ("Aggressive (10%)", 10.0 - inflation - tax_drag, YELLOW),
     ]
 
-    st.markdown("### Scenario Comparison" + (" (Inflation-Adjusted)" if show_real else ""))
+    adjustments = []
+    if show_real: adjustments.append("Inflation-Adjusted")
+    if taxable_account: adjustments.append("After Tax Drag")
+    adj_label = f" ({', '.join(adjustments)})" if adjustments else ""
+    st.markdown(f"### Scenario Comparison{adj_label}")
     fig = go.Figure()
     x_vals = list(range(years + 1))
 
@@ -2014,7 +2077,7 @@ def page_investments():
     # Cost of waiting
     st.markdown("### Cost of Waiting")
     delays = [0, 1, 3, 5]
-    rate = max(inv["annual_return"] - inflation, 0)
+    rate = max(inv["annual_return"] - inflation - tax_drag, 0)
     fig = go.Figure()
     colors_cow = [GREEN, BLUE, YELLOW, RED]
     for delay, clr in zip(delays, colors_cow):
@@ -2133,9 +2196,17 @@ def page_fire():
         fire_inflation = st.number_input("Inflation (%)", value=3.0, min_value=0.0, max_value=10.0,
                                           step=0.5, format="%.1f", key="fire_inflation")
 
-    annual_savings = fire_income - fire_expenses
+    # Healthcare costs for early retirees (pre-65, ACA unsubsidized averages)
+    healthcare_defaults = {(18,29): 4800, (30,39): 5400, (40,49): 7200, (50,59): 10800, (60,64): 14400, (65,80): 2400}
+    default_hc = next((v for (lo, hi), v in healthcare_defaults.items() if lo <= fire_age <= hi), 7200)
+    fire_healthcare = st.number_input("Annual Healthcare Cost ($)", value=default_hc,
+        min_value=0, step=500, format="%d", key="fire_healthcare",
+        help="Pre-65 retirees need private insurance. Estimate based on your age. After 65, Medicare reduces this significantly.")
+
+    total_fire_expenses = fire_expenses + fire_healthcare
+    annual_savings = fire_income - fire_expenses  # healthcare only applies in retirement
     savings_rate = (annual_savings / fire_income * 100) if fire_income > 0 else 0
-    fire_number = (fire_expenses / (fire_withdrawal / 100)) if fire_withdrawal > 0 else 0
+    fire_number = (total_fire_expenses / (fire_withdrawal / 100)) if fire_withdrawal > 0 else 0
     real_return = fire_return - fire_inflation
 
     # Calculate years to FIRE
@@ -2165,8 +2236,9 @@ def page_fire():
         st.markdown(metric_card_html("Savings Rate", f"{savings_rate:.1f}%", sr_status, sr_color,
             "50%+ = FIRE in ~17 yrs. 25% = ~32 yrs. Higher is dramatically better."), unsafe_allow_html=True)
     with c2:
+        hc_note = f" (includes {fmt(fire_healthcare)}/yr healthcare)" if fire_healthcare > 0 else ""
         st.markdown(metric_card_html("FIRE Number", fmt(fire_number), f"At {fire_withdrawal:.1f}% SWR", BLUE,
-            f"Portfolio needed to withdraw {fmt(fire_expenses)}/yr safely."), unsafe_allow_html=True)
+            f"Portfolio needed to cover {fmt(total_fire_expenses)}/yr{hc_note}."), unsafe_allow_html=True)
     with c3:
         if years_to_fire > 0:
             fi_age = fire_age + years_to_fire
@@ -2251,6 +2323,122 @@ def page_fire():
             reduces your FIRE number <em>and</em> increases your savings rate — a double win.
         </p>
     </div>''', unsafe_allow_html=True)
+
+    # Monte Carlo simulation
+    st.divider()
+    st.markdown("### Monte Carlo Retirement Simulation")
+    st.caption("Runs 1,000 randomized market scenarios to show your probability of success — more realistic than a flat return assumption.")
+
+    mc_sims = 1000
+    mc_years = max(1, 50 - (fire_age - 24)) if fire_age < 74 else 30  # simulate through ~age 74-80
+    mc_mean = fire_return / 100
+    mc_std = 0.18 if fire_return >= 7 else 0.11  # stocks ~18% vol, balanced ~11%
+    mc_withdrawal = total_fire_expenses
+
+    np.random.seed(42)
+    successes = 0
+    ending_values = []
+    paths_to_plot = []
+
+    for i in range(mc_sims):
+        portfolio_val = float(fire_portfolio)
+        annual_returns = np.random.normal(mc_mean, mc_std, mc_years)
+        path = [portfolio_val]
+        failed = False
+        for yr in range(mc_years):
+            portfolio_val = portfolio_val * (1 + annual_returns[yr])
+            if yr * 12 >= years_to_fire * 12 if years_to_fire > 0 else yr >= 0:
+                # Only withdraw after FIRE date; before that, add savings
+                if years_to_fire > 0 and yr < years_to_fire:
+                    portfolio_val += annual_savings
+                else:
+                    portfolio_val -= mc_withdrawal * (1 + fire_inflation / 100) ** yr
+            else:
+                portfolio_val += annual_savings
+            if portfolio_val <= 0:
+                portfolio_val = 0
+                failed = True
+            path.append(portfolio_val)
+        if not failed and portfolio_val > 0:
+            successes += 1
+        ending_values.append(portfolio_val)
+        if i < 100:  # plot first 100 paths
+            paths_to_plot.append(path)
+
+    success_rate = successes / mc_sims * 100
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        sr_color = GREEN if success_rate >= 90 else (YELLOW if success_rate >= 75 else RED)
+        sr_status = "Strong" if success_rate >= 90 else ("Moderate" if success_rate >= 75 else "At Risk")
+        st.markdown(metric_card_html("Success Rate", f"{success_rate:.0f}%", sr_status, sr_color,
+            f"Portfolio survives in {successes:,} of {mc_sims:,} simulated scenarios."), unsafe_allow_html=True)
+    with c2:
+        median_end = np.median(ending_values)
+        st.metric("Median Ending Balance", fmt(median_end))
+    with c3:
+        p10 = np.percentile(ending_values, 10)
+        st.metric("Worst 10% Scenario", fmt(max(0, p10)),
+                  help="Your portfolio balance at the 10th percentile — 90% of outcomes are better than this")
+
+    # Plot paths
+    fig = go.Figure()
+    x_years = list(range(mc_years + 1))
+    for path in paths_to_plot:
+        color = "rgba(46,204,113,0.08)" if path[-1] > 0 else "rgba(231,76,60,0.15)"
+        fig.add_trace(go.Scatter(x=x_years, y=path, mode="lines",
+                                line=dict(width=0.5, color=color), showlegend=False))
+    # Median path
+    median_path = np.median(paths_to_plot, axis=0)
+    fig.add_trace(go.Scatter(x=x_years, y=median_path.tolist(), name="Median",
+                            line=dict(color=BLUE, width=3)))
+    # Zero line
+    fig.add_hline(y=0, line_dash="dash", line_color=RED, line_width=1)
+    fig.update_layout(**default_layout(), height=400, xaxis_title="Years in Retirement",
+                     yaxis_title="Portfolio Value", yaxis_tickprefix="$", yaxis_tickformat=",",
+                     showlegend=False)
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.caption(f"Simulation assumes {mc_mean*100:.0f}% mean annual return with {mc_std*100:.0f}% standard deviation "
+               f"(typical for {'equity-heavy' if mc_std > 0.15 else 'balanced'} portfolios). "
+               f"Green paths survive; red paths deplete before the end of the simulation period.")
+
+    # Social Security estimation
+    st.divider()
+    st.markdown("### Social Security Estimation")
+    st.caption("Simplified estimate based on your current salary and 2026 bend points. Actual benefits depend on your full 35-year earnings history.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        ss_salary = st.number_input("Salary for SS Estimate ($)", value=data["income"]["gross_salary"],
+                                     min_value=0, step=1000, format="%d", key="ss_salary",
+                                     help="Your current or expected average career salary")
+    with c2:
+        ss_claim_age = st.slider("Claiming Age", 62, 70, 67, key="ss_claim_age",
+                                  help="62 = earliest (reduced). 67 = full retirement age. 70 = maximum (8%/yr bonus).")
+
+    ss_monthly = calc_social_security(ss_salary, ss_claim_age)
+    ss_annual = ss_monthly * 12
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Est. Monthly SS Benefit", fmt(ss_monthly))
+    with c2:
+        st.metric("Est. Annual SS Income", fmt(ss_annual))
+    with c3:
+        if fire_withdrawal > 0:
+            ss_fire_reduction = ss_annual / (fire_withdrawal / 100)
+            st.metric("Reduces FIRE Number By", fmt(ss_fire_reduction),
+                      help="SS income means you need less from your portfolio")
+
+    ages = [62, 64, 67, 70]
+    ss_comparison = []
+    for age in ages:
+        monthly = calc_social_security(ss_salary, age)
+        label = "Early" if age < 67 else ("FRA" if age == 67 else "Delayed")
+        ss_comparison.append({"Claiming Age": age, "Type": label,
+                              "Monthly": fmt(monthly), "Annual": fmt(monthly * 12)})
+    st.dataframe(pd.DataFrame(ss_comparison), use_container_width=True, hide_index=True)
 
     render_footer()
 
@@ -2415,6 +2603,90 @@ def page_tax():
         s = c * (marginal + state_marginal)
         savings_data.append({"Contribution %": f"{pct}%", "Annual ($)": fmt(c), "Tax Savings": fmt(s)})
     st.dataframe(pd.DataFrame(savings_data), use_container_width=True, hide_index=True)
+
+    # Roth vs Traditional analysis
+    st.divider()
+    st.markdown("### Roth vs. Traditional 401(k) / IRA")
+    st.caption("Should you contribute pre-tax (Traditional) or post-tax (Roth)? The answer depends on your current vs. future tax bracket.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        roth_contribution = st.number_input("Annual Contribution ($)", value=int(min(contrib, 24500)),
+            min_value=0, max_value=24500, step=500, format="%d", key="roth_contrib")
+        roth_years = st.slider("Years Until Retirement", 1, 50, 30, key="roth_years")
+    with c2:
+        roth_return = st.number_input("Expected Return (%)", value=7.0, min_value=0.0, max_value=20.0,
+            step=0.5, format="%.1f", key="roth_return")
+        future_tax_rate = st.number_input("Expected Retirement Tax Rate (%)", value=15.0,
+            min_value=0.0, max_value=50.0, step=1.0, format="%.1f", key="future_rate",
+            help="Your expected marginal tax rate in retirement. Typically lower than working years.")
+
+    current_rate = marginal + state_marginal
+    future_rate_dec = future_tax_rate / 100
+    r = roth_return / 100
+
+    # Traditional: contribute pre-tax, grow, pay tax on withdrawal
+    trad_contribution = roth_contribution  # same dollar amount, but pre-tax
+    trad_future = trad_contribution * ((1 + r) ** roth_years - 1) / r * (1 + r) if r > 0 else trad_contribution * roth_years
+    trad_after_tax = trad_future * (1 - future_rate_dec)
+
+    # Roth: pay tax now, contribute less, grow tax-free
+    roth_actual = roth_contribution * (1 - current_rate)  # what you actually invest after tax
+    roth_future = roth_actual * ((1 + r) ** roth_years - 1) / r * (1 + r) if r > 0 else roth_actual * roth_years
+
+    better = "Traditional" if trad_after_tax > roth_future else "Roth"
+    diff = abs(trad_after_tax - roth_future)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        border = f"border-left:3px solid {GREEN}" if better == "Traditional" else ""
+        st.markdown(f'''<div class="card" style="{border}">
+            <p style="font-weight:600; margin:0;">Traditional (Pre-Tax)</p>
+            <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(trad_after_tax)}</p>
+            <p style="color:{TEXT_DIM}; font-size:0.82rem; margin:0;">
+                Contribute {fmt(trad_contribution)}/yr pre-tax &rarr; grows to {fmt(trad_future)} &rarr;
+                pay {future_tax_rate:.0f}% tax on withdrawal
+            </p>
+            {"<p style='color:" + GREEN + "; margin:0.5rem 0 0; font-size:0.85rem;'>Better by " + fmt(diff) + "</p>" if better == "Traditional" else ""}
+        </div>''', unsafe_allow_html=True)
+    with c2:
+        border = f"border-left:3px solid {GREEN}" if better == "Roth" else ""
+        st.markdown(f'''<div class="card" style="{border}">
+            <p style="font-weight:600; margin:0;">Roth (Post-Tax)</p>
+            <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(roth_future)}</p>
+            <p style="color:{TEXT_DIM}; font-size:0.82rem; margin:0;">
+                Pay {current_rate*100:.0f}% tax now &rarr; contribute {fmt(roth_actual)}/yr &rarr;
+                grows tax-free, no tax on withdrawal
+            </p>
+            {"<p style='color:" + GREEN + "; margin:0.5rem 0 0; font-size:0.85rem;'>Better by " + fmt(diff) + "</p>" if better == "Roth" else ""}
+        </div>''', unsafe_allow_html=True)
+
+    # Decision guidance
+    if current_rate > future_rate_dec:
+        st.markdown(f'''<div class="card" style="border-left:3px solid {BLUE};">
+            <p style="font-weight:600; margin:0;">Recommendation: Traditional</p>
+            <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.88rem;">
+                Your current marginal rate ({current_rate*100:.0f}%) is higher than your expected retirement rate ({future_tax_rate:.0f}%).
+                Deferring taxes now and paying less later saves you <strong class="mono">{fmt(diff)}</strong> over {roth_years} years.
+            </p>
+        </div>''', unsafe_allow_html=True)
+    elif current_rate < future_rate_dec:
+        st.markdown(f'''<div class="card" style="border-left:3px solid {BLUE};">
+            <p style="font-weight:600; margin:0;">Recommendation: Roth</p>
+            <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.88rem;">
+                Your current marginal rate ({current_rate*100:.0f}%) is lower than your expected retirement rate ({future_tax_rate:.0f}%).
+                Paying taxes now at the lower rate and withdrawing tax-free saves you <strong class="mono">{fmt(diff)}</strong>.
+                Early career is typically the best time for Roth contributions.
+            </p>
+        </div>''', unsafe_allow_html=True)
+    else:
+        st.markdown(f'''<div class="card" style="border-left:3px solid {BLUE};">
+            <p style="font-weight:600; margin:0;">Recommendation: Roth (slight edge)</p>
+            <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.88rem;">
+                Your rates are roughly equal. Roth has a slight edge due to tax diversification in retirement
+                and no Required Minimum Distributions (RMDs).
+            </p>
+        </div>''', unsafe_allow_html=True)
 
     render_footer()
 
