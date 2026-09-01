@@ -1,5 +1,20 @@
-streamlit>=1.45.0
-plotly>=5.18.0
-pandas>=2.0.0
-numpy>=1.24.0
-supabase>=2.0.0
+# Pinned deliberately, after the sibling portfolio-app broke on exactly this.
+# That app styled Streamlit through its internal DOM under `streamlit>=1.32.0`;
+# a routine rebuild picked up a release where the widgets moved from BaseWeb to
+# React Aria, 11 CSS rules silently stopped matching, and the benchmark
+# dropdown rendered #E2E8F0 on white. Nothing in the repo had changed. This app
+# styles Streamlit the same way, so it carries the same exposure.
+streamlit==1.62.0
+
+# plotly capped at the major this app was written against (it was last touched
+# Apr 2026, when 6.7.0 was current; 7.0.0 landed 2026-08-25). Usage here is
+# plain graph_objects — Figure/Scatter/Bar/Pie/Histogram/Waterfall — so the cap
+# costs nothing and stops a major arriving unannounced on the next rebuild.
+plotly>=5.18.0,<7.0.0
+
+pandas>=2.0.0,<4.0.0
+numpy>=1.24.0,<3.0.0
+
+# supabase is capped at its major rather than pinned exactly: it is a network
+# client, and its patches track a service that changes underneath it.
+supabase>=2.0.0,<3.0.0

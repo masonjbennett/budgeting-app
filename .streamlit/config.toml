@@ -1,4 +1,9 @@
 [theme]
+# base pins the half of the theme this file does NOT name. Without it,
+# Streamlit derives those defaults from the visitor's OS dark-mode setting,
+# which is how the sibling portfolio-app came to paint #FAFAFA text on its
+# white cards (1.04:1) for anyone browsing in dark mode.
+base = "light"
 primaryColor = "#2E86AB"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F8F9FC"
