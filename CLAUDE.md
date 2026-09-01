@@ -19,6 +19,7 @@ Personal finance web app with 11 pages: Dashboard, Income Setup, Budget Builder,
 py -m streamlit run budget_app.py     # Run locally
 py test_stress.py                      # 64 calculation tests — but see Critical Rules
 py test_cloud.py                       # 42 auth/cloud tests against the real code
+py test_calc.py                        # 29 calculation tests against the real code
 git push origin master                 # Auto-deploys to Streamlit Cloud
 ```
 
@@ -27,6 +28,7 @@ git push origin master                 # Auto-deploys to Streamlit Cloud
 budgeting-app/
   budget_app.py          # The entire app (single file)
   test_stress.py         # 64 stress tests for all calculations
+  test_calc.py           # 29 tests for the calculation engine — drives the SHIPPING code
   test_cloud.py          # 42 tests for auth + cloud sync — drives the SHIPPING code
   SUPABASE_SETUP.md      # standing up the project, the table, and its RLS policies
   requirements.txt       # pinned: streamlit==1.62.0, plotly/pandas/numpy/supabase capped
@@ -51,7 +53,7 @@ The file follows this order:
 
 ## Critical Rules
 - **Never add duplicate kwargs** when calling `fig.update_layout(**default_layout(), ...)`. The `default_layout()` already sets `legend`, `margin`, `hovermode`, `xaxis`, `yaxis`. To override, modify the dict before spreading: `layout = default_layout(); layout["margin"] = ...; fig.update_layout(**layout, ...)`
-- **Run both suites after every change** — `test_cloud.py` (42) and `test_stress.py` (64).
+- **Run all three suites after every change** — `test_calc.py` (29), `test_cloud.py` (42), `test_stress.py` (64).
 - **`test_stress.py` does NOT test this app.** It redefines all nine calculation
   functions inside itself; the only mention of `budget_app` in the file is the
   docstring. It has been green since April over a photocopy, and the copy has
@@ -81,6 +83,19 @@ The file follows this order:
 - **State tax supports filing status** via `_get_state_brackets_for_filing()`. 8 states have custom MFJ brackets (NY, NJ, CT, MD, MN, NM, OK, WI). All others auto-double.
 - **Medicare surtax thresholds differ by filing status** — $200K Single, $250K MFJ, $125K MFS. Stored in `FICA_MEDICARE_SURTAX_THRESHOLDS` dict.
 - **`simulate_payoff` returns 4 values** — months, interest, schedule, payoff_months. All callers must destructure all 4.
+- **The monthly payment budget is `extra + sum(mins)`, not `extra`.** A cleared
+  debt's minimum rolls onto the next target — that rolling IS the snowball, and
+  avalanche works the same way. The original engine started from `extra` alone and
+  let a freed minimum simply stop being spent: on the demo data it reported payoff
+  at 114 months and $7,532 of interest against a true 45 months and $3,445, and it
+  penalised snowball hardest, so the page's headline comparison showed an avalanche
+  advantage that did not exist.
+- **Attack order comes from `payoff_order()` and is fixed for the whole run.**
+  Re-deriving it from live balances lets the target change when another debt's own
+  large minimum drags it below the one being attacked. Testing `payoff_order` alone
+  does NOT cover this — a mutation that re-sorted inside the loop left it intact and
+  passed every other assertion. `test_calc.py` monkeypatches `payoff_order` and
+  requires the answer to move, which is what enforces that the engine reads it.
 - **`auto_save_debounced(data)`** is called before `render_footer()` on every page. Saves to Supabase every 10 seconds if logged in.
 
 ## Tax Data Sources

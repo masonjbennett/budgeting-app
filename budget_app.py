@@ -846,10 +846,25 @@ def project_investment(start, monthly, rate, years, contribution_growth=0):
     return values, contributions
 
 
+def payoff_order(debts, strategy):
+    """The order debts are attacked in, fixed for the whole simulation.
+
+    Snowball is defined by the balance you STARTED with, and that order is held
+    to the end. Re-deriving it from live balances every month lets the target
+    change when some other debt's own large minimum drags it below the one being
+    attacked — the method then walks away from a nearly-cleared debt, which is
+    the opposite of what a snowball is.
+    """
+    if strategy == "avalanche":
+        return [d["name"] for d in sorted(debts, key=lambda d: -float(d["rate"]))]
+    return [d["name"] for d in sorted(debts, key=lambda d: float(d["balance"]))]
+
+
 def simulate_payoff(debts, extra, strategy):
     balances = {d["name"]: float(d["balance"]) for d in debts}
     rates = {d["name"]: d["rate"] / 100 / 12 for d in debts}
     mins = {d["name"]: float(d["min_payment"]) for d in debts}
+    order_all = payoff_order(debts, strategy)
     total_interest = 0
     months = 0
     schedule = []
@@ -874,24 +889,32 @@ def simulate_payoff(debts, extra, strategy):
                 month_interest += interest
                 total_interest += interest
 
-        remaining_extra = extra
+        # The whole payment capacity is available every month — the user's extra
+        # PLUS every minimum, including the minimums of debts already cleared.
+        #
+        # This is the fix for the bug this function shipped with. It used to
+        # start from `extra` alone and skip a cleared debt's minimum entirely, so
+        # that money simply stopped being spent. Rolling a freed minimum onto the
+        # next target IS the snowball, and avalanche works the same way. On a
+        # card/car/student-loan profile the old behaviour reported payoff 23
+        # months late and interest 19% high, and it penalised snowball hardest,
+        # because momentum is the whole of snowball's case — so the page's
+        # headline comparison reported an avalanche advantage that wasn't there.
+        budget = extra + sum(mins.values())
+
         for name in balances:
             if balances[name] > 0:
-                payment = min(mins[name], balances[name])
+                payment = min(mins[name], balances[name], budget)
                 balances[name] -= payment
+                budget -= payment
 
-        if strategy == "avalanche":
-            order = sorted([n for n in balances if balances[n] > 0], key=lambda n: rates[n], reverse=True)
-        else:
-            order = sorted([n for n in balances if balances[n] > 0], key=lambda n: balances[n])
-
-        for name in order:
-            if remaining_extra <= 0:
+        for name in order_all:
+            if budget <= 0:
                 break
             if balances[name] > 0:
-                payment = min(remaining_extra, balances[name])
+                payment = min(budget, balances[name])
                 balances[name] -= payment
-                remaining_extra -= payment
+                budget -= payment
 
         # Check if any debt just got paid off
         for name in balances:
@@ -1012,7 +1035,7 @@ def _generate_demo_data():
         "needs": {
             "Rent": 1900, "Utilities": 130, "Groceries": 380,
             "Transportation": 127, "Insurance": 90,
-            "Min. Debt Payments": 0, "Phone": 75,
+            "Min. Debt Payments": 485, "Phone": 75,
         },
         "wants": {
             "Dining Out": 280, "Entertainment": 90,
@@ -1038,6 +1061,7 @@ def _generate_demo_data():
         {"id": "demo-10", "date": _d(max(today.day - 10, 0)), "amount": 35.50, "category": "Dining Out", "note": "Lunch meeting"},
         {"id": "demo-11", "date": _d(max(today.day - 11, 0)), "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
         {"id": "demo-12", "date": _d(max(today.day - 12, 0)), "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
+        {"id": "demo-21", "date": _d(max(today.day - 13, 0)), "amount": 485.00, "category": "Min. Debt Payments", "note": "Card + car + student loan minimums"},
         # Previous month expenses
         {"id": "demo-13", "date": prev_month_1st.isoformat(), "amount": 1900, "category": "Rent", "note": "Monthly rent"},
         {"id": "demo-14", "date": (prev_month_1st + timedelta(days=4)).isoformat(), "amount": 95.20, "category": "Groceries", "note": "Weekly groceries"},
@@ -1047,6 +1071,7 @@ def _generate_demo_data():
         {"id": "demo-18", "date": (prev_month_1st + timedelta(days=19)).isoformat(), "amount": 45.00, "category": "Gym", "note": "Monthly membership"},
         {"id": "demo-19", "date": (prev_month_1st + timedelta(days=21)).isoformat(), "amount": 210.00, "category": "Shopping", "note": "New jacket"},
         {"id": "demo-20", "date": (prev_month_1st + timedelta(days=27)).isoformat(), "amount": 75.00, "category": "Phone", "note": "Monthly bill"},
+        {"id": "demo-22", "date": (prev_month_1st + timedelta(days=13)).isoformat(), "amount": 485.00, "category": "Min. Debt Payments", "note": "Card + car + student loan minimums"},
     ],
     "recurring_templates": [
         {"name": "Rent", "amount": 1900, "category": "Rent", "day": 1},
@@ -1055,20 +1080,29 @@ def _generate_demo_data():
         {"name": "Phone Bill", "amount": 75, "category": "Phone", "day": 11},
     ],
     "net_worth_snapshots": [
-        {"date": _month_start(3), "assets": 17500, "liabilities": 0, "net_worth": 17500},
-        {"date": _month_start(2), "assets": 19200, "liabilities": 0, "net_worth": 19200},
-        {"date": _month_start(1), "assets": 21800, "liabilities": 0, "net_worth": 21800},
-        {"date": cur_month_1st.isoformat(), "assets": 23500, "liabilities": 0, "net_worth": 23500},
+        {"date": _month_start(3), "assets": 17500, "liabilities": 19900, "net_worth": -2400},
+        {"date": _month_start(2), "assets": 19200, "liabilities": 19300, "net_worth": -100},
+        {"date": _month_start(1), "assets": 21800, "liabilities": 18700, "net_worth": 3100},
+        {"date": cur_month_1st.isoformat(), "assets": 23500, "liabilities": 18100, "net_worth": 5400},
     ],
     "assets": {
         "Checking": 6200, "Savings": 9500, "401(k)": 4800,
         "Roth IRA": 2500, "Brokerage": 1800, "Property": 0,
     },
+    # Liabilities used to be all zero while the debt list carried $35,000, so demo
+    # net worth ignored the debt entirely and the trend chart was an assets-only line.
     "liabilities": {
-        "Student Loans": 0, "Car Loan": 0, "Credit Cards": 0,
+        "Student Loans": 11300, "Car Loan": 2600, "Credit Cards": 4200,
     },
+    # Rate order and balance order deliberately disagree: avalanche opens on the
+    # credit card (22.9%), snowball on the car loan (smallest balance). With ONE
+    # debt — which is what this shipped with — the two strategies are identical by
+    # definition, so the page's whole reason for existing rendered as two matching
+    # bars for anyone opening the live demo.
     "debts": [
-        {"name": "Example Student Loan", "balance": 35000, "rate": 5.5, "min_payment": 370},
+        {"name": "Credit Card", "balance": 4200, "rate": 22.9, "min_payment": 110},
+        {"name": "Car Loan", "balance": 2600, "rate": 5.9, "min_payment": 240},
+        {"name": "Student Loan", "balance": 11300, "rate": 6.8, "min_payment": 135},
     ],
     "savings_goals": [
         {"name": "Emergency Fund", "target": 15000, "current": 9500,
