@@ -17,7 +17,8 @@ Personal finance web app with 11 pages: Dashboard, Income Setup, Budget Builder,
 ## Key Commands
 ```bash
 py -m streamlit run budget_app.py     # Run locally
-py test_stress.py                      # Run 64 calculation tests (must all pass)
+py test_stress.py                      # 64 calculation tests — but see Critical Rules
+py test_cloud.py                       # 42 auth/cloud tests against the real code
 git push origin master                 # Auto-deploys to Streamlit Cloud
 ```
 
@@ -26,7 +27,9 @@ git push origin master                 # Auto-deploys to Streamlit Cloud
 budgeting-app/
   budget_app.py          # The entire app (single file)
   test_stress.py         # 64 stress tests for all calculations
-  requirements.txt       # streamlit, plotly, pandas, numpy, supabase
+  test_cloud.py          # 42 tests for auth + cloud sync — drives the SHIPPING code
+  SUPABASE_SETUP.md      # standing up the project, the table, and its RLS policies
+  requirements.txt       # pinned: streamlit==1.62.0, plotly/pandas/numpy/supabase capped
   README.md              # Feature list with IRS source citations
   .streamlit/
     config.toml          # Light theme config
@@ -48,7 +51,29 @@ The file follows this order:
 
 ## Critical Rules
 - **Never add duplicate kwargs** when calling `fig.update_layout(**default_layout(), ...)`. The `default_layout()` already sets `legend`, `margin`, `hovermode`, `xaxis`, `yaxis`. To override, modify the dict before spreading: `layout = default_layout(); layout["margin"] = ...; fig.update_layout(**layout, ...)`
-- **Run `py test_stress.py` after every change** — all 64 tests must pass
+- **Run both suites after every change** — `test_cloud.py` (42) and `test_stress.py` (64).
+- **`test_stress.py` does NOT test this app.** It redefines all nine calculation
+  functions inside itself; the only mention of `budget_app` in the file is the
+  docstring. It has been green since April over a photocopy, and the copy has
+  already drifted — its `calc_fica` has no `filing` argument and its
+  `project_investment` has no `contribution_growth`, so the two most recent
+  calculation changes have never once been tested. Treat 64/64 as decoration
+  until it is rewritten to import the real code. `test_cloud.py` shows the
+  pattern: exec the shipping source with streamlit and supabase stubbed.
+- **Cloud sync must never be load-bearing.** The Supabase project this app
+  originally shipped against was deleted while nobody was looking, and because
+  the client is built without a network call the app booted fine and told every
+  visitor their *password* was wrong. Three rules came out of that, all tested:
+  `_init_supabase()` returns `None` rather than raising, so a missing secret
+  degrades to local-only instead of blanking every page; `_is_unreachable()`
+  keeps "the service is down" apart from "those credentials were wrong"; and
+  `_db()` builds a per-session client, because the shared `@st.cache_resource`
+  one would carry whichever user's JWT was attached last — one person's data
+  returned to another.
+- **`cloud_save()` returns `(ok, message)`**, not a bool. Both callers destructure it.
+- **Database calls go through `_db()`, never `supabase` directly.** The bare client
+  holds the public anon key; `_db()` carries the signed-in user's JWT, which is what
+  makes the row-level security policies in `SUPABASE_SETUP.md` actually apply.
 - **Never commit `.streamlit/secrets.toml`** — it's in .gitignore
 - **`_generate_demo_data()` uses relative dates** — expenses are always current/previous month. Never hardcode dates.
 - **All tax data is official IRS 2026** from Rev. Proc. 2025-32 + OBBBA. Don't change tax numbers without a verified source.

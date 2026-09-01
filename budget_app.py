@@ -9,7 +9,7 @@ import math
 import time
 from datetime import datetime, date, timedelta
 from copy import deepcopy
-from supabase import create_client, Client
+from supabase import create_client
 
 # ──────────────────────────────────────────────
 # PAGE CONFIG & THEME
@@ -25,53 +25,172 @@ st.set_page_config(
 # ──────────────────────────────────────────────
 # SUPABASE CLIENT
 # ──────────────────────────────────────────────
+#
+# Two rules here, both learned the hard way, both fail silently when broken.
+#
+# 1. This must NEVER raise at import time. It used to read st.secrets directly at
+#    module scope, so a missing or mistyped secret took every page down at once —
+#    and with showErrorDetails=false in config.toml the visitor got a bare error
+#    screen with no cause. The app needs no database to work: budgeting, tax, FIRE
+#    and the JSON export are all local. Cloud sync is the only thing that should
+#    fail when the backend is unreachable.
+#
+# 2. The anon client below is @st.cache_resource, which means ONE object shared by
+#    every visitor of the deployed app. Calling postgrest.auth() on it would put
+#    one user's JWT on another user's request. Authenticated database work goes
+#    through _db(), which builds a client owned by a single session.
 
 @st.cache_resource
-def _init_supabase() -> Client:
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
+def _init_supabase():
+    """The anon client. Used only for sign-up / sign-in, which carry no user JWT.
 
-supabase: Client = _init_supabase()
+    Returns None rather than raising: a missing secret must degrade to local-only,
+    never take the app down. create_client makes no network call, so a client
+    coming back from here is not evidence that the backend is reachable.
+    """
+    try:
+        cfg = st.secrets["supabase"]
+        url, key = cfg["url"], cfg["key"]
+    except Exception:
+        return None
+    if not url or not key:
+        return None
+    try:
+        return create_client(url, key)
+    except Exception:
+        return None
+
+
+supabase = _init_supabase()
+
+
+def cloud_configured() -> bool:
+    """Whether the app has credentials at all. Says nothing about reachability."""
+    return supabase is not None
+
+
+def _is_unreachable(exc: Exception) -> bool:
+    """Tell 'the service is down' apart from 'those credentials were wrong'.
+
+    This distinction is the whole point of the rewrite. The project this app
+    shipped against was deleted, and because auth_sign_in caught every exception
+    and returned one message, every visitor was told their PASSWORD was wrong.
+    People retype it, reset it, and give up, while the real cause is that there is
+    no server. A wrong password and a dead host must never read the same.
+    """
+    name = type(exc).__name__.lower()
+    text = str(exc).lower()
+    signals = ("connect", "timeout", "resolve", "getaddrinfo", "network",
+               "unreachable", "temporarily", "ssl", "dns")
+    return any(s in name for s in signals) or any(s in text for s in signals)
+
+
+def _store_session(user, session):
+    """The single place that writes auth state, so the two tokens can't drift."""
+    st.session_state["user"] = {"id": user.id, "email": user.email}
+    st.session_state["access_token"] = session.access_token
+    st.session_state["refresh_token"] = getattr(session, "refresh_token", None)
+
+
+def _db():
+    """A client bound to THIS session's signed-in user, or None.
+
+    Deliberately not cached across sessions. postgrest.auth() mutates the client,
+    so a shared client would carry whichever token was attached last — under two
+    concurrent users that is one person's data returned to another. Building a
+    client is object construction with no network call, so a per-session one is
+    cheap; it lives in session_state and is rebuilt only when the token changes.
+    """
+    if supabase is None:
+        return None
+    token = st.session_state.get("access_token")
+    if not token:
+        return None
+    if st.session_state.get("_db_token") != token:
+        try:
+            cfg = st.secrets["supabase"]
+            client = create_client(cfg["url"], cfg["key"])
+            client.postgrest.auth(token)
+        except Exception:
+            return None
+        st.session_state["_db_client"] = client
+        st.session_state["_db_token"] = token
+    return st.session_state.get("_db_client")
+
+
+def _refresh_session() -> bool:
+    """Trade the refresh token for a new access token. False if it can't be done.
+
+    Access tokens expire after an hour by default, which is well inside a session
+    someone leaves open on a budgeting app. Without this, a save an hour in fails
+    with a 401 that looks exactly like a permissions problem.
+    """
+    refresh = st.session_state.get("refresh_token")
+    if supabase is None or not refresh:
+        return False
+    try:
+        res = supabase.auth.refresh_session(refresh)
+        if res and res.session:
+            _store_session(res.user, res.session)
+            return True
+    except Exception:
+        pass
+    return False
 
 
 # ──────────────────────────────────────────────
 # AUTHENTICATION
 # ──────────────────────────────────────────────
 
+SERVICE_DOWN = ("Can't reach the account service right now. Your data is safe in this "
+                "browser — use Download Backup to keep a copy.")
+
+
 def auth_sign_up(email: str, password: str) -> dict:
+    if supabase is None:
+        return {"success": False, "error": SERVICE_DOWN}
     try:
         response = supabase.auth.sign_up({"email": email, "password": password})
-        if response.user:
-            st.session_state["user"] = {"id": response.user.id, "email": response.user.email}
-            st.session_state["access_token"] = response.session.access_token
+        if response.user and response.session:
+            _store_session(response.user, response.session)
             return {"success": True}
+        if response.user:
+            # Supabase returns a user with no session when email confirmation is on.
+            return {"success": False, "error": "Check your email to confirm the account, then log in."}
         return {"success": False, "error": "Sign up failed — try a different email."}
     except Exception as e:
+        if _is_unreachable(e):
+            return {"success": False, "error": SERVICE_DOWN}
         msg = str(e)
-        if "already registered" in msg.lower():
+        if "already registered" in msg.lower() or "already been registered" in msg.lower():
             return {"success": False, "error": "An account with this email already exists."}
         return {"success": False, "error": msg}
 
 
 def auth_sign_in(email: str, password: str) -> dict:
+    if supabase is None:
+        return {"success": False, "error": SERVICE_DOWN}
     try:
         response = supabase.auth.sign_in_with_password({"email": email, "password": password})
-        if response.user:
-            st.session_state["user"] = {"id": response.user.id, "email": response.user.email}
-            st.session_state["access_token"] = response.session.access_token
+        if response.user and response.session:
+            _store_session(response.user, response.session)
             return {"success": True}
         return {"success": False, "error": "Invalid email or password."}
-    except Exception:
+    except Exception as e:
+        # Only claim the credentials were wrong when the server actually said so.
+        if _is_unreachable(e):
+            return {"success": False, "error": SERVICE_DOWN}
         return {"success": False, "error": "Invalid email or password."}
 
 
 def auth_sign_out():
-    try:
-        supabase.auth.sign_out()
-    except Exception:
-        pass
-    for key in ["user", "access_token"]:
+    if supabase is not None:
+        try:
+            supabase.auth.sign_out()
+        except Exception:
+            pass
+    for key in ["user", "access_token", "refresh_token", "_db_client", "_db_token",
+                "_last_cloud_save", "_cloud_error"]:
         st.session_state.pop(key, None)
 
 
@@ -87,39 +206,66 @@ def get_user_id():
 # CLOUD SAVE / LOAD
 # ──────────────────────────────────────────────
 
-def cloud_save(save_data: dict) -> bool:
+def _expired(exc: Exception) -> bool:
+    """Whether a PostgREST failure is an expired JWT rather than a real denial."""
+    text = str(exc).lower()
+    return "jwt" in text and ("expired" in text or "invalid" in text)
+
+
+def cloud_save(save_data: dict) -> tuple[bool, str]:
+    """Write this user's blob. Returns (ok, message) — the caller decides how loud to be.
+
+    Goes through _db(), so the request carries the user's own JWT and row-level
+    security applies. The previous version used the shared anon client, which meant
+    every write ran as the public key: with RLS on it would have failed for everyone,
+    and with RLS off any visitor could read or overwrite any other user's row.
+    """
     user_id = get_user_id()
     if not user_id:
-        return False
-    try:
-        json_str = json.dumps(save_data, default=str)
-        json_data = json.loads(json_str)
-        response = (
-            supabase.table("user_data")
-            .upsert({"user_id": user_id, "app_data": json_data}, on_conflict="user_id")
-            .execute()
-        )
-        return len(response.data) > 0
-    except Exception as e:
-        st.error(f"Save failed: {e}")
-        return False
+        return False, "Not signed in."
+    for attempt in (1, 2):
+        db = _db()
+        if db is None:
+            return False, SERVICE_DOWN
+        try:
+            payload = json.loads(json.dumps(save_data, default=str))
+            response = (
+                db.table("user_data")
+                .upsert({"user_id": user_id, "app_data": payload}, on_conflict="user_id")
+                .execute()
+            )
+            return (len(response.data) > 0), ""
+        except Exception as e:
+            if attempt == 1 and _expired(e) and _refresh_session():
+                continue  # new token, one retry
+            if _is_unreachable(e):
+                return False, SERVICE_DOWN
+            return False, f"Save failed: {e}"
+    return False, "Save failed."
 
 
 def cloud_load():
     user_id = get_user_id()
     if not user_id:
         return None
-    try:
-        response = (
-            supabase.table("user_data")
-            .select("app_data")
-            .eq("user_id", user_id)
-            .single()
-            .execute()
-        )
-        return response.data["app_data"] if response.data else None
-    except Exception:
-        return None
+    for attempt in (1, 2):
+        db = _db()
+        if db is None:
+            return None
+        try:
+            response = (
+                db.table("user_data")
+                .select("app_data")
+                .eq("user_id", user_id)
+                .maybe_single()
+                .execute()
+            )
+            return response.data["app_data"] if response and response.data else None
+        except Exception as e:
+            if attempt == 1 and _expired(e) and _refresh_session():
+                continue
+            return None
+    return None
 
 
 def _migrate_imported(imported):
@@ -138,13 +284,27 @@ def _migrate_imported(imported):
 
 
 def auto_save_debounced(save_data: dict, interval: float = 10.0):
+    """Background save. Runs on every page render, so it must stay quiet.
+
+    A failure here is recorded, not shouted: the old version let cloud_save call
+    st.error() directly, which put a red banner on the page for something the user
+    did not ask for and could not act on. The sidebar reads _cloud_error and shows
+    one line instead, so the state is visible without the app crying wolf.
+    """
     if not is_logged_in():
         return
     now = time.time()
     last = st.session_state.get("_last_cloud_save", 0)
-    if now - last >= interval:
-        if cloud_save(save_data):
-            st.session_state["_last_cloud_save"] = now
+    if now - last < interval:
+        return
+    ok, msg = cloud_save(save_data)
+    if ok:
+        st.session_state["_last_cloud_save"] = now
+        st.session_state.pop("_cloud_error", None)
+    else:
+        # Back off so an unreachable service isn't retried on every rerun.
+        st.session_state["_last_cloud_save"] = now
+        st.session_state["_cloud_error"] = msg
 
 
 # Color palette — light theme (matches portfolio app)
@@ -1057,17 +1217,25 @@ with st.sidebar:
     # Auth + cloud save
     if is_logged_in():
         user_email = st.session_state["user"]["email"]
+        sync_err = st.session_state.get("_cloud_error")
+        dot, dot_label = ("#E74C3C", "sync paused") if sync_err else ("#2ECC71", "synced")
         st.sidebar.markdown(f'''<div style="padding:0.25rem 0 0.5rem;">
-            <span style="color:#2ECC71;">●</span>
+            <span style="color:{dot};">●</span>
             <span style="color:#CBD5E1; font-size:0.82rem;">{user_email}</span>
+            <span style="color:#94A3C0; font-size:0.72rem;"> · {dot_label}</span>
         </div>''', unsafe_allow_html=True)
+        if sync_err:
+            st.sidebar.caption(sync_err)
         c1, c2 = st.sidebar.columns(2)
         with c1:
             if st.button("💾 Save", use_container_width=True, key="cloud_save_btn"):
-                if cloud_save(data):
+                ok, msg = cloud_save(data)
+                if ok:
+                    st.session_state.pop("_cloud_error", None)
                     st.toast("Saved to cloud!", icon="✅")
                 else:
-                    st.error("Save failed")
+                    st.session_state["_cloud_error"] = msg
+                    st.sidebar.error(msg)
         with c2:
             if st.button("🚪 Logout", use_container_width=True, key="logout_btn"):
                 auth_sign_out()
@@ -1076,6 +1244,20 @@ with st.sidebar:
         json_str = json.dumps(data, indent=2, default=str)
         st.sidebar.download_button("📥 Download Backup", data=json_str,
             file_name=f"budget_backup_{date.today().isoformat()}.json",
+            mime="application/json", use_container_width=True)
+    elif not cloud_configured():
+        # No credentials at all. Offering a login form here would be a form that
+        # cannot succeed — the app says so plainly instead, and the local save
+        # below is the whole feature set that still works.
+        st.sidebar.markdown(
+            '<p style="color:#94A3C0; font-size:0.78rem; line-height:1.45; margin:0 0 0.5rem;">'
+            'Accounts are unavailable on this deployment. Everything else works — '
+            'use Save as JSON to keep your data.</p>',
+            unsafe_allow_html=True,
+        )
+        json_str = json.dumps(data, indent=2, default=str)
+        st.sidebar.download_button("💾 Save as JSON", data=json_str,
+            file_name=f"budget_save_{date.today().isoformat()}.json",
             mime="application/json", use_container_width=True)
     else:
         auth_mode = st.sidebar.radio("Account", ["Login", "Sign Up"],
