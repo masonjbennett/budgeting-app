@@ -20,9 +20,13 @@ from calculations import (
     calc_salt_cap,
     calc_social_security,
     calc_student_loan_deduction,
+    calc_state_tax,
     simulate_payoff,
     project_investment,
+    calc_state_marginal_rate,
+    marginal_fica_rate,
     _get_state_brackets_for_filing,
+    STATE_TAX_DATA,
 )
 
 print("=" * 60)
@@ -310,6 +314,69 @@ check("Custom MFJ: uses deduction_mfj", d == 8000)
 b, d = _get_state_brackets_for_filing(test_state2, "Single")
 check("Single: uses base brackets", b[0][0] == 10000)
 check("Single: uses base deduction", d == 5000)
+
+# ── STATE MARGINAL RATE ─────────────────────────────────────
+
+print()
+print("--- STATE MARGINAL RATE ---")
+
+# Three call sites used to report the state's TOP bracket as the user's marginal
+# rate, which overstates the value of every pre-tax dollar for anyone below it.
+ny_top = STATE_TAX_DATA["New York"]["brackets"][-1][1] * 100
+ny_real = calc_state_marginal_rate(110_000, "New York", filing="Single")
+check(f"NY $110K marginal is {ny_real:.1f}%, not the {ny_top:.1f}% top bracket",
+      ny_real < ny_top - 1)
+ny_highest_finite = max(c for c, _ in STATE_TAX_DATA["New York"]["brackets"]
+                        if c != float("inf"))
+check("income above every finite bracket DOES reach the top rate",
+      abs(calc_state_marginal_rate(ny_highest_finite * 2, "New York") - ny_top) < 1e-9)
+check("NY's millionaire tiers are distinct, not collapsed to the top rate",
+      len({calc_state_marginal_rate(g, "New York")
+           for g in (2_000_000, 6_000_000, 30_000_000)}) == 3)
+check("no-income-tax state returns 0", calc_state_marginal_rate(120_000, "Texas") == 0.0)
+check("unknown state returns 0", calc_state_marginal_rate(120_000, "Atlantis") == 0.0)
+check("income below the state deduction returns 0",
+      calc_state_marginal_rate(500, "New York") == 0.0)
+check("zero income returns 0", calc_state_marginal_rate(0, "California") == 0.0)
+check("pre-tax deductions lower the marginal rate or leave it alone",
+      calc_state_marginal_rate(110_000, "New York", 24_500, 4_400)
+      <= calc_state_marginal_rate(110_000, "New York", 0, 0))
+check("MFJ is taxed no higher than Single on the same income",
+      calc_state_marginal_rate(110_000, "New York", filing="Married Filing Jointly")
+      <= calc_state_marginal_rate(110_000, "New York", filing="Single"))
+check("the rate never exceeds the state's top bracket, in any state",
+      all(calc_state_marginal_rate(250_000, st) <= d["brackets"][-1][1] * 100
+          for st, d in STATE_TAX_DATA.items() if d.get("brackets")))
+check("the rate is never negative, in any state",
+      all(calc_state_marginal_rate(g, st) >= 0
+          for st in STATE_TAX_DATA for g in (0, 40_000, 250_000)))
+# The rate must agree with the tax: one more dollar taxed at the marginal rate.
+ca_tax = calc_state_tax(95_000, "California") if "calc_state_tax" in dir() else None
+check("marginal rate matches what the next dollar is actually taxed",
+      all(abs((calc_state_tax(g + 1000, st) - calc_state_tax(g, st)) / 1000 * 100
+              - calc_state_marginal_rate(g, st)) < 0.51
+          for st in ("New York", "California", "Arkansas", "Ohio")
+          for g in (60_000, 95_000, 140_000)))
+
+# ── MARGINAL FICA ───────────────────────────────────────────
+
+print()
+print("--- MARGINAL FICA ---")
+
+check("a raise below the wage base is charged the full 7.65%",
+      abs(marginal_fica_rate(80_000, 90_000) - 0.0765) < 0.0001)
+check("a raise above the wage base but below the surtax is charged 1.45%",
+      abs(marginal_fica_rate(200_000, 210_000, "Married Filing Jointly") - 0.0145) < 0.0001)
+check("Single pays 1.45% + 0.9% surtax on the same raise",
+      abs(marginal_fica_rate(200_000, 210_000, "Single") - 0.0235) < 0.0001)
+check("a raise straddling the wage base falls between the two",
+      0.0145 < marginal_fica_rate(180_000, 190_000) < 0.0765)
+check("marginal is below the average rate above the wage base",
+      marginal_fica_rate(200_000, 210_000) < calc_fica(210_000) / 210_000)
+check("a zero raise returns 0", marginal_fica_rate(90_000, 90_000) == 0.0)
+check("a pay cut returns 0", marginal_fica_rate(90_000, 80_000) == 0.0)
+check("the surtax makes a high raise cost more than 1.45% for MFS",
+      marginal_fica_rate(300_000, 310_000, "Married Filing Separately") > 0.0145)
 
 # ── RESULTS ─────────────────────────────────────────────────
 

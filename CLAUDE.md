@@ -86,6 +86,19 @@ The file follows this order:
 - **`_generate_demo_data()` uses relative dates** — expenses are always current/previous month. Never hardcode dates.
 - **All tax data is official IRS 2026** from Rev. Proc. 2025-32 + OBBBA. Don't change tax numbers without a verified source.
 - **`compute_take_home()` references global `data` dict** for charitable deduction. The `d` parameter is just the income sub-dict.
+- **Marginal rates come from `th["marginal_fed"]` and `th["marginal_state"]`, never
+  from a bracket table directly.** Three call sites used to read
+  `sdata["brackets"][-1][1]` — the state's TOP bracket — and label it the user's
+  marginal rate, overstating the 401(k) tax saving by $1,200 (17%) at $110K in New
+  York and $1,073 in New Jersey. It survived five months because Arkansas at $85K
+  is already top-bracket, so the error is exactly zero on the author's own data.
+  `calc_state_marginal_rate` mirrors `calc_state_tax`'s signature deliberately: the
+  rate must be read off the same taxable base as the tax, and sharing the argument
+  list is what stops them drifting apart.
+- **FICA on a raise uses `marginal_fica_rate`, not the average rate.** Above the
+  $184,500 wage base the marginal rate falls from 7.65% to 1.45%, so the average
+  overstates the tax on an increment by up to 5x — for exactly the earners the
+  salary negotiation modeller is aimed at.
 - **State tax supports filing status** via `_get_state_brackets_for_filing()`. 8 states have custom MFJ brackets (NY, NJ, CT, MD, MN, NM, OK, WI). All others auto-double.
 - **Medicare surtax thresholds differ by filing status** — $200K Single, $250K MFJ, $125K MFS. Stored in `FICA_MEDICARE_SURTAX_THRESHOLDS` dict.
 - **`simulate_payoff` returns 4 values** — months, interest, schedule, payoff_months. All callers must destructure all 4.

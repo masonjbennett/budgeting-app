@@ -291,6 +291,45 @@ def calc_fica(gross, filing="Single"):
     return ss + medicare
 
 
+def calc_state_marginal_rate(gross, state, deductions_401k=0, other_pretax=0, filing="Single"):
+    """The rate the NEXT dollar of state income tax is charged at, as a percent.
+
+    The signature deliberately mirrors calc_state_tax. The marginal rate has to be
+    read off the same taxable base as the tax itself, and sharing an argument list
+    is what stops the two drifting onto different bases.
+
+    Three call sites used to read `sdata["brackets"][-1][1]` — the state's TOP
+    bracket — and label it the user's marginal rate. For anyone not already in the
+    top band that overstates the value of a pre-tax dollar: at $110K in New York it
+    read 10.9% against a real 6.0%, putting the advertised 401(k) tax saving on a
+    $24,500 contribution at $8,060 against a true $6,860. It survived five months
+    because the app's own author is in Arkansas, where $85K is already the top
+    bracket and the error is exactly zero.
+    """
+    sdata = STATE_TAX_DATA.get(state)
+    if not sdata or not sdata.get("brackets"):
+        return 0.0
+    brackets, deduction = _get_state_brackets_for_filing(sdata, filing)
+    taxable = max(0, gross - deductions_401k - other_pretax - deduction)
+    if taxable <= 0:
+        return 0.0
+    return get_marginal_rate(taxable, brackets)
+
+
+def marginal_fica_rate(base, raised, filing="Single"):
+    """The FICA rate on the INCREMENT between two salaries, as a fraction.
+
+    Not the same as the average rate, and the gap is largest exactly where this
+    is used. Above the Social Security wage base ($184,500) the marginal FICA on
+    a raise falls from 7.65% to 1.45%, because the 6.2% has already stopped —
+    so charging a raise the average rate can overstate the tax on it by a factor
+    of five.
+    """
+    if raised <= base:
+        return 0.0
+    return (calc_fica(raised, filing) - calc_fica(base, filing)) / (raised - base)
+
+
 def get_marginal_rate(taxable, brackets):
     prev = 0
     for ceiling, rate in brackets:

@@ -34,9 +34,11 @@ from calculations import (
     calc_student_loan_deduction,
     calc_federal_tax,
     _get_state_brackets_for_filing,
+    calc_state_marginal_rate,
     calc_state_tax,
     calc_fica,
     get_marginal_rate,
+    marginal_fica_rate,
     project_investment,
     payoff_order,
     simulate_payoff,
@@ -863,6 +865,9 @@ def compute_take_home(d=None):
         "std_ded": std_ded,
         "effective_rate": (total_tax / annual_gross * 100) if annual_gross else 0,
         "marginal_fed": get_marginal_rate(taxable, brackets),
+        # Read off the same base as state_tax above, not the state's top bracket.
+        "marginal_state": calc_state_marginal_rate(
+            annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual, filing),
         "filing": filing,
     }
 
@@ -1370,10 +1375,12 @@ def page_income():
 
         lifetime_diff = neg_cum - base_cum
         marginal = th_local["marginal_fed"] / 100
-        state_d = STATE_TAX_DATA.get(data["income"]["state"])
-        state_m = state_d["brackets"][-1][1] if (state_d and state_d.get("brackets")) else 0
-        # Use actual FICA calculation for accuracy
-        fica_rate = calc_fica(negotiated) / negotiated if negotiated > 0 else 0.0765
+        state_m = th_local["marginal_state"] / 100
+        # FICA on the RAISE, not the average rate across the whole salary. Above
+        # the SS wage base the marginal rate drops from 7.65% to 1.45%, so the
+        # average overstates the tax on an increment for exactly the earners this
+        # modeller is aimed at.
+        fica_rate = marginal_fica_rate(base, negotiated, th_local["filing"])
         after_tax_diff = lifetime_diff * (1 - marginal - state_m - fica_rate)
 
         c1, c2, c3 = st.columns(3)
@@ -2809,10 +2816,7 @@ def page_tax():
     st.markdown("### 401(k) Tax Savings Impact")
     contrib = th_local["contrib_401k"]
     marginal = th_local["marginal_fed"] / 100
-    state_d = STATE_TAX_DATA.get(data["income"]["state"])
-    state_marginal = 0
-    if state_d and state_d.get("brackets"):
-        state_marginal = state_d["brackets"][-1][1] if th_local["taxable"] > 0 else 0
+    state_marginal = th_local["marginal_state"] / 100
 
     tax_saved = contrib * (marginal + state_marginal)
 
