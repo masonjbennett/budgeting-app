@@ -1,16 +1,14 @@
-"""Tests for the calculation engine in budget_app.py.
+"""Tests for the calculation engine.
 
-Like test_cloud.py and unlike test_stress.py, this imports the SHIPPING code
-rather than a copy of it: the source above the sidebar (tax data, calculations,
-helpers, compute_take_home) is exec'd with streamlit and the plotting libraries
-stubbed. test_stress.py redefines its nine subjects inside itself, which is why
-it has been green since April over an April photocopy.
+Imports calculations.py directly — that module is stdlib-only, so the engine
+needs no stubs. budget_app.py is still exec'd with streamlit stubbed, but only
+for _generate_demo_data, which is app data rather than maths.
 
 The assertions here are PROPERTIES, not a second implementation. Re-deriving the
-expected answer with a reference copy of the algorithm would just be the mirror
+expected answer with a reference copy of the algorithm would be the mirror
 problem again — a bug reasoned into both copies passes. So instead: money in
-equals money out, a strategy pays debts off in the order its name promises, and
-avalanche never costs more interest than snowball.
+equals money out, no month leaves payment capacity idle, and each strategy
+clears debts in the order its name promises.
 
 Run:  .venv/Scripts/python.exe test_calc.py
 """
@@ -72,15 +70,20 @@ sys.modules["supabase"] = types.SimpleNamespace(create_client=lambda *a, **k: No
 for m in ("plotly", "plotly.graph_objects", "plotly.express", "pandas", "numpy"):
     sys.modules.setdefault(m, _Any(m))
 
+# The engine comes straight from calculations.py — that module is stdlib-only,
+# so it needs no stubs at all. budget_app.py is still exec'd below, but only for
+# _generate_demo_data, which is app data rather than maths.
+import calculations as calc
+
 SRC = open("budget_app.py", encoding="utf-8").read()
 CUT = SRC.index("# SIDEBAR NAVIGATION")   # everything below needs a live runtime
 app = types.ModuleType("app_calc")
 exec(compile(SRC[:CUT], "budget_app.py", "exec"), app.__dict__)
 
-simulate_payoff = app.simulate_payoff
+simulate_payoff = calc.simulate_payoff
 
 print("=" * 66)
-print("CALCULATION SUITE — driving the shipping functions in budget_app.py")
+print("CALCULATION SUITE — driving the shipping engine in calculations.py")
 print("=" * 66)
 
 
@@ -159,22 +162,22 @@ SWITCHER = [
     {"name": "Fast",   "balance": 5_400, "rate": 0.0, "min_payment": 900},
 ]
 check("snowball targets the smaller ORIGINAL balance first",
-      app.payoff_order(SWITCHER, "snowball") == ["Target", "Fast"],
-      str(app.payoff_order(SWITCHER, "snowball")))
+      calc.payoff_order(SWITCHER, "snowball") == ["Target", "Fast"],
+      str(calc.payoff_order(SWITCHER, "snowball")))
 check("avalanche targets the higher rate first regardless of size",
-      app.payoff_order(MIXED, "avalanche")[0] == "Card")
+      calc.payoff_order(MIXED, "avalanche")[0] == "Card")
 check("the order is a fixed list, not re-derived from live balances",
-      app.payoff_order(MIXED, "snowball") == ["Card", "Car", "Student"])
+      calc.payoff_order(MIXED, "snowball") == ["Card", "Car", "Student"])
 
 # Testing payoff_order in isolation is not enough: it says the rule is right, not
 # that the engine obeys it. Re-sorting inside the loop leaves payoff_order intact
 # and passes every assertion above — a rule nothing reads is a rule nothing
 # enforces. So drive the engine with the order reversed and require the answer to
 # move; if simulate_payoff computed its own order, it would not.
-_real_order = app.payoff_order
-app.payoff_order = lambda debts, strategy: list(reversed(_real_order(debts, strategy)))
+_real_order = calc.payoff_order
+calc.payoff_order = lambda debts, strategy: list(reversed(_real_order(debts, strategy)))
 _, i_reversed, _, _ = simulate_payoff(MIXED, 300, "avalanche")
-app.payoff_order = _real_order
+calc.payoff_order = _real_order
 _, i_normal, _, _ = simulate_payoff(MIXED, 300, "avalanche")
 check("simulate_payoff actually consults payoff_order",
       abs(i_reversed - i_normal) > 1.0,

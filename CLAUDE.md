@@ -17,7 +17,7 @@ Personal finance web app with 11 pages: Dashboard, Income Setup, Budget Builder,
 ## Key Commands
 ```bash
 py -m streamlit run budget_app.py     # Run locally
-py test_stress.py                      # 64 calculation tests — but see Critical Rules
+py test_stress.py                      # 75 calculation tests against the real code
 py test_cloud.py                       # 42 auth/cloud tests against the real code
 py test_calc.py                        # 29 calculation tests against the real code
 git push origin master                 # Auto-deploys to Streamlit Cloud
@@ -28,6 +28,7 @@ git push origin master                 # Auto-deploys to Streamlit Cloud
 budgeting-app/
   budget_app.py          # The entire app (single file)
   test_stress.py         # 64 stress tests for all calculations
+  calculations.py        # ALL the maths — stdlib only, no framework imports
   test_calc.py           # 29 tests for the calculation engine — drives the SHIPPING code
   test_cloud.py          # 42 tests for auth + cloud sync — drives the SHIPPING code
   SUPABASE_SETUP.md      # standing up the project, the table, and its RLS policies
@@ -53,15 +54,20 @@ The file follows this order:
 
 ## Critical Rules
 - **Never add duplicate kwargs** when calling `fig.update_layout(**default_layout(), ...)`. The `default_layout()` already sets `legend`, `margin`, `hovermode`, `xaxis`, `yaxis`. To override, modify the dict before spreading: `layout = default_layout(); layout["margin"] = ...; fig.update_layout(**layout, ...)`
-- **Run all three suites after every change** — `test_calc.py` (29), `test_cloud.py` (42), `test_stress.py` (64).
-- **`test_stress.py` does NOT test this app.** It redefines all nine calculation
-  functions inside itself; the only mention of `budget_app` in the file is the
-  docstring. It has been green since April over a photocopy, and the copy has
-  already drifted — its `calc_fica` has no `filing` argument and its
-  `project_investment` has no `contribution_growth`, so the two most recent
-  calculation changes have never once been tested. Treat 64/64 as decoration
-  until it is rewritten to import the real code. `test_cloud.py` shows the
-  pattern: exec the shipping source with streamlit and supabase stubbed.
+- **Run all three suites after every change** — `test_calc.py` (29), `test_cloud.py` (42), `test_stress.py` (75). All three import the shipping code; none redefines its subject.
+- **All maths lives in `calculations.py`, and nothing else may hold a copy.**
+  It had drifted into THREE implementations that disagreed: budget_app.py,
+  test_stress.py's hand-copied mirror, and budget-app-v2's FastAPI backend. The
+  mirror is why 64/64 stayed green from April to September while never executing
+  the app — by then its `calc_fica` had no `filing` argument and its
+  `project_investment` no `contribution_growth`, so both shipped features were
+  untested. `calculations.py` is stdlib-only on purpose, so a future backend can
+  import it rather than starting a fourth copy.
+- **Prove any refactor of it with the grid, not just the suites.** A suite only
+  covers the cases someone thought of. The extraction was verified by evaluating
+  every pure function over 2,728 input combinations before and after and matching
+  the hash — which is also how the two names left out of the import list would
+  have been caught, had the browser sweep not caught them first.
 - **Cloud sync must never be load-bearing.** The Supabase project this app
   originally shipped against was deleted while nobody was looking, and because
   the client is built without a network call the app booted fine and told every
