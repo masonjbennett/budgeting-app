@@ -182,6 +182,38 @@ COL_INDEX = {
 }
 
 
+
+def calc_itemized_total(itemized, agi, filing="Single"):
+    """Deductible itemized total and its parts, under the 2026 OBBBA rules.
+
+    Extracted from the Tax page, which had the only implementation. Take-home
+    needed the same number, and a second copy of four floor-and-cap rules is how
+    the two pages would have started disagreeing about the same taxpayer.
+
+    Floors are read off AGI *before* the non-itemizer charitable deduction. That
+    deduction is only available to someone taking the standard deduction, so on
+    the itemizing branch it does not exist; the simplification is worth at most a
+    few dollars of floor and keeps the two branches from depending on each other.
+    """
+    it = itemized or {}
+    agi = max(0.0, float(agi or 0))
+    salt = min(float(it.get("salt", 0) or 0), calc_salt_cap(agi, filing))
+    mortgage = float(it.get("mortgage_interest", 0) or 0)
+    # OBBBA 2026: an itemizer deducts only charity ABOVE 0.5% of AGI.
+    charitable = max(0.0, float(it.get("charitable", 0) or 0) - agi * 0.005)
+    # Medical above 7.5% of AGI.
+    medical = max(0.0, float(it.get("medical", 0) or 0) - agi * 0.075) if agi > 0 else 0.0
+    return {
+        "salt": salt, "mortgage_interest": mortgage,
+        "charitable": charitable, "medical": medical,
+        "total": salt + mortgage + charitable + medical,
+        # The floors are returned so the page can explain why a figure was
+        # reduced without re-deriving the rule and drifting from it.
+        "charitable_floor": agi * 0.005,
+        "medical_floor": agi * 0.075,
+        "salt_cap": calc_salt_cap(agi, filing),
+    }
+
 def calc_bracket_tax(taxable_income, brackets):
     tax = 0.0
     prev = 0
@@ -239,20 +271,33 @@ def calc_student_loan_deduction(interest_paid, magi, filing="Single"):
 
 
 def calc_federal_tax(gross, deductions_401k=0, other_pretax=0, filing="Single",
-                     student_loan_interest=0, charitable_cash=0):
+                     student_loan_interest=0, charitable_cash=0, itemized_total=0):
     brackets = FEDERAL_BRACKETS_2026.get(filing, FEDERAL_BRACKETS_2026["Single"])
     standard = STANDARD_DEDUCTION_2026.get(filing, 15_700)
     agi = gross - deductions_401k - other_pretax
     # Above-the-line deductions (reduce AGI)
     sl_deduction = calc_student_loan_deduction(student_loan_interest, agi, filing)
     agi -= sl_deduction
-    # OBBBA 2026: non-itemizer charitable deduction (above-the-line, standard deduction filers)
-    non_itemizer_limit = 2000 if filing == "Married Filing Jointly" else 1000
-    charitable_atl = min(charitable_cash, non_itemizer_limit)
-    agi -= charitable_atl
-    taxable = max(0, agi - standard)
+
+    # A taxpayer takes whichever deduction is larger. This used to force the
+    # standard deduction unconditionally, so the Tax page could tell someone
+    # itemizing saved them money while take-home, savings rate, dashboard cash
+    # flow and the FIRE timeline all quietly assumed they had not.
+    itemizing = float(itemized_total or 0) > standard
+
+    # OBBBA 2026: the above-the-line charitable deduction is for NON-itemizers.
+    # An itemizer already deducts charity inside their itemized total, so
+    # granting both would deduct the same donation twice.
+    if not itemizing:
+        non_itemizer_limit = 2000 if filing == "Married Filing Jointly" else 1000
+        agi -= min(charitable_cash, non_itemizer_limit)
+
+    deduction = max(standard, float(itemized_total or 0))
+    taxable = max(0, agi - deduction)
     tax = calc_bracket_tax(taxable, brackets)
-    return tax, agi, taxable, standard
+    # The fourth value is the deduction ACTUALLY taken, which equals `standard`
+    # whenever itemized_total is 0 — so every existing caller is unaffected.
+    return tax, agi, taxable, deduction
 
 
 def _get_state_brackets_for_filing(sdata, filing):

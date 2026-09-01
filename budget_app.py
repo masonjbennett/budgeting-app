@@ -33,6 +33,7 @@ from calculations import (
     calc_social_security,
     calc_student_loan_deduction,
     calc_federal_tax,
+    calc_itemized_total,
     _get_state_brackets_for_filing,
     calc_state_marginal_rate,
     emergency_fund_months,
@@ -837,10 +838,22 @@ def compute_take_home(d=None):
     pretax = contrib_401k_annual + health_annual + hsa_annual
 
     try:
-        charitable = data.get("itemized", {}).get("charitable", 0)
+        itemized_input = data.get("itemized", {}) or {}
     except (NameError, AttributeError):
-        charitable = 0
-    fed_tax, agi, taxable, std_ded = calc_federal_tax(annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing, sl_interest, charitable)
+        itemized_input = {}
+    charitable = itemized_input.get("charitable", 0)
+
+    # The itemized total depends on AGI, and AGI does not depend on it, so run the
+    # federal calculation once to get AGI, work out the itemized total against it,
+    # then run it again with that total. Two passes rather than one because the
+    # 0.5% charitable and 7.5% medical floors are both percentages OF AGI.
+    _, agi_only, _, _ = calc_federal_tax(
+        annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing,
+        sl_interest, charitable)
+    itemized = calc_itemized_total(itemized_input, agi_only, filing)
+    fed_tax, agi, taxable, deduction_taken = calc_federal_tax(
+        annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing,
+        sl_interest, charitable, itemized["total"])
     state_tax = calc_state_tax(annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual, filing)
     fica = calc_fica(annual_gross, filing)
 
@@ -864,7 +877,10 @@ def compute_take_home(d=None):
         "monthly_take_home": monthly_take_home,
         "agi": agi,
         "taxable": taxable,
-        "std_ded": std_ded,
+        "std_ded": STANDARD_DEDUCTION_2026.get(filing, 15_700),
+        "deduction_taken": deduction_taken,
+        "itemized_total": itemized["total"],
+        "itemizing": deduction_taken > STANDARD_DEDUCTION_2026.get(filing, 15_700),
         "effective_rate": (total_tax / annual_gross * 100) if annual_gross else 0,
         "marginal_fed": get_marginal_rate(taxable, brackets),
         # Read off the same base as state_tax above, not the state's top bracket.
@@ -2751,7 +2767,7 @@ def page_tax():
         st.markdown(f'''<div class="card">
             <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Filing Status:</span> <span class="mono">{filing}</span></p>
             <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">AGI:</span> <span class="mono">{fmt(th_local['agi'])}</span></p>
-            <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Standard Deduction:</span> <span class="mono">-{fmt(th_local['std_ded'])}</span></p>
+            <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">{'Itemized' if th_local['itemizing'] else 'Standard'} Deduction:</span> <span class="mono">-{fmt(th_local['deduction_taken'])}</span></p>
             <p style="margin:0.25rem 0;"><span style="color:{TEXT_DIM};">Taxable Income:</span> <span class="mono" style="font-weight:600;">{fmt(th_local['taxable'])}</span></p>
         </div>''', unsafe_allow_html=True)
 
@@ -2777,13 +2793,13 @@ def page_tax():
             min_value=0, step=100, format="%d",
             help="Only the amount exceeding 7.5% of AGI is deductible")
 
-    salt_capped = min(data["itemized"]["salt"], effective_salt_cap)
-    medical_threshold = max(0, th_local["agi"]) * 0.075
-    medical_deductible = max(0, data["itemized"]["medical"] - medical_threshold) if th_local["agi"] > 0 else 0
-    # OBBBA 2026: charitable deductions subject to 0.5% AGI floor for itemizers
-    charitable_floor = max(0, th_local["agi"]) * 0.005
-    charitable_deductible = max(0, data["itemized"]["charitable"] - charitable_floor)
-    total_itemized = salt_capped + data["itemized"]["mortgage_interest"] + charitable_deductible + medical_deductible
+    # One implementation, shared with compute_take_home — so this page and the
+    # rest of the app cannot disagree about the same taxpayer.
+    _it = calc_itemized_total(data["itemized"], th_local["agi"], th_local["filing"])
+    salt_capped = _it["salt"]
+    medical_deductible = _it["medical"]
+    charitable_deductible = _it["charitable"]
+    total_itemized = _it["total"]
     standard = th_local["std_ded"]
 
     # OBBBA 2026: non-itemizer charitable deduction (above-the-line)
@@ -2804,7 +2820,7 @@ def page_tax():
         </div>''', unsafe_allow_html=True)
     with c2:
         border = f"border-left:3px solid {GREEN}" if better == "Itemized" else ""
-        charity_note = f" (after 0.5% AGI floor)" if charitable_floor > 0 and charitable_deductible < data["itemized"]["charitable"] else ""
+        charity_note = f" (after 0.5% AGI floor)" if _it["charitable_floor"] > 0 and charitable_deductible < data["itemized"]["charitable"] else ""
         st.markdown(f'''<div class="card" style="{border}">
             <p style="font-weight:600; margin:0;">Itemized Deductions</p>
             <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(total_itemized)}</p>

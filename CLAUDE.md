@@ -86,6 +86,16 @@ The file follows this order:
 - **`_generate_demo_data()` uses relative dates** — expenses are always current/previous month. Never hardcode dates.
 - **All tax data is official IRS 2026** from Rev. Proc. 2025-32 + OBBBA. Don't change tax numbers without a verified source.
 - **`compute_take_home()` references global `data` dict** for charitable deduction. The `d` parameter is just the income sub-dict.
+- **Take-home itemizes when itemizing is better.** `calc_federal_tax` used to
+  force the standard deduction, so the Tax page could tell someone itemizing saved
+  them money while take-home, savings rate, dashboard cash flow and the FIRE
+  timeline all quietly assumed they had not. `calc_itemized_total` is the single
+  implementation of the floors and caps, shared by both. Two things are load-bearing:
+  the OBBBA above-the-line charitable deduction is for NON-itemizers only (an
+  itemizer deducts charity inside the itemized total, so granting both deducts the
+  same donation twice), and the 4th return value is now the deduction ACTUALLY
+  taken — which equals `standard` whenever the itemized total is 0, so every
+  pre-existing caller is unaffected.
 - **Dashboard ratios must not be coupled to a category name or an asset label.**
   Debt-to-income read ONLY the budget line "Min. Debt Payments", so a user with
   real debts who left that line at zero saw 0.0%, "Healthy" — the demo data did

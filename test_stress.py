@@ -21,6 +21,9 @@ from calculations import (
     calc_social_security,
     calc_student_loan_deduction,
     calc_state_tax,
+    calc_federal_tax,
+    calc_itemized_total,
+    STANDARD_DEDUCTION_2026,
     simulate_payoff,
     project_investment,
     calc_state_marginal_rate,
@@ -440,6 +443,60 @@ check("no budgeted essentials returns None, not a divide-by-zero",
       emergency_fund_months(DEMO_ASSETS, 0)[0] is None)
 check("a recognised but empty account still measures, at 0.0 months",
       emergency_fund_months({"Savings": 0}, 2000)[0] == 0.0)
+
+# ── ITEMIZED DEDUCTIONS ─────────────────────────────────────
+
+print()
+print("--- ITEMIZED DEDUCTIONS ---")
+
+BIG = {"salt": 20_000, "mortgage_interest": 12_000, "charitable": 2_000, "medical": 5_000}
+it = calc_itemized_total(BIG, 95_000, "Single")
+check("charity is deductible only above the 0.5% AGI floor",
+      abs(it["charitable"] - (2_000 - 95_000 * 0.005)) < 0.01)
+check("medical below the 7.5% AGI floor is not deductible", it["medical"] == 0)
+check("medical above the floor is deductible",
+      abs(calc_itemized_total({"medical": 20_000}, 95_000)["medical"] - (20_000 - 7_125)) < 0.01)
+check("SALT is capped", calc_itemized_total({"salt": 90_000}, 95_000)["salt"] == 40_400)
+check("the SALT cap phases out for high earners",
+      calc_itemized_total({"salt": 90_000}, 900_000)["salt"] < 40_400)
+check("the parts sum to the total",
+      abs(it["total"] - (it["salt"] + it["mortgage_interest"] + it["charitable"] + it["medical"])) < 0.01)
+check("empty input totals zero", calc_itemized_total({}, 95_000)["total"] == 0)
+check("None input does not raise", calc_itemized_total(None, 95_000)["total"] == 0)
+check("zero AGI does not raise and blocks the medical deduction",
+      calc_itemized_total(BIG, 0)["medical"] == 0)
+check("negative AGI does not raise", calc_itemized_total(BIG, -5_000)["total"] >= 0)
+
+std = STANDARD_DEDUCTION_2026["Single"]
+
+# The whole point: take-home used to force the standard deduction, so the Tax
+# page could say itemizing was better while every other number ignored it.
+t_std, _, _, d_std = calc_federal_tax(95_000, 0, 0, "Single", 0, 0, 0)
+t_small, _, _, d_small = calc_federal_tax(95_000, 0, 0, "Single", 0, 0, std - 1_000)
+t_big, _, _, d_big = calc_federal_tax(95_000, 0, 0, "Single", 0, 0, 40_000)
+check("no itemized total still takes the standard deduction", d_std == std)
+check("an itemized total BELOW the standard does not reduce the deduction",
+      d_small == std)
+check("an itemized total ABOVE the standard is taken instead", d_big == 40_000)
+check("itemizing above the standard lowers the tax", t_big < t_std)
+check("itemizing below the standard changes nothing", t_small == t_std)
+
+# An itemizer already deducts charity inside the itemized total, so granting the
+# non-itemizer above-the-line deduction as well would deduct it twice.
+_, agi_ni, _, _ = calc_federal_tax(95_000, 0, 0, "Single", 0, 1_000, 0)
+_, agi_it, _, _ = calc_federal_tax(95_000, 0, 0, "Single", 0, 1_000, 40_000)
+check("a non-itemizer gets the above-the-line charitable deduction",
+      abs(agi_ni - (95_000 - 1_000)) < 0.01)
+check("an itemizer does NOT also get it (no double deduction)",
+      abs(agi_it - 95_000) < 0.01)
+check("the MFJ above-the-line cap is $2,000",
+      abs(calc_federal_tax(95_000, 0, 0, "Married Filing Jointly", 0, 5_000, 0)[1]
+          - (95_000 - 2_000)) < 0.01)
+
+# Backwards compatibility: every existing caller passes no itemized total.
+check("the 4th return value still equals the standard deduction when not itemizing",
+      all(calc_federal_tax(g, 0, 0, f)[3] == STANDARD_DEDUCTION_2026[f]
+          for f in STANDARD_DEDUCTION_2026 for g in (0, 50_000, 300_000)))
 
 # ── RESULTS ─────────────────────────────────────────────────
 
