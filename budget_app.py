@@ -35,6 +35,8 @@ from calculations import (
     calc_federal_tax,
     _get_state_brackets_for_filing,
     calc_state_marginal_rate,
+    emergency_fund_months,
+    monthly_debt_service,
     calc_state_tax,
     calc_fica,
     get_marginal_rate,
@@ -1074,10 +1076,22 @@ def page_dashboard():
 
     # Key ratios
     savings_rate = (net_savings / monthly_income * 100) if monthly_income else 0
-    monthly_debt_payments = data["budget"]["needs"].get("Min. Debt Payments", 0)
-    dti = (monthly_debt_payments / monthly_income * 100) if monthly_income else 0
+
+    # Debt service comes from the debts the user actually entered, falling back to
+    # the budget category only when there are none. Reading the category alone
+    # reported 0.0% "Healthy" for anyone who had not also filled that line in.
+    monthly_debt_payments, debt_source = monthly_debt_service(
+        data["debts"], data["budget"]["needs"])
+
+    # Lenders define debt-to-income against GROSS income, which is what the
+    # 20% / 36% bands on this card are calibrated for. Dividing by take-home — a
+    # denominator roughly a quarter smaller — graded people a whole category
+    # harsher than a lender would.
+    gross_monthly = th["annual_gross"] / 12 if th["annual_gross"] else 0
+    dti = (monthly_debt_payments / gross_monthly * 100) if gross_monthly else 0
+
     monthly_needs = sum(data["budget"]["needs"].values())
-    ef_months = data["assets"].get("Savings", 0) / monthly_needs if monthly_needs else 0
+    ef_months, ef_counted = emergency_fund_months(data["assets"], monthly_needs)
 
     # Key metrics
     c1, c2, c3, c4 = st.columns(4)
@@ -1107,13 +1121,27 @@ def page_dashboard():
     with c2:
         color = GREEN if dti <= 20 else (YELLOW if dti <= 36 else RED)
         status = "Healthy" if dti <= 20 else ("Manageable" if dti <= 36 else "High Risk")
+        dti_note = ("Measured against gross income, as lenders do. Below 20% is great. "
+                    "20-36% is manageable. Above 36% limits borrowing.")
+        if debt_source == "budget":
+            dti_note += " Using your budgeted debt payments — add your debts on the Debt Payoff page for a figure from the actual balances."
         st.markdown(metric_card_html("Debt-to-Income", f"{dti:.1f}%", status, color,
-            "Below 20% is great. 20-36% is manageable. Above 36% limits borrowing."), unsafe_allow_html=True)
+            dti_note), unsafe_allow_html=True)
     with c3:
-        color = GREEN if ef_months >= 6 else (YELLOW if ef_months >= 3 else RED)
-        status = "Strong" if ef_months >= 6 else ("Building" if ef_months >= 3 else "Priority")
-        st.markdown(metric_card_html("Emergency Fund", f"{ef_months:.1f} mo", status, color,
-            "6+ months of essential expenses is the gold standard. 3-6 is a solid start."), unsafe_allow_html=True)
+        # None means "could not be measured", which must not render as 0.0 months.
+        if ef_months is None:
+            note = ("No cash or savings account recognised among your assets, so this "
+                    "cannot be measured. Name one with 'Checking', 'Savings' or 'Cash'."
+                    if not ef_counted else
+                    "Add your essential monthly expenses on the Budget Builder page to measure this.")
+            st.markdown(metric_card_html("Emergency Fund", "—", "Not measured", TEXT_DIM,
+                note), unsafe_allow_html=True)
+        else:
+            color = GREEN if ef_months >= 6 else (YELLOW if ef_months >= 3 else RED)
+            status = "Strong" if ef_months >= 6 else ("Building" if ef_months >= 3 else "Priority")
+            st.markdown(metric_card_html("Emergency Fund", f"{ef_months:.1f} mo", status, color,
+                "6+ months of essential expenses is the gold standard. 3-6 is a solid start. "
+                f"Counting {', '.join(ef_counted)}."), unsafe_allow_html=True)
 
     st.divider()
 

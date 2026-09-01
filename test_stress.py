@@ -25,6 +25,9 @@ from calculations import (
     project_investment,
     calc_state_marginal_rate,
     marginal_fica_rate,
+    monthly_debt_service,
+    liquid_assets,
+    emergency_fund_months,
     _get_state_brackets_for_filing,
     STATE_TAX_DATA,
 )
@@ -377,6 +380,66 @@ check("a zero raise returns 0", marginal_fica_rate(90_000, 90_000) == 0.0)
 check("a pay cut returns 0", marginal_fica_rate(90_000, 80_000) == 0.0)
 check("the surtax makes a high raise cost more than 1.45% for MFS",
       marginal_fica_rate(300_000, 310_000, "Married Filing Separately") > 0.0145)
+
+# ── DASHBOARD RATIOS ────────────────────────────────────────
+
+print()
+print("--- DEBT SERVICE ---")
+
+DEBTS = [{"name": "Card", "min_payment": 110}, {"name": "Car", "min_payment": 240},
+         {"name": "Student", "min_payment": 135}]
+
+# The dashboard read only the budget category, so real debts plus a zeroed
+# category reported debt-to-income of 0.0%, "Healthy".
+check("entered debts win over a zeroed budget category",
+      monthly_debt_service(DEBTS, {"Min. Debt Payments": 0}) == (485.0, "debts"))
+check("entered debts win over a populated budget category too",
+      monthly_debt_service(DEBTS, {"Min. Debt Payments": 50})[0] == 485.0)
+check("the budget category is the fallback when there are no debts",
+      monthly_debt_service([], {"Min. Debt Payments": 400}) == (400.0, "budget"))
+check("no debts and no category is zero, and says which it used",
+      monthly_debt_service([], {}) == (0.0, "budget"))
+check("debts with zero minimums fall back rather than reporting zero",
+      monthly_debt_service([{"min_payment": 0}], {"Min. Debt Payments": 300})[0] == 300.0)
+check("a missing min_payment key does not raise",
+      monthly_debt_service([{"name": "X"}], {})[0] == 0.0)
+check("None arguments do not raise", monthly_debt_service(None, None)[0] == 0.0)
+
+print()
+print("--- LIQUID ASSETS / EMERGENCY FUND ---")
+
+DEMO_ASSETS = {"Checking": 6200, "Savings": 9500, "401(k)": 4800,
+               "Roth IRA": 2500, "Brokerage": 1800, "Property": 0}
+total, counted = liquid_assets(DEMO_ASSETS)
+check("checking and savings count", sorted(counted) == ["Checking", "Savings"])
+check(f"liquid total is ${total:,.0f}", total == 15700)
+check("retirement accounts do not count", "401(k)" not in counted and "Roth IRA" not in counted)
+check("a brokerage account does not count", "Brokerage" not in counted)
+
+# The whole bug: the old code looked up the literal key "Savings".
+renamed = liquid_assets({"Checking": 6200, "High-Yield Savings": 9500})
+check("renaming the account does not silently zero the fund", renamed[0] == 15700)
+check("'Cash Reserve' counts", liquid_assets({"Cash Reserve": 5000})[0] == 5000)
+check("'Emergency Fund' counts", liquid_assets({"Emergency Fund": 5000})[0] == 5000)
+# Illiquid hints are checked FIRST, so the word "savings" cannot rescue an IRA.
+check("'Roth IRA Savings' is excluded despite the word savings",
+      liquid_assets({"Roth IRA Savings": 50000})[0] == 0)
+check("'HSA Savings' is excluded", liquid_assets({"HSA Savings": 9000})[0] == 0)
+check("an unrecognised asset is not counted", liquid_assets({"Gold bars": 99999})[0] == 0)
+check("empty assets do not raise", liquid_assets({}) == (0.0, []))
+check("None assets do not raise", liquid_assets(None) == (0.0, []))
+check("a None value is treated as zero", liquid_assets({"Savings": None})[0] == 0.0)
+
+m, c_ = emergency_fund_months(DEMO_ASSETS, 3187)
+check(f"demo coverage is {m:.1f} months", abs(m - 15700 / 3187) < 0.001)
+check("coverage returns the names it counted", sorted(c_) == ["Checking", "Savings"])
+# None and 0.0 are different answers; the card must not print them the same way.
+check("no recognised liquid asset returns None, not 0.0",
+      emergency_fund_months({"Gold bars": 99999}, 2000)[0] is None)
+check("no budgeted essentials returns None, not a divide-by-zero",
+      emergency_fund_months(DEMO_ASSETS, 0)[0] is None)
+check("a recognised but empty account still measures, at 0.0 months",
+      emergency_fund_months({"Savings": 0}, 2000)[0] == 0.0)
 
 # ── RESULTS ─────────────────────────────────────────────────
 

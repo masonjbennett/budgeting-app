@@ -436,3 +436,67 @@ def simulate_payoff(debts, extra, strategy):
         })
 
     return months, total_interest, schedule, payoff_months
+
+
+# ── Dashboard ratios ─────────────────────────────────────────────────
+
+def monthly_debt_service(debts, budget_needs=None):
+    """Total minimum monthly debt payments, and where the figure came from.
+
+    Debts entered on the Debt Payoff page are authoritative when present. The
+    dashboard used to read ONLY the budget category "Min. Debt Payments", so a
+    user carrying three real debts who left that line at zero saw a
+    debt-to-income ratio of 0.0%, labelled "Healthy" — which the demo data itself
+    did, against $35,000 of student loans.
+
+    Returns (amount, source) so the page can say which it used.
+    """
+    total = sum(float(d.get("min_payment") or 0) for d in (debts or []))
+    if total > 0:
+        return total, "debts"
+    return float((budget_needs or {}).get("Min. Debt Payments", 0) or 0), "budget"
+
+
+# Emergency-fund coverage has to decide which assets could actually be spent in
+# an emergency, and the app stores no liquidity flag — users type their own asset
+# labels — so the decision falls back to the name. That is unavoidable and
+# imprecise; what matters is that it cannot fail SILENTLY, which is exactly what
+# the old `assets["Savings"]` lookup did. Rename that row to "High-Yield Savings"
+# and coverage read 0.0 months as though it had been measured.
+LIQUID_HINTS = ("cash", "checking", "chequing", "saving", "money market",
+                "emergency", "hysa", "high yield", "high-yield")
+ILLIQUID_HINTS = ("401", "403", "457", "ira", "roth", "pension", "hsa", "annuity",
+                  "property", "home", "house", "real estate", "land",
+                  "car", "vehicle", "crypto", "brokerage", "taxable")
+
+
+def liquid_assets(assets):
+    """Assets spendable in an emergency: (total, names counted).
+
+    The names come back so the page can print what it counted. A coverage figure
+    that quietly excludes the account holding the money is worse than none.
+    Illiquid hints are checked first, so "Roth IRA Savings" is excluded rather
+    than counted on the strength of the word "savings".
+    """
+    counted, total = [], 0.0
+    for name, value in (assets or {}).items():
+        low = str(name).lower()
+        if any(h in low for h in ILLIQUID_HINTS):
+            continue
+        if any(h in low for h in LIQUID_HINTS):
+            counted.append(name)
+            total += float(value or 0)
+    return total, counted
+
+
+def emergency_fund_months(assets, monthly_needs):
+    """Months of essential spending covered: (months, names counted).
+
+    months is None when it cannot be measured — no liquid asset matched, or no
+    essential spending is budgeted. None and 0.0 are different answers and the
+    page must not print them the same way.
+    """
+    total, counted = liquid_assets(assets)
+    if not counted or not monthly_needs:
+        return None, counted
+    return total / monthly_needs, counted

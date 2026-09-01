@@ -86,6 +86,20 @@ The file follows this order:
 - **`_generate_demo_data()` uses relative dates** — expenses are always current/previous month. Never hardcode dates.
 - **All tax data is official IRS 2026** from Rev. Proc. 2025-32 + OBBBA. Don't change tax numbers without a verified source.
 - **`compute_take_home()` references global `data` dict** for charitable deduction. The `d` parameter is just the income sub-dict.
+- **Dashboard ratios must not be coupled to a category name or an asset label.**
+  Debt-to-income read ONLY the budget line "Min. Debt Payments", so a user with
+  real debts who left that line at zero saw 0.0%, "Healthy" — the demo data did
+  exactly that against $35,000 of student loans. It now reads `monthly_debt_service`,
+  which prefers the entered debts and falls back to the category, and says which.
+  It also divided by TAKE-HOME while grading against the 20%/36% bands, which are
+  lender bands defined on GROSS — a denominator a quarter too small, grading people
+  a whole category harsher than a lender would.
+- **Emergency-fund coverage returns None when it cannot be measured, and None is
+  not 0.0.** It used to look up the literal asset key `"Savings"`: rename that row
+  to "High-Yield Savings" and coverage read 0.0 months as though measured. Name
+  matching is unavoidable (there is no liquidity flag in the schema) and imprecise,
+  so the card PRINTS which assets it counted, and says so plainly when it counted
+  none. Illiquid hints are tested before liquid ones, or "Roth IRA Savings" counts.
 - **Marginal rates come from `th["marginal_fed"]` and `th["marginal_state"]`, never
   from a bracket table directly.** Three call sites used to read
   `sdata["brackets"][-1][1]` — the state's TOP bracket — and label it the user's
