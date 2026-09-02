@@ -26,6 +26,8 @@ TAX DATA is official IRS 2026 — Rev. Proc. 2025-32 as amended by the OBBBA.
 Do not change a number here without a source; see CLAUDE.md for the citations.
 """
 
+import random as _random
+
 # TAX DATA (2026 estimates)
 # ──────────────────────────────────────────────
 
@@ -149,6 +151,12 @@ TOP_BRACKET_START = {
     "Married Filing Separately": 384_350,
     "Head of Household": 640_600,
 }
+
+# Annual contribution limits. These were literals in seven places across
+# budget_app.py — six copies of 24_500 and one of 4_400 — which made the January
+# refresh a hunt rather than an edit. Named here so there is one number to change.
+K401_LIMIT = 24_500            # 2026 elective deferral limit (IRS Notice 2025-67)
+HSA_INDIVIDUAL_LIMIT = 4_400   # 2026 self-only HSA limit (Rev. Proc. 2025-19)
 
 SALT_CAP_BASE = 40_400       # 2026 OBBBA base cap
 SALT_CAP_FLOOR = 10_000      # Cap can never go below this
@@ -393,6 +401,87 @@ def get_marginal_rate(taxable, brackets):
     return brackets[-1][1] * 100
 
 
+def compute_take_home(income, itemized=None):
+    """The whole pay stub for one income profile: taxes, deductions, take-home.
+
+    Everything downstream runs through this — savings rate, dashboard cash flow,
+    the budget page's income line, the FIRE timeline — so it is the single most
+    load-bearing function in the app.
+
+    It lived in budget_app.py until September 2026 and read a module-global
+    `data` dict for the itemized deductions, which meant two things. Nothing
+    could import it without importing Streamlit, so it was covered by zero of
+    the 239 assertions; and its answer depended on state it was not passed. Both
+    are fixed by taking `itemized` as an argument.
+
+    `income` keys: gross_salary, state, filing_status, contribution_401k (a
+    PERCENT of salary), health_insurance and hsa (both MONTHLY), and optionally
+    bonus_amount, bonus_type, student_loan_interest.
+    `itemized` is the itemized-deduction input dict, or None for none.
+    """
+    itemized_input = itemized or {}
+
+    gross = income["gross_salary"]
+    bonus = income.get("bonus_amount", 0)
+    bonus_type = income.get("bonus_type", "None")
+    filing = income.get("filing_status", "Single")
+    annual_gross = gross + (bonus if bonus_type != "None" else 0)
+
+    contrib_401k_annual = min(gross * income["contribution_401k"] / 100, K401_LIMIT)
+    health_annual = income["health_insurance"] * 12
+    hsa_annual = income["hsa"] * 12
+    sl_interest = income.get("student_loan_interest", 0)
+    pretax = contrib_401k_annual + health_annual + hsa_annual
+    charitable = itemized_input.get("charitable", 0)
+
+    # The itemized total depends on AGI, and AGI does not depend on it, so run the
+    # federal calculation once to get AGI, work out the itemized total against it,
+    # then run it again with that total. Two passes rather than one because the
+    # 0.5% charitable and 7.5% medical floors are both percentages OF AGI.
+    _, agi_only, _, _ = calc_federal_tax(
+        annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing,
+        sl_interest, charitable)
+    itemized_totals = calc_itemized_total(itemized_input, agi_only, filing)
+    fed_tax, agi, taxable, deduction_taken = calc_federal_tax(
+        annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing,
+        sl_interest, charitable, itemized_totals["total"])
+    state_tax = calc_state_tax(
+        annual_gross, income["state"], contrib_401k_annual, health_annual + hsa_annual, filing)
+    fica = calc_fica(annual_gross, filing)
+
+    total_tax = fed_tax + state_tax + fica
+    annual_take_home = annual_gross - pretax - total_tax
+    brackets = FEDERAL_BRACKETS_2026.get(filing, FEDERAL_BRACKETS_2026["Single"])
+    std_ded = STANDARD_DEDUCTION_2026.get(filing, 15_700)
+
+    return {
+        "annual_gross": annual_gross,
+        "contrib_401k": contrib_401k_annual,
+        "health": health_annual,
+        "hsa": hsa_annual,
+        "pretax": pretax,
+        "fed_tax": fed_tax,
+        "state_tax": state_tax,
+        "fica": fica,
+        "total_tax": total_tax,
+        "annual_take_home": annual_take_home,
+        "monthly_take_home": annual_take_home / 12,
+        "agi": agi,
+        "taxable": taxable,
+        "std_ded": std_ded,
+        "deduction_taken": deduction_taken,
+        "itemized_total": itemized_totals["total"],
+        "itemizing": deduction_taken > std_ded,
+        "effective_rate": (total_tax / annual_gross * 100) if annual_gross else 0,
+        "marginal_fed": get_marginal_rate(taxable, brackets),
+        # Read off the same base as state_tax above, not the state's top bracket.
+        "marginal_state": calc_state_marginal_rate(
+            annual_gross, income["state"], contrib_401k_annual,
+            health_annual + hsa_annual, filing),
+        "filing": filing,
+    }
+
+
 def project_investment(start, monthly, rate, years, contribution_growth=0):
     values = [start]
     contributions = [start]
@@ -554,3 +643,173 @@ def emergency_fund_months(assets, monthly_needs):
     if not counted or not monthly_needs:
         return None, counted
     return total / monthly_needs, counted
+
+
+# ──────────────────────────────────────────────
+# MONTE CARLO RETIREMENT SIMULATION
+# ──────────────────────────────────────────────
+#
+# This lived inline inside the FIRE page until September 2026 — not a function
+# at all, just a block in the middle of a Streamlit callback — which is why it
+# was the one calculation on the site with no assertions behind it, and why
+# numpy was a dependency of the whole app.
+#
+# It does not need numpy. numpy supplied four things: normal draws, a 2x2
+# Cholesky of a CONSTANT matrix, percentiles, and array storage. The Cholesky
+# is worked out below by hand once; the rest is stdlib. Measured on the largest
+# setting the UI offers (5,000 sims x 71 years): 0.91s.
+#
+# The randomness is deliberately kept OUT of the recurrence. `simulate_path`
+# takes the return and inflation sequences as arguments, so the actual money
+# arithmetic — the part that can be wrong — is exactly testable, and only the
+# drawing of the numbers is stochastic.
+
+MC_STOCK_MEAN = 0.10       # S&P 500 historical
+MC_STOCK_STDEV = 0.18
+MC_BOND_MEAN = 0.05
+MC_BOND_STDEV = 0.06
+MC_STOCK_BOND_CORR = 0.05
+MC_INFLATION_STDEV = 0.015
+MC_MAX_SAMPLE_PATHS = 50   # how many individual paths the fan chart draws
+
+# Cholesky factor of [[1, r], [r, 1]] is [[1, 0], [r, sqrt(1 - r**2)]].
+_MC_CHOL_21 = MC_STOCK_BOND_CORR
+_MC_CHOL_22 = (1.0 - MC_STOCK_BOND_CORR ** 2) ** 0.5
+
+
+def percentile(values, q):
+    """The q-th percentile with linear interpolation.
+
+    Matches numpy.percentile's default method exactly, which matters because
+    this replaced np.percentile in a shipping page and the numbers on it must
+    not move. test_calc.py asserts that against numpy over random data — numpy
+    is an oracle for the test, never an import of this module.
+    """
+    if not values:
+        return 0.0
+    s = sorted(values)
+    if len(s) == 1:
+        return float(s[0])
+    pos = (len(s) - 1) * (q / 100.0)
+    lo = int(pos)
+    hi = min(lo + 1, len(s) - 1)
+    return float(s[lo] + (s[hi] - s[lo]) * (pos - lo))
+
+
+def portfolio_return(stock_z, bond_z, stock_pct):
+    """One year's blended portfolio return from two CORRELATED standard normals."""
+    stock_alloc = stock_pct / 100.0
+    stock_ret = MC_STOCK_MEAN + MC_STOCK_STDEV * stock_z
+    bond_ret = MC_BOND_MEAN + MC_BOND_STDEV * bond_z
+    return stock_alloc * stock_ret + (1.0 - stock_alloc) * bond_ret
+
+
+def simulate_path(current_age, retire_age, end_age, portfolio, annual_savings,
+                  annual_expenses, inflation, returns, inflations):
+    """One portfolio path, year by year. Deterministic given its sequences.
+
+    Two phases. Before retirement the portfolio earns its return and receives
+    savings grown at the EXPECTED inflation rate — a raise you can plan for.
+    After retirement it earns its return and pays expenses grown at that year's
+    REALISED inflation, compounded over the years already retired: the sequence
+    of inflation you actually get is a risk, and modelling it as the average
+    would remove the thing the simulation exists to measure.
+
+    Once a path hits zero it stays at zero — a portfolio does not recover from
+    having been spent. Returns (balances, failure_age); failure_age is None if
+    the path survived. len(balances) == end_age - current_age + 1.
+    """
+    infl_mean = inflation / 100.0
+    years = end_age - current_age
+    balances = [float(portfolio)]
+    balance = float(portfolio)
+    failure_age = None
+
+    for year in range(1, years + 1):
+        if failure_age is not None:
+            balances.append(0.0)
+            continue
+        age = current_age + year
+        balance *= (1.0 + returns[year - 1])
+        if age <= retire_age:
+            balance += annual_savings * ((1.0 + infl_mean) ** year)
+        else:
+            realised = inflations[year - 1]
+            balance -= annual_expenses * ((1.0 + realised) ** (age - retire_age))
+        if balance <= 0:
+            balance = 0.0
+            failure_age = age
+        balances.append(balance)
+
+    return balances, failure_age
+
+
+def run_monte_carlo(current_age, retire_age, end_age, portfolio, annual_savings,
+                    annual_expenses, stock_pct=80, inflation=3.0, n_sims=1000,
+                    seed=None):
+    """Run n_sims correlated-return paths and summarise them.
+
+    `sample_paths` is drawn HERE rather than at render time. The page used to
+    pick 50 paths with np.random.choice while drawing the chart, so the sample
+    changed on every Streamlit rerun — every widget touch redrew a different
+    fifty. It is also the reason the full matrix is not returned: at 5,000 sims
+    it is 355,000 numbers, of which the chart shows 50 paths' worth, and over
+    HTTP that is several megabytes to throw away.
+    """
+    rng = _random.Random(seed)
+    years = end_age - current_age
+    ages = list(range(current_age, end_age + 1))
+    infl_mean = inflation / 100.0
+
+    if years <= 0 or n_sims <= 0:
+        return {
+            "ages": ages, "n_sims": 0, "success_count": 0, "success_rate": 0.0,
+            "percentiles": {k: [] for k in ("p5", "p10", "p25", "p50", "p75", "p90", "p95")},
+            "ending": [], "sample_paths": [], "failure_ages": [],
+            "median_ending": 0.0, "p10_ending": 0.0, "p90_ending": 0.0,
+            "retire_age": retire_age, "stock_pct": stock_pct,
+        }
+
+    columns = [[] for _ in range(years + 1)]
+    ending = []
+    failure_ages = []
+    sample_paths = []
+
+    for sim in range(n_sims):
+        returns = []
+        inflations = []
+        for _ in range(years):
+            z1 = rng.gauss(0.0, 1.0)
+            z2 = rng.gauss(0.0, 1.0)
+            returns.append(portfolio_return(z1, _MC_CHOL_21 * z1 + _MC_CHOL_22 * z2, stock_pct))
+            inflations.append(max(0.0, rng.gauss(infl_mean, MC_INFLATION_STDEV)))
+
+        balances, failure_age = simulate_path(
+            current_age, retire_age, end_age, portfolio, annual_savings,
+            annual_expenses, inflation, returns, inflations)
+
+        for i, b in enumerate(balances):
+            columns[i].append(b)
+        ending.append(balances[-1])
+        if failure_age is not None:
+            failure_ages.append(failure_age)
+        if sim < MC_MAX_SAMPLE_PATHS:
+            sample_paths.append(balances)
+
+    success_count = sum(1 for e in ending if e > 0)
+    return {
+        "ages": ages,
+        "n_sims": n_sims,
+        "success_count": success_count,
+        "success_rate": success_count / n_sims * 100.0,
+        "percentiles": {f"p{q}": [percentile(col, q) for col in columns]
+                        for q in (5, 10, 25, 50, 75, 90, 95)},
+        "ending": ending,
+        "sample_paths": sample_paths,
+        "failure_ages": failure_ages,
+        "median_ending": percentile(ending, 50),
+        "p10_ending": percentile(ending, 10),
+        "p90_ending": percentile(ending, 90),
+        "retire_age": retire_age,
+        "stock_pct": stock_pct,
+    }

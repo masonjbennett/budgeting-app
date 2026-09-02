@@ -2,7 +2,6 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
-import numpy as np
 import json
 import uuid
 import math
@@ -35,6 +34,7 @@ from calculations import (
     calc_student_loan_deduction,
     calc_federal_tax,
     calc_itemized_total,
+    compute_take_home as calc_take_home,
     _get_state_brackets_for_filing,
     calc_state_marginal_rate,
     emergency_fund_months,
@@ -45,7 +45,10 @@ from calculations import (
     marginal_fica_rate,
     project_investment,
     payoff_order,
+    K401_LIMIT,
+    HSA_INDIVIDUAL_LIMIT,
     simulate_payoff,
+    run_monte_carlo,
 )
 
 # ──────────────────────────────────────────────
@@ -866,71 +869,21 @@ data = st.session_state.data
 # ──────────────────────────────────────────────
 
 def compute_take_home(d=None):
-    if d is None:
-        d = data["income"]
-    gross = d["gross_salary"]
-    bonus = d.get("bonus_amount", 0)
-    bonus_type = d.get("bonus_type", "None")
-    filing = d.get("filing_status", "Single")
-    annual_gross = gross + (bonus if bonus_type != "None" else 0)
+    """Supply this session's state to the pure engine in calculations.py.
 
-    contrib_401k_annual = min(gross * d["contribution_401k"] / 100, 24_500)  # 2026 IRS limit
-    health_annual = d["health_insurance"] * 12
-    hsa_annual = d["hsa"] * 12
-    sl_interest = d.get("student_loan_interest", 0)
-    pretax = contrib_401k_annual + health_annual + hsa_annual
-
+    The maths itself moved out in September 2026. It had read the module-global
+    `data` dict for the itemized deductions, which meant nothing could import it
+    without importing Streamlit — so the function every page's take-home,
+    savings rate, cash flow and FIRE timeline runs through was covered by zero
+    of the 239 assertions. This wrapper is all that is left of it: it hands the
+    engine the two things it needs and keeps the app's three call sites, none of
+    which pass an itemized dict, working unchanged.
+    """
     try:
         itemized_input = data.get("itemized", {}) or {}
     except (NameError, AttributeError):
         itemized_input = {}
-    charitable = itemized_input.get("charitable", 0)
-
-    # The itemized total depends on AGI, and AGI does not depend on it, so run the
-    # federal calculation once to get AGI, work out the itemized total against it,
-    # then run it again with that total. Two passes rather than one because the
-    # 0.5% charitable and 7.5% medical floors are both percentages OF AGI.
-    _, agi_only, _, _ = calc_federal_tax(
-        annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing,
-        sl_interest, charitable)
-    itemized = calc_itemized_total(itemized_input, agi_only, filing)
-    fed_tax, agi, taxable, deduction_taken = calc_federal_tax(
-        annual_gross, contrib_401k_annual, health_annual + hsa_annual, filing,
-        sl_interest, charitable, itemized["total"])
-    state_tax = calc_state_tax(annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual, filing)
-    fica = calc_fica(annual_gross, filing)
-
-    total_tax = fed_tax + state_tax + fica
-    annual_take_home = annual_gross - pretax - total_tax
-    monthly_take_home = annual_take_home / 12
-
-    brackets = FEDERAL_BRACKETS_2026.get(filing, FEDERAL_BRACKETS_2026["Single"])
-
-    return {
-        "annual_gross": annual_gross,
-        "contrib_401k": contrib_401k_annual,
-        "health": health_annual,
-        "hsa": hsa_annual,
-        "pretax": pretax,
-        "fed_tax": fed_tax,
-        "state_tax": state_tax,
-        "fica": fica,
-        "total_tax": total_tax,
-        "annual_take_home": annual_take_home,
-        "monthly_take_home": monthly_take_home,
-        "agi": agi,
-        "taxable": taxable,
-        "std_ded": STANDARD_DEDUCTION_2026.get(filing, 15_700),
-        "deduction_taken": deduction_taken,
-        "itemized_total": itemized["total"],
-        "itemizing": deduction_taken > STANDARD_DEDUCTION_2026.get(filing, 15_700),
-        "effective_rate": (total_tax / annual_gross * 100) if annual_gross else 0,
-        "marginal_fed": get_marginal_rate(taxable, brackets),
-        # Read off the same base as state_tax above, not the state's top bracket.
-        "marginal_state": calc_state_marginal_rate(
-            annual_gross, d["state"], contrib_401k_annual, health_annual + hsa_annual, filing),
-        "filing": filing,
-    }
+    return calc_take_home(d if d is not None else data["income"], itemized_input)
 
 
 
@@ -1376,7 +1329,7 @@ def page_income():
             help="Percentage of base salary. 2026 employee limit: $24,500. Employer match is separate.",
         )
         contrib_dollar = data["income"]["gross_salary"] * data["income"]["contribution_401k"] / 100
-        if contrib_dollar > 24500:
+        if contrib_dollar > K401_LIMIT:
             st.warning(f"Your 401(k) contribution ({fmt(contrib_dollar)}) exceeds the 2026 limit of $24,500.")
 
         data["income"]["health_insurance"] = st.number_input(
@@ -1389,7 +1342,7 @@ def page_income():
             help="2026 individual limit: $4,400/year. Only available with HDHP.",
         )
         hsa_annual_check = data["income"]["hsa"] * 12
-        if hsa_annual_check > 4400:
+        if hsa_annual_check > HSA_INDIVIDUAL_LIMIT:
             st.warning(f"Your HSA contribution (${hsa_annual_check:,}/yr) exceeds the 2026 individual limit of $4,400.")
         data["income"]["student_loan_interest"] = st.number_input(
             "Student Loan Interest ($/year)", value=data["income"].get("student_loan_interest", 0),
@@ -2329,7 +2282,7 @@ def page_investments():
     match_pct = inv["employer_match_pct"]
     match_limit = inv["employer_match_limit"]
 
-    your_annual = min(salary * your_contrib_pct / 100, 24_500)  # capped at IRS limit
+    your_annual = min(salary * your_contrib_pct / 100, K401_LIMIT)
     matchable = salary * match_limit / 100
     employer_annual = min(your_annual, matchable) * match_pct / 100
     employer_monthly = employer_annual / 12
@@ -2560,69 +2513,15 @@ def page_fire():
 
     if st.button("Run Simulation", type="primary", key="mc_run"):
         with st.spinner("Running simulation..."):
-            stock_alloc = mc_stock_pct / 100
-            bond_alloc = 1.0 - stock_alloc
-            total_mc_years = mc_end_age - fire_age
-            yrs_to_retire = mc_retire_age - fire_age
-            inflation_mean = fire_inflation / 100
-
-            # Correlated returns via Cholesky decomposition
-            corr_matrix = np.array([[1.0, 0.05], [0.05, 1.0]])
-            cholesky = np.linalg.cholesky(corr_matrix)
-
-            paths = np.zeros((mc_n_sims, total_mc_years + 1))
-            paths[:, 0] = fire_portfolio
-            failure_ages = []
-
-            for sim in range(mc_n_sims):
-                portfolio = float(fire_portfolio)
-                failed = False
-                for year in range(1, total_mc_years + 1):
-                    if failed:
-                        paths[sim, year] = 0
-                        continue
-                    z = np.random.normal(size=2)
-                    correlated = cholesky @ z
-                    stock_ret = 0.10 + 0.18 * correlated[0]
-                    bond_ret = 0.05 + 0.06 * correlated[1]
-                    port_ret = stock_alloc * stock_ret + bond_alloc * bond_ret
-                    yr_inflation = max(0, np.random.normal(inflation_mean, 0.015))
-
-                    age = fire_age + year
-                    if age <= mc_retire_age:
-                        inf_factor = (1 + inflation_mean) ** year
-                        portfolio = portfolio * (1 + port_ret) + annual_savings * inf_factor
-                    else:
-                        yrs_retired = age - mc_retire_age
-                        inf_factor = (1 + yr_inflation) ** yrs_retired
-                        portfolio = portfolio * (1 + port_ret) - total_fire_expenses * inf_factor
-
-                    if portfolio <= 0:
-                        portfolio = 0
-                        failed = True
-                        failure_ages.append(age)
-                    paths[sim, year] = portfolio
-
-            success_count = int(np.sum(paths[:, -1] > 0))
-            success_rate = success_count / mc_n_sims * 100
-            ages = list(range(fire_age, mc_end_age + 1))
-            p5 = np.percentile(paths, 5, axis=0)
-            p10 = np.percentile(paths, 10, axis=0)
-            p25 = np.percentile(paths, 25, axis=0)
-            p50 = np.percentile(paths, 50, axis=0)
-            p75 = np.percentile(paths, 75, axis=0)
-            p90 = np.percentile(paths, 90, axis=0)
-            p95 = np.percentile(paths, 95, axis=0)
-            ending = paths[:, -1]
-
-        # Store in session so user can scroll without re-running
-        st.session_state.mc_results = {
-            "paths": paths, "ages": ages, "success_rate": success_rate,
-            "success_count": success_count, "n_sims": mc_n_sims,
-            "p5": p5, "p10": p10, "p25": p25, "p50": p50, "p75": p75, "p90": p90, "p95": p95,
-            "ending": ending, "failure_ages": failure_ages,
-            "retire_age": mc_retire_age, "stock_pct": mc_stock_pct,
-        }
+            # The maths is in calculations.run_monte_carlo — stdlib, no numpy,
+            # and testable because the recurrence takes its returns as arguments
+            # rather than drawing them. It also samples the 50 paths for the fan
+            # chart once, here: this page used to pick them with np.random.choice
+            # while drawing, so every widget touch redrew a different fifty.
+            st.session_state.mc_results = run_monte_carlo(
+                fire_age, mc_retire_age, mc_end_age, fire_portfolio,
+                annual_savings, total_fire_expenses, mc_stock_pct,
+                fire_inflation, mc_n_sims)
 
     # Display results if available
     if "mc_results" in st.session_state:
@@ -2637,29 +2536,29 @@ def page_fire():
             st.markdown(metric_card_html("Success Rate", f"{sr:.0f}%", sr_status, sr_color,
                 f"Plan survives in {r['success_count']:,} of {r['n_sims']:,} scenarios."), unsafe_allow_html=True)
         with c2:
-            st.metric("Median Ending Balance", fmt(float(np.median(r["ending"]))))
+            st.metric("Median Ending Balance", fmt(r["median_ending"]))
         with c3:
-            st.metric("Worst 10% Scenario", fmt(max(0, float(np.percentile(r["ending"], 10)))),
+            st.metric("Worst 10% Scenario", fmt(max(0, r["p10_ending"])),
                       help="90% of outcomes are better than this")
         with c4:
-            st.metric("Best 10% Scenario", fmt(float(np.percentile(r["ending"], 90))))
+            st.metric("Best 10% Scenario", fmt(r["p90_ending"]))
 
         # Fan chart
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=r["ages"], y=r["p90"].tolist(), mode="lines", line=dict(width=0),
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["percentiles"]["p90"], mode="lines", line=dict(width=0),
                                 showlegend=False, hoverinfo="skip"))
-        fig.add_trace(go.Scatter(x=r["ages"], y=r["p10"].tolist(), mode="lines", line=dict(width=0),
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["percentiles"]["p10"], mode="lines", line=dict(width=0),
                                 fill="tonexty", fillcolor="rgba(46,134,171,0.12)",
                                 name="10th-90th percentile", hoverinfo="skip"))
-        fig.add_trace(go.Scatter(x=r["ages"], y=r["p75"].tolist(), mode="lines", line=dict(width=0),
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["percentiles"]["p75"], mode="lines", line=dict(width=0),
                                 showlegend=False, hoverinfo="skip"))
-        fig.add_trace(go.Scatter(x=r["ages"], y=r["p25"].tolist(), mode="lines", line=dict(width=0),
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["percentiles"]["p25"], mode="lines", line=dict(width=0),
                                 fill="tonexty", fillcolor="rgba(46,134,171,0.25)",
                                 name="25th-75th percentile", hoverinfo="skip"))
-        fig.add_trace(go.Scatter(x=r["ages"], y=r["p50"].tolist(), mode="lines",
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["percentiles"]["p50"], mode="lines",
                                 line=dict(color=BLUE, width=2.5), name="Median",
                                 hovertemplate="Age %{x}: %{y:$,.0f}<extra></extra>"))
-        fig.add_trace(go.Scatter(x=r["ages"], y=r["p5"].tolist(), mode="lines",
+        fig.add_trace(go.Scatter(x=r["ages"], y=r["percentiles"]["p5"], mode="lines",
                                 line=dict(color=RED, width=1.5, dash="dot"),
                                 name="5th percentile", hovertemplate="Age %{x}: %{y:$,.0f}<extra></extra>"))
         fig.add_vline(x=r["retire_age"], line_dash="dash", line_color=YELLOW, line_width=1.5,
@@ -2673,14 +2572,14 @@ def page_fire():
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("#### Ending Balance Distribution")
-            successes = r["ending"][r["ending"] > 0]
-            failures = r["ending"][r["ending"] <= 0]
+            successes = [e for e in r["ending"] if e > 0]
+            failures = [e for e in r["ending"] if e <= 0]
             fig2 = go.Figure()
             if len(successes) > 0:
                 fig2.add_trace(go.Histogram(x=successes, nbinsx=40, marker_color=BLUE, opacity=0.7, name="Survived"))
             if len(failures) > 0:
                 fig2.add_trace(go.Histogram(x=failures, nbinsx=5, marker_color=RED, opacity=0.7, name="Ran out"))
-            fig2.add_vline(x=float(np.median(r["ending"])), line_dash="dash", line_color=BLUE,
+            fig2.add_vline(x=r["median_ending"], line_dash="dash", line_color=BLUE,
                           annotation_text="Median", annotation_position="top")
             fig2.update_layout(**default_layout(), height=350, xaxis_title="Ending Portfolio",
                              xaxis_tickformat="$,.0f", yaxis_title="Simulations", barmode="overlay",
@@ -2690,11 +2589,10 @@ def page_fire():
         with c2:
             st.markdown("#### Sample Paths")
             fig3 = go.Figure()
-            sample_idx = np.random.choice(r["paths"].shape[0], size=min(50, r["paths"].shape[0]), replace=False)
-            for i in sample_idx:
-                fig3.add_trace(go.Scatter(x=r["ages"], y=r["paths"][i].tolist(), mode="lines",
+            for path in r["sample_paths"]:
+                fig3.add_trace(go.Scatter(x=r["ages"], y=path, mode="lines",
                     line=dict(color=BLUE, width=0.5), opacity=0.15, showlegend=False, hoverinfo="skip"))
-            fig3.add_trace(go.Scatter(x=r["ages"], y=r["p50"].tolist(), mode="lines",
+            fig3.add_trace(go.Scatter(x=r["ages"], y=r["percentiles"]["p50"], mode="lines",
                                     line=dict(color=BLUE, width=2.5), name="Median"))
             fig3.add_hline(y=0, line_dash="dash", line_color=RED, line_width=1)
             fig3.update_layout(**default_layout(), height=350, xaxis_title="Age",
@@ -2707,8 +2605,8 @@ def page_fire():
             <p style="color:{TEXT_DIM}; margin:0.25rem 0; font-size:0.9rem;">
                 Out of {r["n_sims"]:,} simulated market scenarios, your portfolio survived in
                 <strong style="color:{sr_color};">{r["success_count"]:,}</strong> ({sr:.0f}%).
-                The median ending balance was <strong>{fmt(float(np.median(r["ending"])))}</strong>,
-                but in the worst 10% of scenarios it was {fmt(max(0, float(np.percentile(r["ending"], 10))))}.
+                The median ending balance was <strong>{fmt(r["median_ending"])}</strong>,
+                but in the worst 10% of scenarios it was {fmt(max(0, r["p10_ending"]))}.
             </p>
             <p style="color:{TEXT_DIM}; margin:0.5rem 0 0; font-size:0.82rem;">
                 Assumes {r["stock_pct"]}% stocks / {100-r["stock_pct"]}% bonds with correlated returns
@@ -2937,7 +2835,7 @@ def page_tax():
     scenarios = [0, 3, 6, 10, 15, 20]
     savings_data = []
     for pct in scenarios:
-        c = min(data["income"]["gross_salary"] * pct / 100, 24500)
+        c = min(data["income"]["gross_salary"] * pct / 100, K401_LIMIT)
         s = c * (marginal + state_marginal)
         savings_data.append({"Contribution %": f"{pct}%", "Annual ($)": fmt(c), "Tax Savings": fmt(s)})
     st.dataframe(pd.DataFrame(savings_data), use_container_width=True, hide_index=True)
@@ -2949,8 +2847,8 @@ def page_tax():
 
     c1, c2 = st.columns(2)
     with c1:
-        roth_contribution = st.number_input("Annual Contribution ($)", value=int(min(contrib, 24500)),
-            min_value=0, max_value=24500, step=500, format="%d", key="roth_contrib")
+        roth_contribution = st.number_input("Annual Contribution ($)", value=int(min(contrib, K401_LIMIT)),
+            min_value=0, max_value=K401_LIMIT, step=500, format="%d", key="roth_contrib")
         roth_years = st.slider("Years Until Retirement", 1, 50, 30, key="roth_years")
     with c2:
         roth_return = st.number_input("Expected Return (%)", value=7.0, min_value=0.0, max_value=20.0,

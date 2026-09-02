@@ -244,6 +244,217 @@ if len(debts) > 1:
           sum(d["min_payment"] for d in debts) < demo["income"]["gross_salary"] / 12 * 0.4,
           "the demo would look like someone in distress")
 
+# -- 5. compute_take_home: the function nothing could reach ------------
+#
+# Until September 2026 this lived in budget_app.py and read a module-global
+# `data` dict, so it could not be imported without Streamlit and was covered by
+# zero of the 239 assertions -- despite every page's take-home, savings rate,
+# cash flow and FIRE timeline running through it.
+print("\n--- take-home: the pay stub has to balance ---")
+
+BASE = {"gross_salary": 95_000, "state": "New York", "filing_status": "Single",
+        "contribution_401k": 6, "health_insurance": 180, "hsa": 100,
+        "bonus_amount": 10_000, "bonus_type": "Annual (spread monthly)",
+        "student_loan_interest": 0}
+
+
+def income(**over):
+    d = dict(BASE)
+    d.update(over)
+    return d
+
+
+PROFILES = [income(), income(gross_salary=0), income(gross_salary=610_000),
+            income(state="Texas"), income(state="Arkansas", gross_salary=85_000),
+            income(filing_status="Married Filing Jointly"),
+            income(contribution_401k=40), income(bonus_type="None")]
+
+worst = 0.0
+for prof in PROFILES:
+    th = calc.compute_take_home(prof)
+    worst = max(worst, abs(th["annual_gross"] - th["pretax"] - th["total_tax"]
+                           - th["annual_take_home"]))
+check("gross - pretax - tax == take-home on %d profiles (worst residual %.2e)"
+      % (len(PROFILES), worst), worst < 1e-9, str(worst))
+check("monthly is annual / 12",
+      all(abs(calc.compute_take_home(p)["monthly_take_home"] * 12
+              - calc.compute_take_home(p)["annual_take_home"]) < 1e-9 for p in PROFILES))
+check("total_tax is the three taxes",
+      all(abs(sum(calc.compute_take_home(p)[k] for k in ("fed_tax", "state_tax", "fica"))
+              - calc.compute_take_home(p)["total_tax"]) < 1e-9 for p in PROFILES))
+check("bonus_type 'None' keeps the bonus out of gross",
+      calc.compute_take_home(income(bonus_type="None"))["annual_gross"] == 95_000)
+check("a zero income does not divide by zero",
+      calc.compute_take_home(income(gross_salary=0, bonus_type="None"))["effective_rate"] == 0)
+
+# The bug this function's extraction was meant to make testable.
+ny = calc.compute_take_home(income(gross_salary=110_000, state="New York"))
+brackets, _ = calc._get_state_brackets_for_filing(calc.STATE_TAX_DATA["New York"], "Single")
+check("marginal_state is the user's rate (%.1f%%), not the state's top bracket (%.1f%%)"
+      % (ny["marginal_state"], brackets[-1][1] * 100),
+      abs(ny["marginal_state"] - 6.0) < 1e-9 and ny["marginal_state"] < brackets[-1][1] * 100,
+      str(ny["marginal_state"]))
+
+# Assert the ENGINE READS the rule, not just that the rule is right. A version
+# that inlined the top bracket would pass every assertion above about
+# calc_state_marginal_rate itself.
+_real_marg = calc.calc_state_marginal_rate
+calc.calc_state_marginal_rate = lambda *a, **k: 99.0
+try:
+    hijacked = calc.compute_take_home(income(gross_salary=110_000))["marginal_state"]
+finally:
+    calc.calc_state_marginal_rate = _real_marg
+check("compute_take_home reads calc_state_marginal_rate (monkeypatched answer moves)",
+      hijacked == 99.0, "got %r" % (hijacked,))
+
+_real_limit = calc.K401_LIMIT
+calc.K401_LIMIT = 1_000
+try:
+    capped = calc.compute_take_home(income(gross_salary=610_000, contribution_401k=20))
+finally:
+    calc.K401_LIMIT = _real_limit
+check("compute_take_home reads K401_LIMIT (monkeypatched cap moves the answer)",
+      capped["contrib_401k"] == 1_000, "got %r" % (capped["contrib_401k"],))
+
+print("\n--- take-home: itemizing ---")
+plain = calc.compute_take_home(income())
+check("with no itemized input the standard deduction is taken",
+      plain["deduction_taken"] == plain["std_ded"] and not plain["itemizing"])
+big = calc.compute_take_home(income(), {"mortgage_interest": 30_000, "salt": 25_000,
+                                        "charitable": 5_000})
+check("a large itemized total is taken instead, and says so",
+      big["deduction_taken"] == big["itemized_total"] and big["itemizing"]
+      and big["itemized_total"] > big["std_ded"],
+      "taken %.0f vs std %.0f" % (big["deduction_taken"], big["std_ded"]))
+check("itemizing lowers the tax bill", big["fed_tax"] < plain["fed_tax"])
+
+# The wrapper still in budget_app.py must DELEGATE, not hold a second copy.
+app.data = {"income": income(gross_salary=123_456), "itemized": {}}
+_real_engine = app.calc_take_home
+app.calc_take_home = lambda inc, item: {"sentinel": inc["gross_salary"], "itemized_seen": item}
+try:
+    relayed = app.compute_take_home()
+    app.data["itemized"] = {"charitable": 777}
+    relayed2 = app.compute_take_home()
+finally:
+    app.calc_take_home = _real_engine
+check("budget_app's compute_take_home delegates to the engine, holding no copy",
+      relayed["sentinel"] == 123_456, "got %r" % (relayed,))
+check("the wrapper passes the session's itemized dict through",
+      relayed2["itemized_seen"] == {"charitable": 777}, "got %r" % (relayed2,))
+
+
+# -- 6. Monte Carlo ---------------------------------------------------
+print("\n--- percentile: the numbers on a shipping page must not move ---")
+check("percentile of a single value is that value", calc.percentile([42.0], 50) == 42.0)
+check("percentile of an empty series is 0.0, not an error", calc.percentile([], 50) == 0.0)
+check("p50 of 1..5 is 3 (linear interpolation)", calc.percentile([1, 2, 3, 4, 5], 50) == 3.0)
+check("p25 of 1..5 is 2", calc.percentile([1, 2, 3, 4, 5], 25) == 2.0)
+check("p10 of 1..5 interpolates to 1.4", abs(calc.percentile([1, 2, 3, 4, 5], 10) - 1.4) < 1e-12)
+_SERIES = [3, 1, 4, 1, 5, 9, 2, 6]
+check("percentile is monotone in q",
+      all(calc.percentile(_SERIES, q) <= calc.percentile(_SERIES, q + 5)
+          for q in range(0, 100, 5)))
+# numpy as an oracle, which needs care in THIS file: it installs a stub numpy
+# in sys.modules so budget_app.py can be exec'd without one. A stub returns None
+# from every call, so an oracle read through it compares against nothing and the
+# check becomes decoration. The real module is loaded past the stub, and the
+# block refuses to run unless it is demonstrably the real one.
+_np = None
+try:
+    import importlib
+    import random as _rnd
+    _stub = sys.modules.pop("numpy", None)
+    try:
+        _np = importlib.import_module("numpy")
+        if _np.percentile([1.0, 2.0, 3.0], 50) != 2.0:
+            _np = None                      # a stub, or something else entirely
+    finally:
+        if _stub is not None and "numpy" not in sys.modules:
+            sys.modules["numpy"] = _stub
+except Exception:
+    _np = None
+
+if _np is None:
+    print("  [skip] no real numpy available to check percentile against")
+else:
+    _r = _rnd.Random(11)
+    _worst = 0.0
+    for _ in range(200):
+        _v = [_r.uniform(-1e6, 1e7) for _ in range(_r.randint(1, 60))]
+        for _q in (0, 1, 5, 10, 25, 50, 75, 90, 95, 99, 100):
+            _worst = max(_worst, abs(calc.percentile(_v, _q)
+                                     - float(_np.percentile(_np.array(_v), _q))))
+    check("matches numpy.percentile, the function it replaced "
+          "(2,200 comparisons, worst %.1e)" % _worst, _worst < 1e-6, str(_worst))
+
+print("\n--- simulate_path: the recurrence, with the randomness taken out ---")
+YEARS = 10
+flat = [0.0] * YEARS
+bal, fail = calc.simulate_path(30, 40, 40, 1_000.0, 100.0, 0.0, 0.0, flat, flat)
+check("no return, no inflation, accumulation only: start + savings * years",
+      abs(bal[-1] - (1_000 + 100 * YEARS)) < 1e-9 and fail is None, str(bal[-1]))
+check("one balance per year, inclusive of both ends", len(bal) == YEARS + 1)
+bal, fail = calc.simulate_path(30, 30, 40, 1_000.0, 0.0, 100.0, 0.0, flat, flat)
+check("retired throughout: start - expenses * years",
+      abs(bal[-1] - (1_000 - 100 * YEARS)) < 1e-9, str(bal[-1]))
+bal, fail = calc.simulate_path(30, 30, 40, 500.0, 0.0, 100.0, 0.0, flat, flat)
+check("a path that runs out reports the age it happened", fail == 35, str(fail))
+check("and stays at zero afterwards", all(b == 0.0 for b in bal[6:]), str(bal))
+bal, _ = calc.simulate_path(30, 40, 41, 1_000.0, 0.0, 0.0, 0.0, [0.10] * 11, [0.0] * 11)
+check("a 10% return compounds", abs(bal[-1] - 1_000 * 1.10 ** 11) < 1e-6, str(bal[-1]))
+
+# Retirement spending compounds over the years spent RETIRED, not over calendar
+# years since the start. The two are the same number whenever retire_age equals
+# current_age, which is what every case above did -- so a mutation swapping one
+# for the other survived them all. Retire at 35 of a run from 30 to 40 and they
+# differ: five withdrawals growing 1.10**1..1.10**5, not 1.10**6..1.10**10.
+_expected = 100_000.0 - sum(1_000 * 1.10 ** k for k in range(1, 6))
+bal, _ = calc.simulate_path(30, 35, 40, 100_000.0, 0.0, 1_000.0, 0.0,
+                            [0.0] * 10, [0.10] * 10)
+check("retirement spending compounds over years retired, not calendar years",
+      abs(bal[-1] - _expected) < 1e-6,
+      "got %.2f, expected %.2f" % (bal[-1], _expected))
+check("nothing is withdrawn before the retirement age",
+      all(b == 100_000.0 for b in bal[:6]), str(bal[:6]))
+
+print("\n--- run_monte_carlo ---")
+mc = calc.run_monte_carlo(24, 45, 95, 25_000, 30_000, 50_000, 80, 3.0, 300, seed=3)
+mc2 = calc.run_monte_carlo(24, 45, 95, 25_000, 30_000, 50_000, 80, 3.0, 300, seed=3)
+check("a seeded run is reproducible", mc["ending"] == mc2["ending"])
+check("success_rate is success_count over n_sims",
+      abs(mc["success_rate"] - mc["success_count"] / mc["n_sims"] * 100) < 1e-9)
+check("one age per column of the bands",
+      all(len(mc["percentiles"][k]) == len(mc["ages"]) for k in mc["percentiles"]))
+ordered = all(mc["percentiles"][a][i] <= mc["percentiles"][b][i] + 1e-9
+              for a, b in zip(("p5", "p10", "p25", "p50", "p75", "p90"),
+                              ("p10", "p25", "p50", "p75", "p90", "p95"))
+              for i in range(len(mc["ages"])))
+check("the percentile bands never cross", ordered)
+check("sample paths are capped at %d and are full length" % calc.MC_MAX_SAMPLE_PATHS,
+      len(mc["sample_paths"]) == calc.MC_MAX_SAMPLE_PATHS
+      and all(len(p) == len(mc["ages"]) for p in mc["sample_paths"]))
+check("one ending balance per simulation", len(mc["ending"]) == 300)
+check("median_ending is the median of ending",
+      abs(mc["median_ending"] - calc.percentile(mc["ending"], 50)) < 1e-9)
+rich = calc.run_monte_carlo(60, 61, 70, 50_000_000, 0, 10_000, 0, 3.0, 60, seed=5)
+check("a plan that cannot fail succeeds 100% of the time",
+      rich["success_rate"] == 100.0, str(rich["success_rate"]))
+broke = calc.run_monte_carlo(60, 60, 90, 1_000, 0, 500_000, 0, 3.0, 60, seed=5)
+check("a plan that cannot survive succeeds 0% of the time",
+      broke["success_rate"] == 0.0, str(broke["success_rate"]))
+
+# Again: assert the engine READS the recurrence rather than inlining it.
+_real_path = calc.simulate_path
+calc.simulate_path = lambda *a, **k: ([1.0] * (a[2] - a[0] + 1), None)
+try:
+    hijacked_mc = calc.run_monte_carlo(24, 45, 95, 25_000, 30_000, 50_000, 80, 3.0, 20, seed=3)
+finally:
+    calc.simulate_path = _real_path
+check("run_monte_carlo reads simulate_path (monkeypatched paths reach the output)",
+      set(hijacked_mc["ending"]) == {1.0}, str(set(hijacked_mc["ending"])))
+
+
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")
 print("=" * 66)
