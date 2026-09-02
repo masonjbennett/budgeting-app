@@ -108,9 +108,33 @@ Design intent: this is the site's brand adapted into an **instrument**, not a
 copy of the newspaper. Same palette, same type trio, same hairline discipline;
 none of the editorial furniture. Denser and quieter — operated, not read.
 Radii 2–4px. Cards are a 1px rule on `--card`, never a tinted block. Claret and
-bronze stay strictly semantic or the alarm states stop reading as alarms.
-Instrument Serif for titles and **one hero figure per screen**; JetBrains Mono
-with `tabular-nums` for every number.
+bronze stay strictly semantic, or the alarm states stop reading as alarms.
+JetBrains Mono with `tabular-nums` for every number.
+
+**Paper is the default, and this was decided rather than inherited.** The two
+design leaders in this category sit at opposite poles — Copilot at `#000814`
+deep navy, Monarch at `#F6F5F3` warm paper with a serif display face — so dark
+is not a requirement of the category, and warm paper is the leading position in
+it rather than the quaint one. The reason to go paper here is not continuity for
+its own sake: a distinctive house style is worth more to a portfolio piece than
+a well-executed genre style, and filings.masonjbennett.com already proves this
+palette carries a dense data tool. Ship dark as a first-class toggle. Be aware
+that light is the less forgiving ground — dark hides weak spacing and
+low-contrast type, paper does not — so the polish has to be earned in hairline
+precision, spacing and type rather than in the palette.
+
+**You have room to deviate where the instrument register calls for it.** It does
+not have to match the site exactly. Two specific things to decide with your eyes
+on the rendered page rather than by inheriting my spec:
+
+- **Whether the hero figure is Instrument Serif at all.** It is a display serif,
+  and it is right for page titles. For a large money figure it may well read
+  better as JetBrains Mono or Space Grotesk at display size — more instrument,
+  less masthead. Render all three at ~52px against real data and pick; do not
+  assume the site's answer transfers.
+- **How much serif to use overall.** The site is a newspaper and leans on it.
+  This is a control panel, and the right amount is probably less. Titles only,
+  possibly titles-and-nothing-else.
 
 ### 2 — Dashboard hierarchy
 
