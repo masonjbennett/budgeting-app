@@ -55,6 +55,16 @@ The file follows this order:
 ## Critical Rules
 - **Never add duplicate kwargs** when calling `fig.update_layout(**default_layout(), ...)`. The `default_layout()` already sets `legend`, `margin`, `hovermode`, `xaxis`, `yaxis`. To override, modify the dict before spreading: `layout = default_layout(); layout["margin"] = ...; fig.update_layout(**layout, ...)`
 - **Run all three suites after every change** — `test_calc.py` (29), `test_cloud.py` (42), `test_stress.py` (75). All three import the shipping code; none redefines its subject.
+- **After adding a NEW name to `calculations.py`, REBOOT the deployed app.**
+  Streamlit re-runs the script in a long-lived process, so `import calculations`
+  can return the copy already in `sys.modules` — the one from before that name
+  existed — and the deploy dies with an ImportError while both files are correct
+  and import cleanly everywhere else. It happened on 2026-09-01 with
+  `TOP_BRACKET_START`: production had been verified healthy one commit earlier.
+  Fix is a full container restart: "Reboot app" in the Streamlit Cloud dashboard,
+  or any edit to `requirements.txt`, which changes its hash and forces a fresh
+  environment. **A green local run proves nothing about this**, which is why the
+  production check after a push has to be a real page load, not a 200.
 - **All maths lives in `calculations.py`, and nothing else may hold a copy.**
   It had drifted into THREE implementations that disagreed: budget_app.py,
   test_stress.py's hand-copied mirror, and budget-app-v2's FastAPI backend. The

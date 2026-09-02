@@ -1,3 +1,12 @@
+# NOTE ON REDEPLOYS. Adding a NEW name to calculations.py and importing it from
+# budget_app.py can break the deployed app with an ImportError, even though both
+# files are correct and import cleanly anywhere else: Streamlit re-runs the script
+# in a LONG-LIVED process, so `import calculations` can return the module already
+# in sys.modules — the version from before that name existed. It happened on
+# 2026-09-01 with TOP_BRACKET_START. The fix is a full container restart: "Reboot
+# app" in the Streamlit Cloud dashboard, or any edit to THIS file, which changes
+# its hash and forces a fresh environment. Touched 2026-09-01 for that reason.
+
 # Pinned deliberately, after the sibling portfolio-app broke on exactly this.
 # That app styled Streamlit through its internal DOM under `streamlit>=1.32.0`;
 # a routine rebuild picked up a release where the widgets moved from BaseWeb to
