@@ -174,12 +174,39 @@ Not yet deployed. Vercel project settings this needs:
    uses (`shxjjqcuuhqlvgpbujby`). Reuse it; do not create a new one.
 3. Domain `budget.masonjbennett.com`.
 
-Two things to confirm on the FIRST deploy, because they are the parts that
-cannot be tested locally:
+### There is deliberately NO production rewrite for /api
 
-- that a Next.js project still picks up `api/*.py` as a Python function when
-  `requirements.txt` is present — Vercel's docs note that a Python *framework
-  preset* takes precedence over file-based functions, and the interaction with a
-  Next.js preset is worth seeing rather than assuming;
-- that the build-time sync runs before the function is bundled. If it does not,
-  the deploy fails on a missing import, which is the intended failure.
+`vercel.json` configures the function (bundle excludes, `maxDuration`) and
+nothing else. Vercel routes `/api` requests to the Python function itself —
+its own Next.js + Python guide is explicit that the rewrite in that setup is for
+local development only, which is why ours lives in `next.config.ts` gated on
+`NODE_ENV === "development"`.
+
+A production `{"source": "/api/:path*", "destination": "/api"}` was in here and
+was removed before the first deploy. It is the pattern most FastAPI-on-Vercel
+posts show, and here it would have been **silently wrong**: the routes are
+declared as `/api/take-home`, so handing the function a rewritten path of `/api`
+matches nothing and every call 404s. Without the rewrite the deploy either works
+or fails loudly on the first request — which is the failure worth having.
+
+### Confirm on the FIRST deploy
+
+Two things cannot be tested locally. Both fail loudly rather than silently,
+which is why deploying to a preview URL early is cheap:
+
+- **Routing.** `GET /api/health` should return `{"status":"ok"}`. If it 404s,
+  Vercel is serving `api/index.py` at the exact path `/api` only, and the fix is
+  one line — mount the FastAPI app at the root and let the platform prefix, or
+  reinstate a rewrite that preserves the path.
+- **Sync ordering.** The build-time copy must run before the function is
+  bundled. If it does not, the deploy fails on a missing import of
+  `calculations` — which is the intended failure, not a silent stale copy.
+
+### Suggested sequence
+
+Deploy to a **preview URL first** and leave `budget.masonjbennett.com`
+unattached. The app is currently unusable on a phone (the sidebar is `fixed`,
+240px, never hidden, and covers 64% of a 375px viewport with no toggle), and the
+Streamlit app is still live and linked as recruiter-safe. Attach the domain once
+the mobile navigation and the re-skin have landed — that is what "genuinely
+better" means here.
