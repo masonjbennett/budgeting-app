@@ -1,5 +1,16 @@
 # Budget Tracker App
 
+## TWO FRONT ENDS, ONE ENGINE
+`budget_app.py` (Streamlit, live at masonbennett-budget.streamlit.app) and
+`web/` (Next.js + FastAPI, for budget.masonjbennett.com) are two front ends over
+`calculations.py` and `app_data.py`. Both of those are stdlib-only and at the
+repo root, one copy each. **web/api/calculations.py and web/api/app_data.py are
+GENERATED at build time and gitignored — never edit or commit them.** Read
+`web/README.md` before touching anything under `web/`.
+
+The Streamlit app stays live and unchanged until the rebuild is genuinely
+better. Do not retire it in passing.
+
 ## Overview
 Personal finance web app with 11 pages: Dashboard, Income Setup, Budget Builder, Expense Tracker, Net Worth, Debt Payoff, Savings Goals, Investments, FIRE Calculator, Tax Estimator, Data Management. Single-file Streamlit app (~3,200 lines) with Supabase auth + cloud persistence.
 
@@ -60,7 +71,11 @@ The file follows this order:
 
 ## Critical Rules
 - **Never add duplicate kwargs** when calling `fig.update_layout(**default_layout(), ...)`. The `default_layout()` already sets `legend`, `margin`, `hovermode`, `xaxis`, `yaxis`. To override, modify the dict before spreading: `layout = default_layout(); layout["margin"] = ...; fig.update_layout(**layout, ...)`
-- **Run all three suites after every change** — `test_calc.py` (67), `test_cloud.py` (42), `test_stress.py` (168) = 277. All three import the shipping code; none redefines its subject.
+- **Run all FOUR suites after every change** — `test_calc.py` (81),
+  `test_cloud.py` (42), `test_stress.py` (168) and `web/test_api.py` (49) = 340,
+  plus `web/test_api_mutations.py`, which reintroduces nine shipped bugs and
+  requires the API suite to fail on each. All four import the shipping code;
+  none redefines its subject.
 - **After adding a NEW name to `calculations.py`, REBOOT the deployed app.**
   Streamlit re-runs the script in a long-lived process, so `import calculations`
   can return the copy already in `sys.modules` — the one from before that name
@@ -71,6 +86,13 @@ The file follows this order:
   or any edit to `requirements.txt`, which changes its hash and forces a fresh
   environment. **A green local run proves nothing about this**, which is why the
   production check after a push has to be a real page load, not a 200.
+- **`app_data.py` holds the starting and demo profiles**, for the same reason
+  `calculations.py` holds the maths: two front ends need them, and a demo
+  retyped for the second one drifts. The abandoned scaffold's hand-written
+  TypeScript copy had ONE debt, which makes avalanche and snowball identical by
+  definition and silently kills the comparison the debt page exists for. Served
+  to the web app by `GET /api/state`; `test_calc.py` and `web/test_api.py` both
+  assert the multi-debt property.
 - **All maths lives in `calculations.py`, and nothing else may hold a copy.**
   It had drifted into THREE implementations that disagreed: budget_app.py,
   test_stress.py's hand-copied mirror, and budget-app-v2's FastAPI backend. The
@@ -234,3 +256,32 @@ key = "..."
 - **Adding a new input field:** Add to `get_default_state()`, `_generate_demo_data()`, and migration in `_migrate_imported()`
 - **New chart:** Use `fig.update_layout(**default_layout(), height=400, ...)` — never duplicate keys from default_layout
 - **New tax feature:** Update the calculation function, add to `compute_take_home()` if it affects AGI, add tests to `test_stress.py`
+
+
+## The rebuild (September 2026)
+`web/` is a Next.js 16 + FastAPI front end for **budget.masonjbennett.com**, a
+separate Vercel project from the same repo (Root Directory `web/`). Built
+because the Streamlit app is correct but presents badly, and a budgeting app is
+a consumer product where polish is part of whether it seems good.
+
+Read **`web/README.md`** — it carries the rules, each of which exists because
+the opposite already shipped. In short: no arithmetic in TypeScript; generated
+copies of the two shared modules, gitignored and verified byte-for-byte;
+`null` is not `0.0` and every card has a written state for it; the API is a pure
+calculator holding no credential.
+
+Three things measured during the build that are worth not re-deriving:
+- **Recharts, not Plotly.** plotly.js-dist-min was 944 KB brotli for five trace
+  types out of forty. The entire app is 336 KB brotli.
+- **Chart entry animations are OFF, as a correctness decision.** Recharts renders
+  a Pie's sectors as empty `<g>` groups until the animation completes; where it
+  does not complete the chart is silently blank forever, with a correctly sized
+  SVG and nothing in the console. Identical pies side by side, animation on and
+  off: 0 paths and 3 paths.
+- **The Monte Carlo needs no numpy.** 5,000 sims x 71 years in 0.91s of pure
+  Python, against a 60s Vercel function limit — which is why `requirements.txt`
+  is two lines.
+
+**NOT YET DEPLOYED.** Three Vercel settings and two first-deploy checks are in
+`web/README.md`. The Supabase project is the LIVE one (`shxjjqcuuhqlvgpbujby`) —
+reuse it, do not create another.
