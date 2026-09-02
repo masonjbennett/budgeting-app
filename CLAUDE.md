@@ -86,6 +86,18 @@ The file follows this order:
 - **`_generate_demo_data()` uses relative dates** — expenses are always current/previous month. Never hardcode dates.
 - **All tax data is official IRS 2026** from Rev. Proc. 2025-32 + OBBBA. Don't change tax numbers without a verified source.
 - **`compute_take_home()` references global `data` dict** for charitable deduction. The `d` parameter is just the income sub-dict.
+- **Badge text is computed, not hardcoded.** `status_badge_html` puts a brand
+  colour on a 15% tint of ITSELF, which for this palette is a colour on a paler
+  version of itself — GREEN measured 1.87:1 and YELLOW 2.13:1. `readable_on_tint`
+  darkens until 4.5:1, so a new palette entry cannot quietly ship an illegible
+  badge. The suite asserts on the RENDERED MARKUP, not just the helper: reverting
+  the badge to the raw colour passed every assertion about `readable_on_tint`.
+- **Sidebar button colours must cover their DESCENDANTS.** Streamlit renders each
+  label as a nested `<p>`, which `section[data-testid="stSidebar"] *` matches
+  directly — and a matched rule beats an inherited one, so both button colour
+  rules were dead and every label rendered #E2E8F0. The active-page highlight
+  (#7DD3FC) had never once appeared. Any new sidebar colour rule needs the
+  `, ... *` half or it is decoration.
 - **Take-home itemizes when itemizing is better.** `calc_federal_tax` used to
   force the standard deduction, so the Tax page could tell someone itemizing saved
   them money while take-home, savings rate, dashboard cash flow and the FIRE

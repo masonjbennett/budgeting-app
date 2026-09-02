@@ -18,6 +18,7 @@ from calculations import (
     FEDERAL_BRACKETS_2026,
     FILING_STATUSES,
     STANDARD_DEDUCTION_2026,
+    TOP_BRACKET_START,
     STATE_TAX_DATA,
     FICA_SS_RATE,
     FICA_SS_CAP,
@@ -404,17 +405,27 @@ section[data-testid="stSidebar"] * { color: #E2E8F0; }
 section[data-testid="stSidebar"] button {
     transition: all 0.25s var(--ease); border-radius: 0.5rem; margin-bottom: 2px;
 }
+/* These two rules have to cover the button's DESCENDANTS, not just the button.
+   Streamlit renders the label as a nested <p>, which `stSidebar *` above matches
+   directly — a matched rule beats an inherited one, so for months every sidebar
+   label rendered #E2E8F0 and the active-page highlight below never appeared. */
+section[data-testid="stSidebar"] button[kind="secondary"],
+section[data-testid="stSidebar"] button[kind="secondary"] * {
+    color: #CBD5E1;
+}
 section[data-testid="stSidebar"] button[kind="secondary"] {
     background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-    color: #CBD5E1;
 }
 section[data-testid="stSidebar"] button[kind="secondary"]:hover {
     background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25);
     color: #FFFFFF;
 }
+section[data-testid="stSidebar"] button[kind="primary"],
+section[data-testid="stSidebar"] button[kind="primary"] * {
+    color: #7DD3FC; font-weight: 600;
+}
 section[data-testid="stSidebar"] button[kind="primary"] {
     background: rgba(46,134,171,0.3); border: 1px solid rgba(46,134,171,0.5);
-    color: #7DD3FC; font-weight: 600;
 }
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] span,
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"] small,
@@ -558,8 +569,40 @@ def metric_card_html(label, value, status, color, description=""):
     </div>'''
 
 
+def _relative_luminance(rgb):
+    def chan(v):
+        v /= 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    return 0.2126 * chan(rgb[0]) + 0.7152 * chan(rgb[1]) + 0.0722 * chan(rgb[2])
+
+
+def _contrast(fg, bg):
+    a, b = _relative_luminance(fg), _relative_luminance(bg)
+    hi, lo = max(a, b), min(a, b)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def readable_on_tint(color, alpha=0.15, target=4.5):
+    """Darken a brand colour until it is legible on a tint of itself.
+
+    The badge puts `color` as text on rgba(color, 0.15) over white, which for the
+    brand palette is a colour on a paler version of itself — GREEN came out at
+    1.91:1 and YELLOW at 2.18:1, both well under the 3:1 floor. Computed rather
+    than hardcoded so a new palette entry cannot quietly ship an illegible badge.
+    """
+    rgb = tuple(int(color.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    bg = tuple(c * alpha + 255 * (1 - alpha) for c in rgb)
+    out = rgb
+    for _ in range(40):
+        if _contrast(out, bg) >= target:
+            break
+        out = tuple(c * 0.92 for c in out)
+    return "#%02x%02x%02x" % tuple(int(round(c)) for c in out)
+
+
 def status_badge_html(text, color):
-    return f'<span class="badge" style="background:rgba({_hex_rgb(color)},0.15); color:{color};">{text}</span>'
+    return (f'<span class="badge" style="background:rgba({_hex_rgb(color)},0.15); '
+            f'color:{readable_on_tint(color)};">{text}</span>')
 
 
 def _hex_rgb(hex_color):
@@ -1318,6 +1361,13 @@ def page_income():
                 "Bonus Amount ($)", value=data["income"]["bonus_amount"],
                 min_value=0, step=1000, format="%d",
             )
+            note = ("Take-home is annualised. A signing bonus lands in a single month and is "
+                    "usually withheld at the flat 22% supplemental rate, so that month's actual "
+                    "pay will differ from the monthly figure shown — the annual total is right.")
+            if data["income"]["bonus_type"] == "Annual (spread monthly)":
+                note = ("Take-home is annualised: the bonus is spread evenly across twelve months. "
+                        "If yours is paid in one month, that month's actual pay will differ.")
+            st.caption(note)
 
     with c2:
         st.markdown("### Pre-Tax Deductions")
@@ -2832,6 +2882,20 @@ def page_tax():
         marginal_combined = th_local["marginal_fed"] / 100
         tax_savings = diff * marginal_combined
         st.success(f"Itemizing saves you **{fmt(diff)}** in deductions, worth approximately **{fmt(tax_savings)}** in tax savings at your {th_local['marginal_fed']:.0f}% marginal rate.")
+
+    # OBBBA 2/37 limitation. Stated rather than modelled: it reduces itemized
+    # deductions by 2/37 of the lesser of the total or the income above the 37%
+    # threshold, capping their benefit at 35c per dollar instead of 37c. Only
+    # taxpayers in the top bracket are affected, and saying so is more honest
+    # than a number this app cannot check itself against.
+    if th_local["marginal_fed"] >= 37 and total_itemized > 0:
+        st.warning(
+            f"You are in the 37% bracket, where the OBBBA reduces itemized deductions by "
+            f"2/37 of the lesser of your total itemized deductions or the taxable income above "
+            f"{fmt(TOP_BRACKET_START.get(th_local['filing'], 640_600))}. That caps their benefit at "
+            f"about 35 cents per dollar rather than 37. This app does not model that reduction, so "
+            f"the itemized figure above is slightly optimistic for you."
+        )
 
     # Tax brackets
     st.markdown(f"### Federal Tax Brackets ({filing}, 2026)")

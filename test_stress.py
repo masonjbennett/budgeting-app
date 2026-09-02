@@ -24,6 +24,8 @@ from calculations import (
     calc_federal_tax,
     calc_itemized_total,
     STANDARD_DEDUCTION_2026,
+    TOP_BRACKET_START,
+    get_marginal_rate,
     simulate_payoff,
     project_investment,
     calc_state_marginal_rate,
@@ -497,6 +499,90 @@ check("the MFJ above-the-line cap is $2,000",
 check("the 4th return value still equals the standard deduction when not itemizing",
       all(calc_federal_tax(g, 0, 0, f)[3] == STANDARD_DEDUCTION_2026[f]
           for f in STANDARD_DEDUCTION_2026 for g in (0, 50_000, 300_000)))
+
+# ── TOP BRACKET THRESHOLDS (the 2/37 warning) ───────────────
+
+print()
+print("--- TOP BRACKET THRESHOLDS ---")
+
+# The 2/37 limitation is stated, not modelled, so the only thing that can be
+# wrong is the threshold it quotes. It must be the income at which 37% starts.
+for f, brackets in FEDERAL_BRACKETS_2026.items():
+    starts = [c for c, r in brackets if r == 0.35][-1]
+    check(f"{f}: quoted 37% threshold matches the bracket table",
+          TOP_BRACKET_START[f] == starts,
+          f"quoted {TOP_BRACKET_START.get(f)}, table says {starts}")
+check("every filing status has a threshold",
+      set(TOP_BRACKET_START) == set(FEDERAL_BRACKETS_2026))
+# The warning fires off marginal_fed >= 37, so the threshold and the marginal
+# rate must agree about who is in the top bracket.
+for f in FEDERAL_BRACKETS_2026:
+    b = FEDERAL_BRACKETS_2026[f]
+    check(f"{f}: one dollar above the threshold reads as 37%",
+          get_marginal_rate(TOP_BRACKET_START[f] + 1, b) == 37.0)
+    check(f"{f}: one dollar below it does not",
+          get_marginal_rate(TOP_BRACKET_START[f] - 1, b) < 37.0)
+
+# ── BADGE LEGIBILITY ────────────────────────────────────────
+
+print()
+print("--- BADGE LEGIBILITY ---")
+# readable_on_tint lives in budget_app (it is presentation, not maths), so it is
+# imported here rather than from calculations.
+import types as _t, sys as _s
+class _A(_t.ModuleType):
+    def __getattr__(self, _): return lambda *a, **k: None
+class _SS(dict):
+    def __getattr__(self, k):
+        try: return self[k]
+        except KeyError: raise AttributeError(k)
+    def __setattr__(self, k, v): self[k] = v
+class _St(_A):
+    def __init__(self):
+        super().__init__("streamlit")
+        self.__dict__["session_state"] = _SS(); self.__dict__["secrets"] = {}
+        self.__dict__["sidebar"] = _A("sb")
+    def cache_resource(self, fn=None, **k): return fn if fn else (lambda f: f)
+    cache_data = cache_resource
+_s.modules["streamlit"] = _St()
+_s.modules["supabase"] = _t.SimpleNamespace(create_client=lambda *a, **k: None)
+for _m in ("plotly", "plotly.graph_objects", "plotly.express", "pandas", "numpy"):
+    _s.modules.setdefault(_m, _A(_m))
+_src = open("budget_app.py", encoding="utf-8").read()
+_app = _t.ModuleType("app_badge")
+exec(compile(_src[:_src.index("# SIDEBAR NAVIGATION")], "budget_app.py", "exec"), _app.__dict__)
+
+def _rgb(h): return tuple(int(h.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+for name in ("GREEN", "YELLOW", "BLUE", "RED", "PURPLE"):
+    base = getattr(_app, name)
+    tint = tuple(c * 0.15 + 255 * 0.85 for c in _rgb(base))
+    got = _app._contrast(_rgb(_app.readable_on_tint(base)), tint)
+    check(f"{name} badge text reaches 4.5:1 on its own tint ({got:.2f}:1)", got >= 4.5)
+check("the raw brand green would NOT have passed",
+      _app._contrast(_rgb(_app.GREEN),
+                     tuple(c * 0.15 + 255 * 0.85 for c in _rgb(_app.GREEN))) < 3)
+check("a colour already legible is left close to itself",
+      _app.readable_on_tint("#111111") == "#111111")
+check("readable_on_tint always returns a valid hex colour",
+      all(len(_app.readable_on_tint(c)) == 7 and c.startswith("#")
+          for c in ("#000000", "#FFFFFF", "#F18F01", "#2ECC71")))
+
+# Testing readable_on_tint alone says the rule is right, not that the badge obeys
+# it — reverting status_badge_html to the raw brand colour passed every assertion
+# above. So assert on the rendered markup: the text colour it emits must be the
+# darkened one, and must clear 4.5:1 against the tint it sets beside it.
+import re as _re
+for _name in ("GREEN", "YELLOW", "BLUE", "RED"):
+    _base = getattr(_app, _name)
+    _html = _app.status_badge_html("x", _base)
+    _text = _re.search(r"color:(#[0-9a-fA-F]{6})", _html).group(1)
+    _tintrgb = tuple(int(v) for v in _re.search(r"rgba\(([\d, ]+),", _html).group(1).split(","))
+    _tint = tuple(c * 0.15 + 255 * 0.85 for c in _tintrgb)
+    check(f"{_name} badge MARKUP uses the darkened colour, not the raw one",
+          _text.lower() == _app.readable_on_tint(_base).lower(),
+          f"emitted {_text}, expected {_app.readable_on_tint(_base)}")
+    check(f"{_name} badge markup clears 4.5:1 as rendered",
+          _app._contrast(_rgb(_text), _tint) >= 4.5)
 
 # ── RESULTS ─────────────────────────────────────────────────
 

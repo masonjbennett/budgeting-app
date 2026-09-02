@@ -141,6 +141,15 @@ FICA_MEDICARE_SURTAX_THRESHOLDS = {
     "Single": 200_000, "Head of Household": 200_000,
     "Married Filing Jointly": 250_000, "Married Filing Separately": 125_000,
 }
+# Where the 37% bracket begins, by filing status — used to warn about the OBBBA
+# 2/37 limitation on itemized deductions, which this app states rather than models.
+TOP_BRACKET_START = {
+    "Single": 640_600,
+    "Married Filing Jointly": 768_700,
+    "Married Filing Separately": 384_350,
+    "Head of Household": 640_600,
+}
+
 SALT_CAP_BASE = 40_400       # 2026 OBBBA base cap
 SALT_CAP_FLOOR = 10_000      # Cap can never go below this
 SALT_PHASEOUT_THRESHOLD = {   # MAGI where phase-out begins
