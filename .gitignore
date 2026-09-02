@@ -11,7 +11,18 @@ venv/
 dist/
 build/
 .streamlit/secrets.toml
-*.json
-!package.json
+# Exported user data — budget_backup_*.json / budget_save_*.json from the
+# Streamlit sidebar, budget-*.json from the web app's Settings page. Named
+# rather than a blanket *.json: the blanket rule was written when this repo held
+# only the Streamlit app, and the moment web/ arrived it silently swallowed
+# tsconfig.json and package-lock.json — a Vercel build with no "@/*" alias and
+# no lockfile, from an ignore rule nobody had reread. An ignore that quietly
+# stops matching what it was for, and starts matching what it was not, is the
+# same failure as a backup that quietly stops covering something.
+budget_backup_*.json
+budget_save_*.json
+budget-*.json
+/*.json
+!/package.json
 .DS_Store
 Thumbs.db

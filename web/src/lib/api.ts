@@ -1,0 +1,230 @@
+/**
+ * The calculation API.
+ *
+ * Every number this app displays comes from here, and the routes are thin
+ * wrappers over calculations.py at the repo root. That indirection is the whole
+ * design: the maths had drifted into three implementations that disagreed, and
+ * one of them was a Next.js frontend exactly like this one, doing its own
+ * arithmetic in TypeScript. So there is deliberately NO tax, debt, projection
+ * or ratio maths in this codebase — if a number needs working out, it needs a
+ * route, not a helper.
+ *
+ * Same-origin: the Python function is served from /api by this same deployment,
+ * so there is no base URL to configure and no CORS.
+ */
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function request<T>(path: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    // A dead network and a 500 are different problems and the UI says so —
+    // telling someone their figures are wrong when the connection dropped is
+    // the same class of mistake as telling them their password was wrong when
+    // the auth service had been deleted.
+    throw new ApiError("Could not reach the calculation service.", 0);
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const j = await res.json();
+      if (typeof j?.detail === "string") detail = j.detail;
+    } catch {
+      /* a non-JSON error body is still an error */
+    }
+    throw new ApiError(detail || `Request failed (${res.status})`, res.status);
+  }
+  return res.json() as Promise<T>;
+}
+
+// ── Shapes returned by the engine ────────────────────────────────────
+
+export interface TakeHome {
+  annual_gross: number;
+  contrib_401k: number;
+  health: number;
+  hsa: number;
+  pretax: number;
+  fed_tax: number;
+  state_tax: number;
+  fica: number;
+  total_tax: number;
+  annual_take_home: number;
+  monthly_take_home: number;
+  agi: number;
+  taxable: number;
+  std_ded: number;
+  /** The deduction ACTUALLY taken — the itemized total when that is larger. */
+  deduction_taken: number;
+  itemized_total: number;
+  itemizing: boolean;
+  effective_rate: number;
+  marginal_fed: number;
+  /** The user's own state rate, not the state's top bracket. */
+  marginal_state: number;
+  filing: string;
+}
+
+export interface Dashboard {
+  take_home: TakeHome;
+  monthly_debt_service: number;
+  /** "debts" when read from entered debts, "budget" when from the category. */
+  debt_service_source: string;
+  /** null when income is zero — not 0, which would read as "no debt". */
+  dti_pct: number | null;
+  monthly_needs: number;
+  /** null means COULD NOT BE MEASURED. It is not the same as 0.0. */
+  emergency_fund_months: number | null;
+  emergency_fund_counted: string[];
+  liquid_assets: number;
+}
+
+export interface PayoffResult {
+  months: number;
+  never_pays_off: boolean;
+  total_interest: number;
+  schedule: { month: number; total_balance: number; interest: number }[];
+  payoff_months: Record<string, number>;
+}
+
+export interface Investment {
+  values: number[];
+  contributions: number[];
+  months: number;
+  final_value: number;
+  total_contributed: number;
+  growth: number;
+}
+
+export interface MonteCarlo {
+  ages: number[];
+  n_sims: number;
+  success_count: number;
+  success_rate: number;
+  percentiles: Record<"p5" | "p10" | "p25" | "p50" | "p75" | "p90" | "p95", number[]>;
+  ending: number[];
+  sample_paths: number[][];
+  failure_ages: number[];
+  median_ending: number;
+  p10_ending: number;
+  p90_ending: number;
+  retire_age: number;
+  stock_pct: number;
+}
+
+export interface RothComparison {
+  contribution: number;
+  traditional_future: number;
+  traditional_after_tax: number;
+  roth_invested: number;
+  roth_future: number;
+  /** "Equivalent" when the two rates are equal — the maths says so exactly. */
+  better: "Traditional" | "Roth" | "Equivalent";
+  difference: number;
+  current_rate: number;
+  future_rate: number;
+}
+
+export interface Reference {
+  /** A null ceiling means "and everything above" — inf is not JSON. */
+  federal_brackets: Record<string, [number | null, number][]>;
+  standard_deductions: Record<string, number>;
+  filing_statuses: string[];
+  states: string[];
+  col_index: Record<string, number>;
+  k401_limit: number;
+  hsa_individual_limit: number;
+}
+
+export interface Income {
+  gross_salary: number;
+  state: string;
+  filing_status: string;
+  contribution_401k: number;
+  health_insurance: number;
+  hsa: number;
+  bonus_amount: number;
+  bonus_type: string;
+  student_loan_interest: number;
+}
+
+export interface Debt {
+  name: string;
+  balance: number;
+  rate: number;
+  min_payment: number;
+}
+
+// ── Routes ───────────────────────────────────────────────────────────
+
+export const api = {
+  reference: () => request<Reference>("/reference"),
+
+  takeHome: (income: Income, itemized: Record<string, number> = {}) =>
+    request<TakeHome>("/take-home", { income, itemized }),
+
+  dashboard: (input: {
+    income: Income;
+    itemized?: Record<string, number>;
+    debts: Debt[];
+    budget_needs: Record<string, number>;
+    assets: Record<string, number>;
+  }) => request<Dashboard>("/dashboard", input),
+
+  debtPayoff: (debts: Debt[], extra: number) =>
+    request<{ avalanche: PayoffResult; snowball: PayoffResult }>("/debt-payoff", {
+      debts,
+      extra,
+    }),
+
+  investment: (input: {
+    start: number;
+    monthly: number;
+    rate: number;
+    years: number;
+    contribution_growth?: number;
+  }) => request<Investment>("/investment", input),
+
+  monteCarlo: (input: {
+    current_age: number;
+    retire_age: number;
+    end_age: number;
+    portfolio: number;
+    annual_savings: number;
+    annual_expenses: number;
+    stock_pct: number;
+    inflation: number;
+    n_sims: number;
+  }) => request<MonteCarlo>("/monte-carlo", input),
+
+  socialSecurity: (annual_salary: number, claiming_age = 67) =>
+    request<{ monthly: number; annual: number }>("/social-security", {
+      annual_salary,
+      claiming_age,
+    }),
+
+  rothVsTraditional: (input: {
+    contribution: number;
+    current_rate: number;
+    future_rate: number;
+    annual_return: number;
+    years: number;
+  }) => request<RothComparison>("/roth-vs-traditional", input),
+
+  saltCap: (magi: number, filing: string) =>
+    request<{ effective_cap: number }>("/salt-cap", { magi, filing }),
+};

@@ -1,0 +1,3 @@
+-r requirements.txt
+uvicorn>=0.34.0        # serves api/index.py locally; Vercel does not need it
+httpx>=0.27.0          # fastapi.testclient, for test_api.py

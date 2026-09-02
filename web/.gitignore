@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# GENERATED at build time from ../calculations.py by scripts/sync-calculations.mjs.
+# Never commit it: exactly one copy of the maths lives in version control, at the
+# repo root. If this file is missing the API fails to import, which is the
+# intended failure — a stale copy that still answers is the one that hurt before.
+api/calculations.py
+api/app_data.py

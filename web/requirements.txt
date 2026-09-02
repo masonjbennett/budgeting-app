@@ -1,0 +1,14 @@
+# Vercel installs this for the Python function in api/. It is deliberately
+# short: calculations.py is stdlib-only, so the whole calculation engine adds
+# nothing here. numpy was removed from the Monte Carlo for this reason — the
+# largest run the UI offers is 5,000 sims x 71 years and takes 0.91s in pure
+# Python, against a 60s function limit.
+#
+# The repo root's requirements.txt is Streamlit Cloud's and is a different file
+# with a different job. Do not merge them.
+fastapi==0.121.2
+pydantic==2.12.4
+
+# Local development only (see requirements-dev.txt): `next dev` has no Python
+# runtime, so uvicorn serves api/index.py on :8000 and next.config.ts proxies
+# /api to it. Vercel runs the ASGI app directly and needs no server here.
