@@ -5,7 +5,13 @@
 # in sys.modules — the version from before that name existed. It happened on
 # 2026-09-01 with TOP_BRACKET_START. The fix is a full container restart: "Reboot
 # app" in the Streamlit Cloud dashboard, or any edit to THIS file, which changes
-# its hash and forces a fresh environment. Touched 2026-09-01 for that reason.
+# its hash and forces a fresh environment. Touched 2026-09-01 for that reason,
+# and again 2026-09-02: that push added seventeen new names to calculations.py
+# (compute_take_home, run_monte_carlo, roth_vs_traditional, percentile,
+# simulate_path, portfolio_return, K401_LIMIT, HSA_INDIVIDUAL_LIMIT and the MC_*
+# constants) plus a whole NEW module, app_data.py, which budget_app.py imports.
+# A brand-new module is the same exposure one notch worse: sys.modules has no
+# entry for it at all.
 
 # Pinned deliberately, after the sibling portfolio-app broke on exactly this.
 # That app styled Streamlit through its internal DOM under `streamlit>=1.32.0`;
@@ -22,6 +28,12 @@ streamlit==1.62.0
 plotly>=5.18.0,<7.0.0
 
 pandas>=2.0.0,<4.0.0
+
+# numpy is no longer imported by budget_app.py — the Monte Carlo moved into
+# calculations.py and was rewritten stdlib-only (5,000 sims x 71 years in 0.91s),
+# so the whole engine now needs no third-party maths at all. The pin STAYS
+# because pandas pulls numpy in regardless, and capping its major protects
+# pandas here for the same reason every other cap in this file exists.
 numpy>=1.24.0,<3.0.0
 
 # supabase is capped at its major rather than pinned exactly: it is a network
