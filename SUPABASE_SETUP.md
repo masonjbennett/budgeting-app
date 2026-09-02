@@ -56,6 +56,26 @@ create policy "update own row" on public.user_data
 
 -- No delete policy. Nothing in the app deletes a row, so nothing should be able to.
 
+-- GRANTS. Postgres has two INDEPENDENT layers and the policies above are only the
+-- second one: table PRIVILEGES decide whether a role may touch the table at all,
+-- and RLS then decides which rows. Creating a table from the SQL editor does not
+-- necessarily grant anything, and without these every request fails with
+-- "permission denied for table user_data" (42501) — including a signed-in user's
+-- save. That reads like an RLS problem and is not one, which is why it is worth
+-- knowing the error code.
+grant usage on schema public to anon, authenticated;
+
+-- Signed-in users read and write; the policies above narrow that to their own row.
+grant select, insert, update on public.user_data to authenticated;
+
+-- anon gets SELECT only, and that is deliberate rather than sloppy: the read
+-- policy requires auth.uid() = user_id, and an anonymous request has no
+-- auth.uid(), so it matches zero rows. Granting it is what makes the keep-alive a
+-- real canary — if RLS were ever switched off, anon would immediately start
+-- seeing rows and the 6-hourly job fails. With no grant at all, anon is refused
+-- either way and that regression would go unnoticed. anon never gets INSERT or
+-- UPDATE, so writes are refused at both layers.
+
 create or replace function public.touch_user_data()
 returns trigger language plpgsql as $$
 begin
@@ -77,6 +97,18 @@ select policyname, cmd from pg_policies where tablename = 'user_data';
 ```
 
 You want `rowsecurity` true and three policies: SELECT, INSERT, UPDATE.
+
+And check the grants landed, which is the layer below the policies:
+
+```sql
+select grantee, privilege_type
+from information_schema.role_table_grants
+where table_name = 'user_data' and grantee in ('anon','authenticated')
+order by grantee, privilege_type;
+```
+
+You want `anon` with SELECT only, and `authenticated` with INSERT, SELECT, UPDATE.
+If `anon` shows INSERT or UPDATE, revoke them — nothing anonymous should write.
 
 ## 3. Turn off email confirmation (or don't)
 
