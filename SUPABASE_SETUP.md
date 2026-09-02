@@ -5,7 +5,7 @@ pause after about a week of inactivity and are reclaimed after that. This app we
 untouched from April to September 2026, so it was gone.
 
 Everything on the app side is already rebuilt and tested. What's left is standing up
-a project and pasting two values into two places. Roughly ten minutes.
+a project and pasting two values into three places. Roughly ten minutes.
 
 ---
 
@@ -139,6 +139,12 @@ everyone's finances. Until you add those secrets the step logs `skipping` and pa
 
 Then run the app, create an account, change something, hard-refresh, log back in
 and confirm your change is there.
+
+If the deployed app still says accounts are unavailable a minute after you save the
+secret, **Reboot app** from the Streamlit Cloud dashboard. Streamlit re-runs the
+script in a long-lived process and does not always pick up a new secret without a
+restart — the same mechanism that broke the deploy on 2026-09-01 when a new name was
+added to `calculations.py`.
 
 ---
 
