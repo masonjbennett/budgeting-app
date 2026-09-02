@@ -13,20 +13,27 @@ Redesign and extend budget.masonjbennett.com — the Next.js + FastAPI app in
 
 ## Read first, in this order
 
-1. `budgeting-app/web/README.md` — the rules this codebase is built around.
+1. **The design and product review** that produced this plan:
+   https://claude.ai/code/artifact/3b1b5fd6-25c8-4d1f-8298-cec806c44af5 —
+   read it with the Artifact tool (`action: "read"`). It has the competitor
+   research with measured palettes, the reasoning behind each item below, and
+   the things deliberately ruled out. Everything here is the short version of it.
+2. `budgeting-app/web/README.md` — the rules this codebase is built around.
    Every one exists because the opposite already shipped and was wrong.
-2. `budgeting-app/CLAUDE.md` — two front ends, one engine.
-3. The root `CLAUDE.md` section on the paper/ink brand and design tokens.
-4. `git log --oneline -8` in `budgeting-app/`, and `git show reskin-wip` — see
+3. `budgeting-app/CLAUDE.md` — two front ends, one engine.
+4. The root `CLAUDE.md` section on the paper/ink brand and design tokens.
+5. `git log --oneline -8` in `budgeting-app/`, and `git show reskin-wip` — see
    "What is already done" below.
 
 ## State of play
 
-The rebuild works and is committed. 11 pages, 10 API routes, 340 assertions
-across four suites, eslint clean, `npm audit` clean. **It is not deployed.**
+The rebuild works and is committed. 11 pages, 11 API routes, 340 assertions
+across four suites (81 + 42 + 168 + 49), eslint clean, `npm audit` clean.
+**It is not deployed.**
 
-`master` is green: `npm run build`, `npx eslint src`, and all four suites pass.
-Start from there.
+`master` is green at **`d4db035`** — `npm run build`, `npx eslint src` and all
+four suites pass there. Both branches are pushed. If `git log` shows commits
+after that one, this document was written before them; trust the repo.
 
 The Streamlit app at masonbennett-budget.streamlit.app is still live, still
 linked as recruiter-safe from masonjbennett.com, and **must stay that way** until
