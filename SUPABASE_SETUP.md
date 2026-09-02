@@ -1,8 +1,12 @@
 # Supabase setup
 
-The original project (`laxadcwngdufkllqrwqj`) no longer exists — free-tier projects
+**Done — the project is live and the round trip is verified** (2026-09-02): a value
+changed in the app, saved, survived a log out and log back in.
+
+The original project (`laxadcwngdufkllqrwqj`) no longer existed — free-tier projects
 pause after about a week of inactivity and are reclaimed after that. This app went
-untouched from April to September 2026, so it was gone.
+untouched from April to September 2026, so it was gone. Keep this file as the record
+of how it was rebuilt, and of the two mistakes below that cost the most time.
 
 Everything on the app side is already rebuilt and tested. What's left is standing up
 a project and pasting two values into three places. Roughly ten minutes.
@@ -171,6 +175,26 @@ everyone's finances. Until you add those secrets the step logs `skipping` and pa
 
 Then run the app, create an account, change something, hard-refresh, log back in
 and confirm your change is there.
+
+### Two things that will go wrong
+
+**"Email rate limit exceeded."** Supabase's built-in sender allows roughly 2-4
+emails an hour on a free project, and it is per PROJECT, not per user — so a
+couple of test signups exhaust it. You do not need the email: go to
+**Authentication → Users**, find your account, and confirm it from the row's menu.
+If the user is not listed at all the signup rolled back, in which case toggle
+**Confirm email** off (Authentication → Sign In / Providers → Email), sign up, and
+toggle it back on. Your account is then created confirmed and everyone else still
+has to verify. If the app ever takes real signups, replace the built-in sender with
+custom SMTP under Authentication → Emails.
+
+**"Can't reach the account service right now."** The URL is wrong or unreachable.
+It is `https://<ref>.supabase.co` — the two mistakes that produce this exact
+message are pasting the dashboard page address
+(`https://supabase.com/dashboard/project/<ref>/...`, which actually gives a 404
+instead) and dropping `.supabase` to leave `https://<ref>.co`, which does not
+resolve. Both happened during setup. Check the secret before assuming the app
+needs a restart.
 
 If the deployed app still says accounts are unavailable a minute after you save the
 secret, **Reboot app** from the Streamlit Cloud dashboard. Streamlit re-runs the
