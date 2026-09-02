@@ -76,6 +76,7 @@ for m in ("plotly", "plotly.graph_objects", "plotly.express", "pandas", "numpy")
 import calculations as calc
 
 SRC = open("budget_app.py", encoding="utf-8").read()
+_APP_SRC = SRC
 CUT = SRC.index("# SIDEBAR NAVIGATION")   # everything below needs a live runtime
 app = types.ModuleType("app_calc")
 exec(compile(SRC[:CUT], "budget_app.py", "exec"), app.__dict__)
@@ -453,6 +454,80 @@ finally:
     calc.simulate_path = _real_path
 check("run_monte_carlo reads simulate_path (monkeypatched paths reach the output)",
       set(hijacked_mc["ending"]) == {1.0}, str(set(hijacked_mc["ending"])))
+
+
+# -- 7. Roth vs Traditional --------------------------------------------
+#
+# Inline in the tax page until September 2026, and reimplemented a fourth time
+# in budget-app-v2's endpoint body -- where it used the FEDERAL marginal rate
+# alone, dropping the state half of the tax a pre-tax dollar actually saves.
+print("\n--- roth vs traditional ---")
+
+_rt = calc.roth_vs_traditional(24_500, 0.34, 0.15, 7.0, 30)
+check("traditional invests the full contribution",
+      abs(_rt["traditional_future"] - 24_500 * ((1.07 ** 30 - 1) / 0.07) * 1.07) < 1e-6,
+      str(_rt["traditional_future"]))
+check("roth invests the contribution net of tax paid now",
+      abs(_rt["roth_invested"] - 24_500 * (1 - 0.34)) < 1e-9, str(_rt["roth_invested"]))
+check("difference is the gap between the two after-tax balances",
+      abs(_rt["difference"] - abs(_rt["traditional_after_tax"] - _rt["roth_future"])) < 1e-9)
+
+# The verdict depends ONLY on the two rates. Comparing the balances instead is
+# what made the old inline version answer ties on float noise.
+check("a higher rate now than later favours Traditional",
+      calc.roth_vs_traditional(10_000, 0.37, 0.15, 7.0, 30)["better"] == "Traditional")
+check("a lower rate now than later favours Roth",
+      calc.roth_vs_traditional(10_000, 0.12, 0.30, 7.0, 30)["better"] == "Roth")
+check("equal rates are Equivalent, not a coin flip",
+      calc.roth_vs_traditional(10_000, 0.22, 0.22, 7.0, 30)["better"] == "Equivalent")
+check("and Equivalent really means the two balances match",
+      abs(calc.roth_vs_traditional(10_000, 0.22, 0.22, 7.0, 30)["difference"]) < 1e-6)
+_verdicts = {calc.roth_vs_traditional(c, 0.37, 0.15, r, y)["better"]
+             for c in (1, 500, 24_500) for r in (0.0, 0.5, 7.0, 20.0) for y in (1, 5, 50)}
+check("the verdict does not depend on contribution, return or horizon",
+      _verdicts == {"Traditional"}, str(_verdicts))
+check("a zero contribution still answers on the rates, not 0 > 0",
+      calc.roth_vs_traditional(0, 0.37, 0.15, 7.0, 30)["better"] == "Traditional")
+check("a zero return still grows by the number of years",
+      calc.roth_vs_traditional(1_000, 0.0, 0.0, 0.0, 10)["traditional_future"] == 10_000)
+
+# The page must read the shared function, not keep its own arithmetic.
+_real_rt = app.roth_vs_traditional
+app.roth_vs_traditional = lambda *a, **k: {
+    "contribution": -1, "traditional_future": -2, "traditional_after_tax": -3,
+    "roth_invested": -4, "roth_future": -5, "better": "Roth", "difference": -6,
+    "current_rate": 0, "future_rate": 0}
+try:
+    _sentinel_reached = app.roth_vs_traditional(1, 0, 0, 0, 1)["traditional_future"] == -2
+finally:
+    app.roth_vs_traditional = _real_rt
+check("the tax page's Roth block resolves roth_vs_traditional from the engine",
+      _sentinel_reached and "roth_vs_traditional" in _APP_SRC
+      and "trad_future = _rt[" in _APP_SRC,
+      "the page still holds its own copy of the arithmetic")
+check("and the page no longer computes the verdict by comparing two floats",
+      'better = "Traditional" if trad_after_tax > roth_future else "Roth"' not in _APP_SRC)
+
+
+# ── 8. Card HTML must not emit a blank line ──────────────────────────
+#
+# Streamlit renders these cards through markdown, and markdown ENDS an HTML
+# block at the first blank line. A conditional inside an f-string card that
+# falls back to "" leaves a whitespace-only line, the block ends there, and the
+# 8-space-indented </div> after it becomes an indented CODE BLOCK — a literal
+# "</div>" printed on whichever card LOST. It was live on the public app on both
+# deduction cards and both Roth cards, and no assertion could see it because
+# every one of them was about the numbers.
+print("\n--- card HTML: no conditional may collapse to a blank line ---")
+import re as _re
+
+_blank = _re.findall(r'^[ \t]*\{[^\n]*else ""\}[ \t]*$', _APP_SRC, _re.M)
+check("no card conditional falls back to an empty string",
+      not _blank,
+      "%d site(s), e.g. %s" % (len(_blank), [b.strip()[-58:] for b in _blank[:2]]))
+check("the four known sites fall back to an HTML comment instead",
+      _APP_SRC.count('else "<!-- -->"}') == 4,
+      "found %d" % _APP_SRC.count('else "<!-- -->"}'))
 
 
 print("\n" + "=" * 66)

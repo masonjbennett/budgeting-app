@@ -49,6 +49,7 @@ from calculations import (
     HSA_INDIVIDUAL_LIMIT,
     simulate_payoff,
     run_monte_carlo,
+    roth_vs_traditional,
 )
 
 # ──────────────────────────────────────────────
@@ -2764,7 +2765,7 @@ def page_tax():
         st.markdown(f'''<div class="card" style="{border}">
             <p style="font-weight:600; margin:0;">Standard Deduction</p>
             <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(standard)}</p>
-            {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option" + non_itemizer_note + "</p>" if better == "Standard" else ""}
+            {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option" + non_itemizer_note + "</p>" if better == "Standard" else "<!-- -->"}
         </div>''', unsafe_allow_html=True)
     with c2:
         border = f"border-left:3px solid {GREEN}" if better == "Itemized" else ""
@@ -2773,7 +2774,7 @@ def page_tax():
             <p style="font-weight:600; margin:0;">Itemized Deductions</p>
             <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(total_itemized)}</p>
             <p style="color:{TEXT_DIM}; font-size:0.8rem; margin:0;">SALT: {fmt(salt_capped)} · Mortgage: {fmt(data["itemized"]["mortgage_interest"])} · Charity: {fmt(charitable_deductible)}{charity_note} · Medical: {fmt(medical_deductible)}</p>
-            {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option</p>" if better == "Itemized" else ""}
+            {"<p style='color:" + GREEN + "; margin:0; font-size:0.85rem;'>&#9989; Better option</p>" if better == "Itemized" else "<!-- -->"}
         </div>''', unsafe_allow_html=True)
 
     if better == "Itemized":
@@ -2857,25 +2858,29 @@ def page_tax():
             min_value=0.0, max_value=50.0, step=1.0, format="%.1f", key="future_rate",
             help="Your expected marginal tax rate in retirement. Typically lower than working years.")
 
+    # The combined federal + state marginal rate is what a pre-tax dollar
+    # actually saves. budget-app-v2's fork used the federal half alone.
     current_rate = marginal + state_marginal
     future_rate_dec = future_tax_rate / 100
-    r = roth_return / 100
-
-    # Traditional: contribute pre-tax, grow, pay tax on withdrawal
-    trad_contribution = roth_contribution  # same dollar amount, but pre-tax
-    trad_future = trad_contribution * ((1 + r) ** roth_years - 1) / r * (1 + r) if r > 0 else trad_contribution * roth_years
-    trad_after_tax = trad_future * (1 - future_rate_dec)
-
-    # Roth: pay tax now, contribute less, grow tax-free
-    roth_actual = roth_contribution * (1 - current_rate)  # what you actually invest after tax
-    roth_future = roth_actual * ((1 + r) ** roth_years - 1) / r * (1 + r) if r > 0 else roth_actual * roth_years
-
-    better = "Traditional" if trad_after_tax > roth_future else "Roth"
-    diff = abs(trad_after_tax - roth_future)
+    _rt = roth_vs_traditional(roth_contribution, current_rate, future_rate_dec,
+                              roth_return, roth_years)
+    trad_contribution = _rt["contribution"]
+    trad_future = _rt["traditional_future"]
+    trad_after_tax = _rt["traditional_after_tax"]
+    roth_actual = _rt["roth_invested"]
+    roth_future = _rt["roth_future"]
+    better = _rt["better"]
+    diff = _rt["difference"]
+    # At equal rates the two are mathematically identical, so the engine says
+    # "Equivalent" rather than picking on float noise. The page still breaks the
+    # tie towards Roth, for the reason the recommendation box gives — RMDs and
+    # tax diversification — but the card must not claim a $0 advantage, so the
+    # border and the "Better by" line read different variables.
+    highlight = "Roth" if better == "Equivalent" else better
 
     c1, c2 = st.columns(2)
     with c1:
-        border = f"border-left:3px solid {GREEN}" if better == "Traditional" else ""
+        border = f"border-left:3px solid {GREEN}" if highlight == "Traditional" else ""
         st.markdown(f'''<div class="card" style="{border}">
             <p style="font-weight:600; margin:0;">Traditional (Pre-Tax)</p>
             <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(trad_after_tax)}</p>
@@ -2883,10 +2888,10 @@ def page_tax():
                 Contribute {fmt(trad_contribution)}/yr pre-tax &rarr; grows to {fmt(trad_future)} &rarr;
                 pay {future_tax_rate:.0f}% tax on withdrawal
             </p>
-            {"<p style='color:" + GREEN + "; margin:0.5rem 0 0; font-size:0.85rem;'>Better by " + fmt(diff) + "</p>" if better == "Traditional" else ""}
+            {"<p style='color:" + GREEN + "; margin:0.5rem 0 0; font-size:0.85rem;'>Better by " + fmt(diff) + "</p>" if better == "Traditional" else "<!-- -->"}
         </div>''', unsafe_allow_html=True)
     with c2:
-        border = f"border-left:3px solid {GREEN}" if better == "Roth" else ""
+        border = f"border-left:3px solid {GREEN}" if highlight == "Roth" else ""
         st.markdown(f'''<div class="card" style="{border}">
             <p style="font-weight:600; margin:0;">Roth (Post-Tax)</p>
             <p class="mono" style="font-size:1.5rem; margin:0.25rem 0;">{fmt(roth_future)}</p>
@@ -2894,7 +2899,7 @@ def page_tax():
                 Pay {current_rate*100:.0f}% tax now &rarr; contribute {fmt(roth_actual)}/yr &rarr;
                 grows tax-free, no tax on withdrawal
             </p>
-            {"<p style='color:" + GREEN + "; margin:0.5rem 0 0; font-size:0.85rem;'>Better by " + fmt(diff) + "</p>" if better == "Roth" else ""}
+            {"<p style='color:" + GREEN + "; margin:0.5rem 0 0; font-size:0.85rem;'>Better by " + fmt(diff) + "</p>" if better == "Roth" else "<!-- -->"}
         </div>''', unsafe_allow_html=True)
 
     # Decision guidance

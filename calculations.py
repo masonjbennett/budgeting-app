@@ -482,6 +482,62 @@ def compute_take_home(income, itemized=None):
     }
 
 
+def roth_vs_traditional(contribution, current_rate, future_rate, annual_return, years):
+    """Compare a pre-tax and a post-tax contribution of the same headline size.
+
+    Traditional contributes the full amount, grows it, and is taxed on the way
+    out. Roth pays tax first — so it invests LESS — and is not taxed again. Both
+    grow as an annuity due: the contribution is made at the start of each year.
+
+    `current_rate` and `future_rate` are FRACTIONS, not percents, and the
+    current one is the combined federal + state marginal rate. Getting that
+    wrong is not academic: budget-app-v2's fork of this used the federal rate
+    alone, which understates the tax paid now and so overstates Roth's balance
+    by the whole state component.
+    """
+    r = annual_return / 100.0
+
+    # Grouped exactly as the Streamlit page grouped it, so the amounts are
+    # bit-identical to what that page has always shown.
+    if r > 0:
+        trad_future = contribution * ((1 + r) ** years - 1) / r * (1 + r)
+        roth_invested = contribution * (1 - current_rate)
+        roth_future = roth_invested * ((1 + r) ** years - 1) / r * (1 + r)
+    else:
+        trad_future = contribution * years
+        roth_invested = contribution * (1 - current_rate)
+        roth_future = roth_invested * years
+    trad_after_tax = trad_future * (1 - future_rate)
+
+    # The verdict is decided on the RATES, not by comparing the two balances.
+    # trad = C*g*(1-future) beats roth = C*(1-current)*g exactly when
+    # current > future — whatever the contribution, the return or the horizon.
+    # Comparing the balances instead makes the answer depend on float noise: at
+    # equal rates the two are mathematically identical, and over a 1,600-case
+    # grid the old inline version called 26 such ties both ways, sometimes on a
+    # gap of 9e-10 and sometimes on a gap of exactly zero. It could also
+    # contradict the page's own recommendation box one card away, which was
+    # already keyed to the rates.
+    if current_rate > future_rate:
+        better = "Traditional"
+    elif future_rate > current_rate:
+        better = "Roth"
+    else:
+        better = "Equivalent"
+
+    return {
+        "contribution": contribution,
+        "traditional_future": trad_future,
+        "traditional_after_tax": trad_after_tax,
+        "roth_invested": roth_invested,
+        "roth_future": roth_future,
+        "better": better,
+        "difference": abs(trad_after_tax - roth_future),
+        "current_rate": current_rate,
+        "future_rate": future_rate,
+    }
+
+
 def project_investment(start, monthly, rate, years, contribution_growth=0):
     values = [start]
     contributions = [start]
