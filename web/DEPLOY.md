@@ -15,8 +15,22 @@ The Streamlit app at **masonbennett-budget.streamlit.app** stays live and stays
 the recruiter-safe link from masonjbennett.com throughout. Nothing here touches
 it. Swap the link only after step 7.
 
-You need: the GitHub repo pushed (it is 9 commits ahead as of this writing —
-`git push` first), and the Supabase project reference `shxjjqcuuhqlvgpbujby`.
+You need two things.
+
+**The GitHub repo pushed.** Vercel builds from GitHub, not from your disk, so
+anything unpushed simply is not in the deploy — you would import the project
+and watch it build a months-old commit. Check and push:
+
+```bash
+cd budgeting-app && git status -sb   # "ahead N" means N commits are not there yet
+git push
+```
+
+That push also auto-deploys the Streamlit app, which is fine and has been
+verified: all eleven of its pages render against the current engine
+(`web/browser-checks/streamlit.mjs`).
+
+**The Supabase project reference** `shxjjqcuuhqlvgpbujby` — the live one.
 
 ---
 
