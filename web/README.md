@@ -57,10 +57,15 @@ npx eslint src         # must be clean
 project has found lately was invisible to a green suite and visible on a
 rendered page: dead CSS rules, a chart with no paths, white-on-white in the
 other theme, three Sankey ribbons painted grey because a gradient id contained
-a space. The browser checks used during the re-skin live in the session
-scratchpad rather than the repo (they need a real Chrome and a running dev
-server, which CI here does not have) and are worth rebuilding rather than
-skipping:
+a space, a note describing bars that were never drawn.
+
+**The browser checks are in `browser-checks/`** — see its README. They are not
+part of the build and not in CI, because nothing there has a headless browser
+or a dev server. They used to be left in the session scratchpad for that
+reason, which was the wrong call: "CI cannot run them" is an argument about CI,
+not about storage, and two sessions rebuilt them from the paragraph below
+before one of the rebuilds shipped a check that could not fail. What they
+cover:
 
 - **every route in both themes** — every `var(--x)` referenced in CSS has a
   value, every rendered text node clears 3:1, charts have paths, every painted

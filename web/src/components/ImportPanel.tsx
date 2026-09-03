@@ -16,19 +16,39 @@
  * replacing the first. There is no path through this component that edits or
  * removes an expense the person entered by hand — which is the whole reason a
  * preview exists rather than a "just import it" button.
+ *
+ * IT IS BUILT FOR A REAL FILE, WHICH IS THE SIZE OF A YEAR. The first thing
+ * anyone does is export twelve months of one card. Measured on 1,200 rows, the
+ * first version rendered a <select> of every budget category per row — 21,687
+ * <option> elements, 35,469 DOM nodes and a page 60,190px tall — and because
+ * one `skipped` Set drove all of them, ticking a single checkbox took 341–700ms
+ * to paint. Three things fix that and each is load-bearing at that size: the
+ * row is a MEMOIZED component so a tick re-renders one row; the table is
+ * PAGED; and a FILTER puts the rows that need a decision in front of the
+ * reader instead of asking them to scroll sixty thousand pixels.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Field } from "@/components/Field";
 import { fmt, useFinance, type Expense } from "@/context/FinanceContext";
-import { api, ApiError, type ImportMapping, type ImportPreview } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type ImportMapping,
+  type ImportPreview,
+  type ImportRow,
+} from "@/lib/api";
 import { splitCsv } from "@/lib/csv";
 
 /** 4MB of CSV is about fifteen years of one card. Past that the browser is
  *  reading a file that is not a statement, and the request would be refused
  *  server-side anyway — better to say so before the upload. */
 const MAX_BYTES = 4_000_000;
+
+/** Rows on screen at once. A hundred is about two screens, and it keeps the
+ *  <option> count in the low thousands rather than the tens of thousands. */
+const PAGE_SIZE = 100;
 
 const ROLES: { key: keyof ImportMapping; label: string; help?: string }[] = [
   { key: "date", label: "Date" },
@@ -39,9 +59,94 @@ const ROLES: { key: keyof ImportMapping; label: string; help?: string }[] = [
   { key: "category", label: "Category", help: "The bank's own, if it has one" },
 ];
 
+type Filter = "all" | "attention" | "duplicate" | "blocked";
+
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "attention", label: "Needs a category" },
+  { key: "duplicate", label: "Already recorded" },
+  { key: "blocked", label: "Cannot import" },
+];
+
 function newId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+/* ── One row ────────────────────────────────────────────────────────────
+   Memoized, and at this size that is not a micro-optimisation: without it
+   every tick re-rendered all 1,200 rows and their selects, which measured
+   341–700ms to paint. The callbacks it takes are stable (useCallback over
+   functional setState) and `categories` is memoized by the page above, so
+   React's shallow compare actually holds and only the row whose props
+   changed re-renders.                                                     */
+const Row = memo(function Row({
+  row,
+  checked,
+  category,
+  categories,
+  onToggle,
+  onCategory,
+}: {
+  row: ImportRow;
+  checked: boolean;
+  category: string;
+  categories: string[];
+  onToggle: (line: number, next: boolean) => void;
+  onCategory: (line: number, value: string) => void;
+}) {
+  const blocked = row.skip !== null;
+  return (
+    <tr className={blocked || !checked ? "opacity-55" : undefined}>
+      <td>
+        <input
+          type="checkbox"
+          aria-label={`Import line ${row.line}`}
+          disabled={blocked}
+          checked={!blocked && checked}
+          onChange={(e) => onToggle(row.line, e.target.checked)}
+        />
+      </td>
+      <td className="font-num text-right text-muted">{row.line}</td>
+      <td className="font-num whitespace-nowrap">{row.date ?? "—"}</td>
+      <td className="max-w-[22rem] truncate text-body" title={row.description}>
+        {row.description || "—"}
+      </td>
+      <td className="font-num text-right whitespace-nowrap text-ink">
+        {row.amount === null ? "—" : fmt(row.amount, 2)}
+      </td>
+      <td>
+        {blocked ? (
+          <span className="text-muted">—</span>
+        ) : (
+          <select
+            value={category}
+            aria-label={`Category for line ${row.line}`}
+            className="t-small w-auto py-1"
+            onChange={(e) => onCategory(row.line, e.target.value)}
+          >
+            <option value="">— choose —</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        )}
+      </td>
+      <td className="t-micro">
+        {blocked ? (
+          <span className="text-muted">{row.skip}</span>
+        ) : row.duplicate_of ? (
+          <span className="text-caution">already recorded</span>
+        ) : row.category_source ? (
+          <span className="text-muted">by {row.category_source}</span>
+        ) : (
+          <span className="text-muted">needs a category</span>
+        )}
+      </td>
+    </tr>
+  );
+});
 
 export default function ImportPanel({ categories }: { categories: string[] }) {
   const { profile, update } = useFinance();
@@ -64,6 +169,8 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
   const [catFor, setCatFor] = useState<Record<number, string>>({});
   const [fallback, setFallback] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [page, setPage] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
@@ -78,6 +185,8 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
     setSkipped(new Set());
     setCatFor({});
     setFallback("");
+    setFilter("all");
+    setPage(0);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -105,6 +214,8 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
     setSign(null);
     setSkipped(new Set());
     setCatFor({});
+    setFilter("all");
+    setPage(0);
   };
 
   const request = grid &&
@@ -130,6 +241,7 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
         if (!live) return;
         setPreview(p);
         setError(null);
+        setPage(0);
         // A row the engine matched to one already held starts UNTICKED. It is
         // the only default in this panel that is a judgement, and it is the
         // conservative one: not importing something twice costs a click to
@@ -152,6 +264,64 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  // Functional updates, so these two are stable for the life of the panel and
+  // React.memo on the row actually holds.
+  const onToggle = useCallback((line: number, next: boolean) => {
+    setSkipped((prev) => {
+      const s = new Set(prev);
+      if (next) s.delete(line);
+      else s.add(line);
+      return s;
+    });
+  }, []);
+  const onCategory = useCallback((line: number, value: string) => {
+    setCatFor((prev) => ({ ...prev, [line]: value }));
+  }, []);
+
+  const rows = useMemo(() => preview?.rows ?? [], [preview]);
+  const categoryOf = useCallback(
+    (line: number, suggested: string | null) => catFor[line] ?? suggested ?? fallback,
+    [catFor, fallback],
+  );
+
+  const committable = useMemo(
+    () =>
+      rows.filter(
+        (r) => r.skip === null && !skipped.has(r.line) && categoryOf(r.line, r.category),
+      ),
+    [rows, skipped, categoryOf],
+  );
+  const needCategory = useMemo(
+    () =>
+      rows.filter(
+        (r) => r.skip === null && !skipped.has(r.line) && !categoryOf(r.line, r.category),
+      ),
+    [rows, skipped, categoryOf],
+  );
+
+  const counts = useMemo(
+    () => ({
+      all: rows.length,
+      attention: rows.filter((r) => r.skip === null && !categoryOf(r.line, r.category))
+        .length,
+      duplicate: rows.filter((r) => r.duplicate_of !== null).length,
+      blocked: rows.filter((r) => r.skip !== null).length,
+    }),
+    [rows, categoryOf],
+  );
+
+  const filtered = useMemo(() => {
+    if (filter === "attention")
+      return rows.filter((r) => r.skip === null && !categoryOf(r.line, r.category));
+    if (filter === "duplicate") return rows.filter((r) => r.duplicate_of !== null);
+    if (filter === "blocked") return rows.filter((r) => r.skip !== null);
+    return rows;
+  }, [rows, filter, categoryOf]);
+
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const shown = filtered.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+
   if (!profile) return null;
 
   const columnName = (i: number | null) => {
@@ -161,18 +331,12 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
   };
 
   const width = grid ? Math.max(...grid.map((r) => r.length)) : 0;
-  const categoryOf = (line: number, suggested: string | null) =>
-    catFor[line] ?? suggested ?? fallback;
-
-  const committable = (preview?.rows ?? []).filter(
-    (r) => r.skip === null && !skipped.has(r.line) && categoryOf(r.line, r.category),
-  );
-  const needCategory = (preview?.rows ?? []).filter(
-    (r) => r.skip === null && !skipped.has(r.line) && !categoryOf(r.line, r.category),
-  );
 
   const commit = () => {
     setBusy(true);
+    // EVERY committable row, not the page on screen. A commit that acted on
+    // the visible page would import a hundred rows of twelve hundred and
+    // report success.
     const entries: Expense[] = committable.map((r) => ({
       id: newId(),
       date: r.date as string,
@@ -345,23 +509,57 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
                 {committable.length} to add · {fmt(preview.summary.amount)}
               </h4>
               <div className="flex items-center gap-2">
+                {/* These act on what the FILTER is showing, and say so. Acting
+                    globally while a filter is on would tick rows the reader
+                    cannot see — the same class of surprise as a commit that
+                    acted on the visible page only. */}
                 <button
                   className="btn-ghost"
-                  onClick={() => setSkipped(new Set())}
-                  disabled={skipped.size === 0}
+                  onClick={() =>
+                    setSkipped((prev) => {
+                      const s = new Set(prev);
+                      for (const r of filtered) s.delete(r.line);
+                      return s;
+                    })
+                  }
                 >
-                  Tick all
+                  Tick all{filter === "all" ? "" : " shown"}
                 </button>
                 <button
                   className="btn-ghost"
                   onClick={() =>
-                    setSkipped(new Set(preview.rows.map((r) => r.line)))
+                    setSkipped((prev) => {
+                      const s = new Set(prev);
+                      for (const r of filtered) s.add(r.line);
+                      return s;
+                    })
                   }
                 >
-                  Untick all
+                  Untick all{filter === "all" ? "" : " shown"}
                 </button>
               </div>
             </div>
+
+            {/* A year of one card is over a thousand rows. Nobody reads that,
+                and nobody should have to: the rows worth a decision are the
+                ones with no category and the ones already held. */}
+            {rows.length > PAGE_SIZE && (
+              <div className="tab-list mb-3 flex-wrap">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    className={`tab ${filter === f.key ? "tab-active" : ""}`}
+                    onClick={() => {
+                      setFilter(f.key);
+                      setPage(0);
+                    }}
+                    disabled={counts[f.key] === 0}
+                  >
+                    {f.label} · {counts[f.key]}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {preview.summary.duplicates > 0 && (
               <p className="t-small mb-3 text-caution">
@@ -410,73 +608,53 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.rows.map((r) => {
-                    const off = r.skip !== null || skipped.has(r.line);
-                    const chosen = categoryOf(r.line, r.category);
-                    return (
-                      <tr key={r.line} className={off ? "opacity-55" : undefined}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            aria-label={`Import line ${r.line}`}
-                            disabled={r.skip !== null}
-                            checked={r.skip === null && !skipped.has(r.line)}
-                            onChange={(e) => {
-                              const next = new Set(skipped);
-                              if (e.target.checked) next.delete(r.line);
-                              else next.add(r.line);
-                              setSkipped(next);
-                            }}
-                          />
-                        </td>
-                        <td className="font-num text-right text-muted">{r.line}</td>
-                        <td className="font-num whitespace-nowrap">{r.date ?? "—"}</td>
-                        <td className="max-w-[22rem] truncate text-body" title={r.description}>
-                          {r.description || "—"}
-                        </td>
-                        <td className="font-num text-right whitespace-nowrap text-ink">
-                          {r.amount === null ? "—" : fmt(r.amount, 2)}
-                        </td>
-                        <td>
-                          {r.skip !== null ? (
-                            <span className="text-muted">—</span>
-                          ) : (
-                            <select
-                              value={chosen}
-                              aria-label={`Category for line ${r.line}`}
-                              className="t-small w-auto py-1"
-                              onChange={(e) =>
-                                setCatFor({ ...catFor, [r.line]: e.target.value })
-                              }
-                            >
-                              <option value="">— choose —</option>
-                              {categories.map((c) => (
-                                <option key={c} value={c}>
-                                  {c}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </td>
-                        <td className="t-micro">
-                          {r.skip !== null ? (
-                            <span className="text-muted">{r.skip}</span>
-                          ) : r.duplicate_of ? (
-                            <span className="text-caution">already recorded</span>
-                          ) : r.category_source ? (
-                            <span className="text-muted">
-                              by {r.category_source}
-                            </span>
-                          ) : (
-                            <span className="text-muted">needs a category</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {shown.map((r) => (
+                    <Row
+                      key={r.line}
+                      row={r}
+                      checked={!skipped.has(r.line)}
+                      category={categoryOf(r.line, r.category)}
+                      categories={categories}
+                      onToggle={onToggle}
+                      onCategory={onCategory}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>
+
+            {filtered.length === 0 && (
+              <p className="t-small py-6 text-center text-muted">
+                Nothing in this file matches that filter.
+              </p>
+            )}
+
+            {filtered.length > PAGE_SIZE && (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  className="btn-secondary"
+                  onClick={() => setPage(current - 1)}
+                  disabled={current === 0}
+                >
+                  ← Previous
+                </button>
+                <p className="t-small text-muted">
+                  <span className="font-num">
+                    {current * PAGE_SIZE + 1}–
+                    {Math.min((current + 1) * PAGE_SIZE, filtered.length)}
+                  </span>{" "}
+                  of <span className="font-num">{filtered.length}</span>
+                  {filter === "all" ? " rows" : " matching"}
+                </p>
+                <button
+                  className="btn-secondary"
+                  onClick={() => setPage(current + 1)}
+                  disabled={current >= pages - 1}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

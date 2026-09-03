@@ -1,0 +1,19 @@
+{
+  "name": "budget-app-browser-checks",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Checks that need a real Chrome and a running dev server. Not part of the build.",
+  "scripts": {
+    "sweep": "node sweep.mjs",
+    "selftest": "node selftest.mjs",
+    "interact": "node interact.mjs",
+    "big": "node fixtures/make-big.mjs && node bigimport.mjs && node bigcorrect.mjs",
+    "streamlit": "node streamlit.mjs",
+    "all": "node selftest.mjs && node sweep.mjs && node interact.mjs && node regression.mjs",
+    "regress": "node regression.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "^23.0.0"
+  }
+}

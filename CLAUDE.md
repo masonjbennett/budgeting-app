@@ -416,11 +416,40 @@ items the review left open. All three are RULES, so all three are in
   cannot see it because there is no literal in the source to grep for;
   `accent-color: var(--accent)` in `@layer base` fixes it.
 
-Counts: **519 assertions** across the four Python suites (203 + 42 + 168 + 106)
-and **33 mutations** across the two harnesses, plus browser checks that are NOT
-in the repo — **130** over every route in both themes and **58** driving the
-three features, each of the five sweep checks proved able to fail against an
-injected fault before being trusted.
+**The importer was measured on a file the size of a real one, and it did not
+hold up.** A year of one card is over a thousand rows. At 1,200 the first
+version rendered a `<select>` of every budget category PER ROW — **21,687
+`<option>` elements, 35,469 DOM nodes and a page 60,190px tall** — and because
+one `skipped` Set drove all of them, **ticking a single checkbox took 341–700ms
+to paint**. Nobody reviews an import at half a second a click. Three changes,
+each load-bearing at that size: the row is a memoized component so a tick
+re-renders ONE row; the table pages at 100; and a filter (All · Needs a
+category · Already recorded · Cannot import, with counts) puts the rows that
+need a decision in front of the reader. Now **1,887 options, 3,580 nodes,
+7,491px, 26–63ms a tick**, and the preview builds in 784ms.
+The bug that fix could have introduced is the one worth guarding: **a commit
+that acted on the page on screen** would import a hundred rows of twelve
+hundred and report success. `bigcorrect.mjs` walks every page, checks all 1,200
+line numbers appear exactly once, commits, and counts what actually landed.
+
+**The browser checks are in the repo now — `web/browser-checks/`.** They were
+left in the session scratchpad because CI cannot run them, which is an argument
+about CI and not about storage; two sessions have since rebuilt them from a
+paragraph of prose, and the second rebuild shipped a check that COULD NOT FAIL.
+`npm run all` is selftest → sweep → interact → regress. `regression.mjs` covers
+the things already fixed once whose fix is invisible in the source: the
+cascade-layer fix by computed value, the drawer at 375px, the theme toggle
+across a reload, a real Monte Carlo run. `streamlit.mjs` loads all eleven pages
+of the OTHER front end — run it before pushing anything that touches
+`calculations.py`, because Streamlit Cloud auto-deploys from master and that is
+the live recruiter link.
+
+Counts: **519 Python assertions** (203 + 42 + 168 + 106) and **33 mutations**
+across the two harnesses; **220 browser assertions** in `web/browser-checks/`
+— 130 sweep, 58 interact, 21 regression, 11 big-import — with each of the five
+sweep checks proved able to fail against an injected fault before being
+trusted. **Of the nine failures those turned up on their first runs, seven were
+the CHECK's fault**, which is written up in that directory's README.
 
 **`web/DEPLOY.md` is the click-by-click for the first deploy.** Still not
 deployed; the Streamlit app is still live and still the recruiter-safe link.
