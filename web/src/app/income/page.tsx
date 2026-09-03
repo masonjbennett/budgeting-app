@@ -20,7 +20,7 @@ export default function IncomePage() {
   }, []);
 
   if (!profile || !dashboard) {
-    return <div className="skeleton h-96 rounded-xl" />;
+    return <div className="skeleton h-96" />;
   }
 
   const inc = profile.income;
@@ -36,7 +36,7 @@ export default function IncomePage() {
   return (
     <div>
       <PageHeader
-        title="Income Setup"
+        title="Income"
         description="Your salary, location and pre-tax deductions. Everything downstream — budget, savings rate, FIRE timeline — is calculated from this."
       />
 
@@ -135,7 +135,7 @@ export default function IncomePage() {
                 <>
                   {fmt(contribDollars)}/yr
                   {overK401 && (
-                    <span className="text-yellow">
+                    <span className="text-caution">
                       {" "}
                       · capped at the {fmt(ref.k401_limit)} IRS limit
                     </span>
@@ -171,7 +171,7 @@ export default function IncomePage() {
               <>
                 {fmt(hsaAnnual)}/yr
                 {overHsa && ref && (
-                  <span className="text-yellow">
+                  <span className="text-caution">
                     {" "}
                     · above the {fmt(ref.hsa_individual_limit)} self-only limit
                   </span>
@@ -193,19 +193,17 @@ export default function IncomePage() {
 
       <Section title="Take-home pay">
         <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            ["Monthly take-home", fmt(th.monthly_take_home), "text-green"],
-            ["Annual take-home", fmt(th.annual_take_home), "text-primary"],
-            ["Total tax", fmt(th.total_tax), "text-red"],
-            ["Effective rate", pct(th.effective_rate), "text-primary"],
-          ].map(([label, value, tone]) => (
+          {(
+            [
+              ["Monthly take-home", fmt(th.monthly_take_home), "text-positive"],
+              ["Annual take-home", fmt(th.annual_take_home), "text-ink"],
+              ["Total tax", fmt(th.total_tax), "text-critical"],
+              ["Effective rate", pct(th.effective_rate), "text-ink"],
+            ] as const
+          ).map(([label, value, tone]) => (
             <div key={label} className="card">
-              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted">
-                {label}
-              </p>
-              <p className={`mt-1 font-num text-[1.6rem] font-bold leading-none ${tone}`}>
-                {value}
-              </p>
+              <p className="label">{label}</p>
+              <p className={`font-num t-h3 mt-1.5 leading-none font-medium ${tone}`}>{value}</p>
             </div>
           ))}
         </div>
@@ -222,32 +220,26 @@ export default function IncomePage() {
           ]}
           xKey="name"
           valueKey="value"
-          colors={["#5b8def", "#818cf8", "#f87171", "#fb923c", "#fbbf24", "#4ade80"]}
-          height={280}
+          tones={["s2", "s4", "critical", "s5", "caution", "positive"]}
+          height={270}
         />
 
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="card">
-            <p className="text-[0.72rem] text-muted">Marginal federal rate</p>
-            <p className="mt-0.5 font-num text-[1.1rem] text-primary">
-              {pct(th.marginal_fed, 0)}
-            </p>
+            <p className="label">Marginal federal rate</p>
+            <p className="font-num t-lead mt-1 text-ink">{pct(th.marginal_fed, 0)}</p>
           </div>
           <div className="card">
-            <p className="text-[0.72rem] text-muted">Marginal state rate</p>
-            <p className="mt-0.5 font-num text-[1.1rem] text-primary">
-              {pct(th.marginal_state, 2)}
-            </p>
-            <p className="mt-1 text-[0.65rem] leading-snug text-muted">
+            <p className="label">Marginal state rate</p>
+            <p className="font-num t-lead mt-1 text-ink">{pct(th.marginal_state, 2)}</p>
+            <p className="t-micro mt-1 text-muted">
               Your rate at this income — not {inc.state}&apos;s top bracket.
             </p>
           </div>
           <div className="card">
-            <p className="text-[0.72rem] text-muted">Deduction taken</p>
-            <p className="mt-0.5 font-num text-[1.1rem] text-primary">
-              {fmt(th.deduction_taken)}
-            </p>
-            <p className="mt-1 text-[0.65rem] leading-snug text-muted">
+            <p className="label">Deduction taken</p>
+            <p className="font-num t-lead mt-1 text-ink">{fmt(th.deduction_taken)}</p>
+            <p className="t-micro mt-1 text-muted">
               {th.itemizing
                 ? "Itemized — larger than the standard deduction."
                 : `Standard deduction for ${th.filing}.`}

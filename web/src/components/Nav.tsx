@@ -16,7 +16,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useFinance } from "@/context/FinanceContext";
 
@@ -62,31 +62,58 @@ const ALL: Dest[] = [...GROUPS.flatMap((g) => g.items), SETTINGS];
 type Theme = "light" | "dark" | "system";
 const THEME_KEY = "mjb_budget_theme";
 
-function useTheme(): [Theme, (t: Theme) => void] {
-  const [theme, setTheme] = useState<Theme>("system");
+/**
+ * The stored theme, read during render rather than corrected after one.
+ *
+ * The DOM is the source of truth here, not localStorage: the inline script in
+ * layout.tsx has already stamped `data-theme` on <html> before first paint, so
+ * reading the attribute agrees with what the viewer is actually looking at even
+ * if storage is unreadable. Storage is only written, never trusted to render.
+ *
+ * `useSyncExternalStore` also fixes a real defect and not just a lint error —
+ * reading this in an effect renders the toggle on "Auto" for one frame and then
+ * moves the highlight, on every page load, for anyone who has chosen a theme.
+ */
+const themeListeners = new Set<() => void>();
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(THEME_KEY);
-      if (stored === "dark" || stored === "light") setTheme(stored);
-    } catch {
-      /* private mode, cleared storage — system is a fine answer */
-    }
-  }, []);
+function emitThemeChange() {
+  for (const l of themeListeners) l();
+}
+
+function subscribeTheme(onChange: () => void): () => void {
+  themeListeners.add(onChange);
+  // Another tab of the same app is the only other writer.
+  window.addEventListener("storage", onChange);
+  return () => {
+    themeListeners.delete(onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function readTheme(): Theme {
+  const stamped = document.documentElement.dataset.theme;
+  return stamped === "dark" || stamped === "light" ? stamped : "system";
+}
+
+function readServerTheme(): Theme {
+  return "system";
+}
+
+function useTheme(): [Theme, (t: Theme) => void] {
+  const theme = useSyncExternalStore(subscribeTheme, readTheme, readServerTheme);
 
   const apply = useCallback((t: Theme) => {
-    setTheme(t);
+    // The attribute IS the state, so it is set first and the store re-read.
+    if (t === "system") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = t;
     try {
-      if (t === "system") {
-        delete document.documentElement.dataset.theme;
-        localStorage.removeItem(THEME_KEY);
-      } else {
-        document.documentElement.dataset.theme = t;
-        localStorage.setItem(THEME_KEY, t);
-      }
+      if (t === "system") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, t);
     } catch {
-      /* the class still applied; only the memory of it is lost */
+      /* private mode, cleared storage — the theme still applied for this
+         session; only the memory of it across reloads is lost */
     }
+    emitThemeChange();
   }, []);
 
   return [theme, apply];
@@ -111,7 +138,7 @@ function ThemeToggle({ compact = false }: { compact?: boolean }) {
           type="button"
           onClick={() => setTheme(o.v)}
           aria-pressed={theme === o.v}
-          className={`tab flex-1 !px-0 !text-[11px] ${theme === o.v ? "tab-active" : ""}`}
+          className={`tab flex-1 px-0 text-[11px] ${theme === o.v ? "tab-active" : ""}`}
         >
           {o.label}
         </button>
@@ -164,10 +191,10 @@ function Account() {
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-xs bg-accent font-mono text-[10px] font-bold text-card">
             {user.email?.[0]?.toUpperCase() ?? "U"}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[12px] text-body" title={user.email}>
+          <span className="min-w-0 flex-1 truncate t-small text-body" title={user.email}>
             {user.email}
           </span>
-          <button onClick={signOut} className="btn-ghost !text-[11px]">
+          <button onClick={signOut} className="btn-ghost text-[11px]">
             Sign out
           </button>
         </div>
@@ -178,7 +205,7 @@ function Account() {
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="btn-secondary w-full !text-[12px]">
+      <button onClick={() => setOpen(true)} className="btn-secondary w-full text-[12px]">
         Sign in to save
       </button>
     );
@@ -208,7 +235,7 @@ function Account() {
               setMode(m);
               setMsg(null);
             }}
-            className={`tab flex-1 !px-0 !text-[11px] ${mode === m ? "tab-active" : ""}`}
+            className={`tab flex-1 px-0 text-[11px] ${mode === m ? "tab-active" : ""}`}
           >
             {m === "login" ? "Sign in" : "Create"}
           </button>
@@ -220,7 +247,7 @@ function Account() {
         autoComplete="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="!text-[12px]"
+        className="t-small"
       />
       <input
         type="password"
@@ -229,7 +256,7 @@ function Account() {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
-        className="!text-[12px]"
+        className="t-small"
       />
       {msg && (
         <p className={`text-[11px] leading-snug ${msg.ok ? "text-positive" : "text-critical"}`}>
@@ -239,11 +266,11 @@ function Account() {
       <button
         onClick={submit}
         disabled={busy || !email || !password}
-        className="btn-primary w-full !text-[12px]"
+        className="btn-primary w-full text-[12px]"
       >
         {busy ? "…" : mode === "login" ? "Sign in" : "Create account"}
       </button>
-      <button onClick={() => setOpen(false)} className="btn-ghost !text-[11px]">
+      <button onClick={() => setOpen(false)} className="btn-ghost text-[11px]">
         Cancel
       </button>
     </div>
@@ -303,19 +330,28 @@ function Wordmark() {
 
 export default function Nav() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  // The drawer remembers WHICH route it was opened over, and is closed by
+  // definition on any other one. A drawer that survives navigation hides the
+  // page you just asked for; deriving that during render rather than
+  // correcting it in an effect means the new page is never painted with the
+  // drawer still over it, and it covers browser back/forward as well as the
+  // links, which an onClick handler alone would not.
+  const [openedOver, setOpenedOver] = useState<string | null>(null);
+  const open = openedOver === pathname;
+  const setOpen = useCallback(
+    (next: boolean) => setOpenedOver(next ? pathname : null),
+    [pathname],
+  );
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
-
-  // Close on route change — a drawer that survives navigation hides the page
-  // you just asked for.
-  useEffect(() => setOpen(false), [pathname]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setOpen(false);
+        // The raw setter, not `setOpen` — it is stable, so the listener does
+        // not have to be torn down and rebuilt every time the route changes.
+        setOpenedOver(null);
         openerRef.current?.focus();
       }
     };

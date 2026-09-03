@@ -20,6 +20,12 @@
  * that needed building is the fan, which is stacked areas with a transparent
  * base — and that is a dozen lines rather than a megabyte.
  *
+ * COLOUR COMES FROM TOKENS, NEVER FROM A LITERAL. A caller names a meaning
+ * ("positive", "s3") and `usePalette` resolves it against whatever globals.css
+ * currently says, re-reading when the theme changes. The ten arbitrary hues
+ * this replaced were picked to be distinct from each other and had no
+ * relationship to anything else on the page.
+ *
  * Everything here takes numbers and draws them. No chart computes anything.
  */
 
@@ -43,13 +49,16 @@ import {
 } from "recharts";
 import type { ReactNode } from "react";
 
-export const SERIES_COLORS = [
-  "#5b8def", "#4ade80", "#818cf8", "#fbbf24", "#f472b6",
-  "#22d3ee", "#c084fc", "#fb923c", "#2dd4bf", "#e879f9",
-];
+import { SERIES, usePalette, type Palette, type Token } from "@/lib/tokens";
 
-const AXIS = { stroke: "rgba(255,255,255,0.06)", tick: { fill: "#666", fontSize: 11 } };
-const GRID = "rgba(255,255,255,0.045)";
+/** Grid rules only where they help a value be read: horizontal, hairline, no
+ *  cage. Built per render because the palette follows the theme. */
+function axisProps(p: Palette) {
+  return {
+    stroke: p.hair,
+    tick: { fill: p.muted, fontSize: 10, fontFamily: "var(--font-mono)" },
+  };
+}
 
 const money = (v: number) => {
   const a = Math.abs(v);
@@ -70,23 +79,26 @@ function TooltipBox({
   rows: { name: string; value: number; color: string }[];
 }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-[#171717] px-3 py-2 shadow-xl">
-      {label !== undefined && (
-        <p className="mb-1 text-[0.7rem] font-medium text-dim">{label}</p>
-      )}
+    <div className="rounded-sm border border-hair bg-card px-3 py-2">
+      {label !== undefined && <p className="label mb-1.5">{label}</p>}
       {rows.map((r) => (
-        <p key={r.name} className="font-num text-[0.78rem] text-primary">
+        <p key={r.name} className="t-small flex items-center gap-2 text-ink">
           <span
-            className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle"
+            className="h-[2px] w-3 shrink-0"
             style={{ background: r.color }}
+            aria-hidden="true"
           />
-          {r.name}: {exact(r.value)}
+          <span className="text-body">{r.name}</span>
+          <span className="font-num ml-auto pl-3">{exact(r.value)}</span>
         </p>
       ))}
     </div>
   );
 }
 
+/* Recharts calls a `content` function itself rather than mounting it as a
+   component, so this must not use hooks. It needs none: every colour in the
+   payload is already the resolved token the chart was drawn with. */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function moneyTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -119,12 +131,8 @@ export function Card({
   return (
     <div className="card">
       {(title || action) && (
-        <div className="mb-3 flex items-center justify-between">
-          {title && (
-            <h3 className="text-[0.72rem] font-medium uppercase tracking-[0.08em] text-muted">
-              {title}
-            </h3>
-          )}
+        <div className="mb-3 flex items-center justify-between gap-3">
+          {title && <h3 className="label">{title}</h3>}
           {action}
         </div>
       )}
@@ -150,39 +158,40 @@ export function TrendChart({
 }: {
   data: Record<string, number | string>[];
   xKey: string;
-  series: { key: string; name: string; color?: string; area?: boolean; dashed?: boolean }[];
+  series: { key: string; name: string; tone?: Token; area?: boolean; dashed?: boolean }[];
   height?: number;
   title?: string;
   xFormatter?: (v: number | string) => string;
   action?: ReactNode;
 }) {
+  const p = usePalette();
+  const AXIS = axisProps(p);
   return (
     <Card title={title} height={height} action={action}>
       <AreaChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
-        <CartesianGrid stroke={GRID} vertical={false} />
+        <CartesianGrid stroke={p.hairSoft} vertical={false} />
         <XAxis
           dataKey={xKey}
           {...AXIS}
           tickFormatter={xFormatter as never}
           tickLine={false}
-          axisLine={{ stroke: AXIS.stroke }}
+          axisLine={{ stroke: p.hair }}
         />
-        <YAxis
-          {...AXIS}
-          tickFormatter={money}
-          tickLine={false}
-          axisLine={false}
-          width={58}
-        />
+        <YAxis {...AXIS} tickFormatter={money} tickLine={false} axisLine={false} width={58} />
         <Tooltip content={moneyTooltip} />
         {series.length > 1 && (
           <Legend
-            wrapperStyle={{ fontSize: 11, color: "#666", paddingTop: 8 }}
+            wrapperStyle={{
+              fontSize: 11,
+              color: p.muted,
+              fontFamily: "var(--font-mono)",
+              paddingTop: 8,
+            }}
             iconType="plainline"
           />
         )}
         {series.map((s, i) => {
-          const color = s.color ?? SERIES_COLORS[i % SERIES_COLORS.length];
+          const color = p[s.tone ?? SERIES[i % SERIES.length]];
           return (
             <Area
               key={s.key}
@@ -191,12 +200,12 @@ export function TrendChart({
               dataKey={s.key}
               name={s.name}
               stroke={color}
-              strokeWidth={2}
+              strokeWidth={1.75}
               strokeDasharray={s.dashed ? "4 3" : undefined}
               fill={color}
-              fillOpacity={s.area === false ? 0 : 0.1}
+              fillOpacity={s.area === false ? 0 : 0.09}
               dot={false}
-              activeDot={{ r: 3.5, strokeWidth: 0 }}
+              activeDot={{ r: 3, strokeWidth: 0 }}
             />
           );
         })}
@@ -211,28 +220,31 @@ export function BarsChart({
   data,
   xKey,
   valueKey,
-  colors,
+  tones,
   height = 280,
   title,
 }: {
   data: Record<string, number | string>[];
   xKey: string;
   valueKey: string;
-  colors?: string[];
+  /** One token per bar. Omitted, the bars walk the categorical series. */
+  tones?: Token[];
   height?: number;
   title?: string;
 }) {
+  const p = usePalette();
+  const AXIS = axisProps(p);
   return (
     <Card title={title} height={height}>
       <BarChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
-        <CartesianGrid stroke={GRID} vertical={false} />
-        <XAxis dataKey={xKey} {...AXIS} tickLine={false} axisLine={{ stroke: AXIS.stroke }} />
+        <CartesianGrid stroke={p.hairSoft} vertical={false} />
+        <XAxis dataKey={xKey} {...AXIS} tickLine={false} axisLine={{ stroke: p.hair }} />
         <YAxis {...AXIS} tickFormatter={money} tickLine={false} axisLine={false} width={58} />
-        <Tooltip content={moneyTooltip} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-        <ReferenceLine y={0} stroke="rgba(255,255,255,0.14)" />
-        <Bar dataKey={valueKey} radius={[4, 4, 0, 0]} maxBarSize={64} isAnimationActive={false}>
+        <Tooltip content={moneyTooltip} cursor={{ fill: p.hairSoft, fillOpacity: 0.5 }} />
+        <ReferenceLine y={0} stroke={p.hair} />
+        <Bar dataKey={valueKey} radius={[2, 2, 0, 0]} maxBarSize={54} isAnimationActive={false}>
           {data.map((_, i) => (
-            <Cell key={i} fill={colors?.[i] ?? SERIES_COLORS[i % SERIES_COLORS.length]} />
+            <Cell key={i} fill={p[tones?.[i] ?? SERIES[i % SERIES.length]]} />
           ))}
         </Bar>
       </BarChart>
@@ -251,6 +263,7 @@ export function DonutChart({
   height?: number;
   title?: string;
 }) {
+  const p = usePalette();
   // Radii are numbers, not percentages. Percentage radii inside a
   // ResponsiveContainer resolved to zero here: ten sector groups rendered with
   // no <path> inside them, so the card was blank with no console error and a
@@ -271,12 +284,12 @@ export function DonutChart({
           cy="50%"
           innerRadius={inner}
           outerRadius={outer}
-          paddingAngle={1.5}
-          stroke="#09090b"
-          strokeWidth={2}
+          paddingAngle={1}
+          stroke={p.card}
+          strokeWidth={1.5}
         >
           {data.map((_, i) => (
-            <Cell key={i} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
+            <Cell key={i} fill={p[SERIES[i % SERIES.length]]} />
           ))}
         </Pie>
         <Tooltip content={moneyTooltip} />
@@ -310,6 +323,8 @@ export function FanChart({
   height?: number;
   title?: string;
 }) {
+  const p = usePalette();
+  const AXIS = axisProps(p);
   const data = ages.map((age, i) => {
     const row: Record<string, number> = { age, median: median[i] };
     bands.forEach((b, bi) => {
@@ -322,24 +337,30 @@ export function FanChart({
   return (
     <Card title={title} height={height}>
       <AreaChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
-        <CartesianGrid stroke={GRID} vertical={false} />
-        <XAxis dataKey="age" {...AXIS} tickLine={false} axisLine={{ stroke: AXIS.stroke }} />
+        <CartesianGrid stroke={p.hairSoft} vertical={false} />
+        <XAxis dataKey="age" {...AXIS} tickLine={false} axisLine={{ stroke: p.hair }} />
         <YAxis {...AXIS} tickFormatter={money} tickLine={false} axisLine={false} width={58} />
         <Tooltip
           content={(props) =>
             moneyTooltip({
               ...props,
               label: `Age ${props.label}`,
-              payload: (props.payload ?? []).filter((p) => p.dataKey === "median"),
+              payload: (props.payload ?? []).filter((q) => q.dataKey === "median"),
             })
           }
         />
-        <ReferenceLine y={0} stroke="#f87171" strokeDasharray="4 3" />
+        <ReferenceLine y={0} stroke={p.critical} strokeDasharray="4 3" />
         <ReferenceLine
           x={retireAge}
-          stroke="#fbbf24"
+          stroke={p.caution}
           strokeDasharray="4 3"
-          label={{ value: "Retirement", fill: "#fbbf24", fontSize: 11, position: "top" }}
+          label={{
+            value: "Retirement",
+            fill: p.caution,
+            fontSize: 10,
+            fontFamily: "var(--font-mono)",
+            position: "top",
+          }}
         />
         {bands.map((b, i) => [
           <Area
@@ -358,7 +379,7 @@ export function FanChart({
             name={b.name}
             stackId={`b${i}`}
             stroke="none"
-            fill="#5b8def"
+            fill={p.accent}
             fillOpacity={b.opacity}
             isAnimationActive={false}
           />,
@@ -368,8 +389,8 @@ export function FanChart({
           isAnimationActive={false}
           dataKey="median"
           name="Median"
-          stroke="#5b8def"
-          strokeWidth={2.5}
+          stroke={p.accent}
+          strokeWidth={2}
           fill="none"
           dot={false}
         />
@@ -400,55 +421,55 @@ export function PathsChart({
   yMax?: number;
   note?: ReactNode;
 }) {
+  const p = usePalette();
+  const AXIS = axisProps(p);
   const data = ages.map((age, i) => {
     const row: Record<string, number> = { age, median: median[i] };
-    paths.forEach((p, pi) => (row[`p${pi}`] = p[i]));
+    paths.forEach((q, pi) => (row[`p${pi}`] = q[i]));
     return row;
   });
-  const clipped = yMax
-    ? paths.filter((p) => Math.max(...p) > yMax).length
-    : 0;
+  const clipped = yMax ? paths.filter((q) => Math.max(...q) > yMax).length : 0;
 
   return (
     <>
       <Card title={title} height={height}>
-      <LineChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
-        <CartesianGrid stroke={GRID} vertical={false} />
-        <XAxis dataKey="age" {...AXIS} tickLine={false} axisLine={{ stroke: AXIS.stroke }} />
-        <YAxis
-          {...AXIS}
-          tickFormatter={money}
-          tickLine={false}
-          axisLine={false}
-          width={58}
-          domain={yMax ? [0, yMax] : undefined}
-          allowDataOverflow={Boolean(yMax)}
-        />
-        <ReferenceLine y={0} stroke="#f87171" strokeDasharray="4 3" />
-        {paths.map((_, i) => (
+        <LineChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+          <CartesianGrid stroke={p.hairSoft} vertical={false} />
+          <XAxis dataKey="age" {...AXIS} tickLine={false} axisLine={{ stroke: p.hair }} />
+          <YAxis
+            {...AXIS}
+            tickFormatter={money}
+            tickLine={false}
+            axisLine={false}
+            width={58}
+            domain={yMax ? [0, yMax] : undefined}
+            allowDataOverflow={Boolean(yMax)}
+          />
+          <ReferenceLine y={0} stroke={p.critical} strokeDasharray="4 3" />
+          {paths.map((_, i) => (
+            <Line
+              key={i}
+              type="monotone"
+              dataKey={`p${i}`}
+              stroke={p.accent}
+              strokeOpacity={0.16}
+              strokeWidth={0.75}
+              dot={false}
+              isAnimationActive={false}
+            />
+          ))}
           <Line
-            key={i}
             type="monotone"
-            dataKey={`p${i}`}
-            stroke="#5b8def"
-            strokeOpacity={0.16}
-            strokeWidth={0.75}
+            dataKey="median"
+            stroke={p.accent}
+            strokeWidth={2}
             dot={false}
             isAnimationActive={false}
           />
-        ))}
-        <Line
-          type="monotone"
-          dataKey="median"
-          stroke="#5b8def"
-          strokeWidth={2.5}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </LineChart>
+        </LineChart>
       </Card>
       {(note || clipped > 0) && (
-        <p className="mt-2 text-[0.7rem] leading-snug text-muted">
+        <p className="t-micro mt-2 text-muted">
           {note}
           {clipped > 0 && (
             <>

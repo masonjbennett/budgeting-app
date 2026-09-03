@@ -2,56 +2,70 @@
 
 import Link from "next/link";
 
+import AnimatedNumber from "@/components/AnimatedNumber";
 import { BarsChart, DonutChart, TrendChart } from "@/components/Chart";
 import Footer from "@/components/Footer";
 import RingChart from "@/components/RingChart";
+import Sparkline from "@/components/Sparkline";
 import StatusCard from "@/components/StatusCard";
-import { fmt, pct, sum, useFinance } from "@/context/FinanceContext";
+import { abbr, fmt, pct, sum, useFinance } from "@/context/FinanceContext";
+import { cssVar, SERIES } from "@/lib/tokens";
 
 function Skeleton() {
   return (
     <div className="space-y-8">
-      <div>
-        <div className="skeleton mb-2 h-7 w-52" />
-        <div className="skeleton h-4 w-80" />
-      </div>
+      <div className="skeleton h-[9.5rem] w-full" />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="skeleton h-28 rounded-xl" />
+          <div key={i} className="skeleton h-24" />
         ))}
       </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="skeleton h-40 rounded-xl" />
+          <div key={i} className="skeleton h-36" />
         ))}
       </div>
     </div>
   );
 }
 
-/** A metric with no invented history behind it. */
+/** A supporting figure. Demoted on purpose — one hero per screen. */
 function Metric({
   label,
   value,
+  exact,
   note,
   tone = "default",
+  spark,
 }: {
   label: string;
   value: string;
+  /** The unabbreviated figure, where `value` is short. */
+  exact?: string;
   note?: React.ReactNode;
-  tone?: "default" | "green" | "red";
+  tone?: "default" | "positive" | "critical";
+  spark?: number[];
 }) {
   const toneClass =
-    tone === "green" ? "text-green" : tone === "red" ? "text-red" : "text-primary";
+    tone === "positive" ? "text-positive" : tone === "critical" ? "text-critical" : "text-ink";
   return (
     <div className="card">
-      <p className="text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted">
-        {label}
-      </p>
-      <p className={`mt-1 font-num text-[1.9rem] font-bold leading-none tracking-tight ${toneClass}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="label">{label}</p>
+        {/* Deliberately NOT `tone="trend"`. A trend-coloured sparkline reads
+            down as bad, and on the one metric that has a history — what you
+            spent — down is good. It painted a falling month in claret, which
+            is the alarm colour, next to a teal "−$38" saying the opposite. The
+            shape is information; the verdict belongs to the note underneath,
+            which knows what the number means. */}
+        {spark && spark.length > 1 && (
+          <Sparkline data={spark} tone="faint" className="mt-0.5 shrink-0" />
+        )}
+      </div>
+      <p className={`font-num t-h3 mt-1.5 leading-none font-medium ${toneClass}`} title={exact}>
         {value}
       </p>
-      {note && <p className="mt-1.5 text-[0.6875rem] leading-snug text-muted">{note}</p>}
+      {note && <p className="t-micro mt-2 text-muted">{note}</p>}
     </div>
   );
 }
@@ -66,9 +80,9 @@ export default function Dashboard() {
 
   if (status === "error") {
     return (
-      <div className="card border-red/20 bg-red/[0.03]">
-        <h1 className="text-[1.1rem] font-semibold text-primary">Something went wrong</h1>
-        <p className="mt-1 text-[0.85rem] text-dim">{error}</p>
+      <div className="card mark-critical">
+        <h2 className="t-lead">Something went wrong</h2>
+        <p className="t-small mt-1 text-body">{error}</p>
       </div>
     );
   }
@@ -103,10 +117,24 @@ export default function Dashboard() {
   const prevSpent = prevExpenses.reduce((s, e) => s + e.amount, 0);
   const spendDelta = prevExpenses.length ? spent - prevSpent : null;
 
+  // The spending sparkline is the months actually recorded, in order, and is
+  // drawn only where there are at least two of them. The scaffold drew this
+  // from a hardcoded array with the real total appended to the end of it.
+  const byMonth: Record<string, number> = {};
+  for (const e of profile.expenses) {
+    const k = e.date.slice(0, 7);
+    byMonth[k] = (byMonth[k] ?? 0) + e.amount;
+  }
+  const monthTotals = Object.keys(byMonth)
+    .sort()
+    .slice(-6)
+    .map((k) => byMonth[k]);
+
   // Net-worth trend comes only from snapshots the user has actually logged.
   const snapshots = [...profile.net_worth_snapshots].sort((a, b) =>
     a.date.localeCompare(b.date),
   );
+  const snapshotTrend = snapshots.slice(-6).map((s) => s.net_worth);
 
   const budgetTotal =
     sum(profile.budget.needs) + sum(profile.budget.wants) + sum(profile.budget.savings);
@@ -120,33 +148,72 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[1.5rem] font-semibold tracking-tight text-primary">Dashboard</h1>
-          <p className="mt-0.5 text-[0.8125rem] text-muted">
-            {MONTH_NAMES[now.getMonth()]} {now.getFullYear()} · every figure here is
-            calculated server-side from your inputs.
-          </p>
+      {/* ── The hero. One figure at display size; everything else is demoted
+             to it, because a 4-up grid of identically weighted numbers gives
+             the eye nowhere to land. ─────────────────────────────────── */}
+      <header className="animate-fade-in mb-10 border-b border-hair pb-7">
+        {/* Every other page gets its <h1> from PageHeader. This one leads with
+            the figure instead of a title, so the heading is present for the
+            document outline and for a screen reader without adding a line of
+            furniture above the hero. */}
+        <h1 className="sr-only">Dashboard</h1>
+        {/* items-end, not items-baseline: the right-hand block's first child is
+            an <svg>, which contributes no baseline, so a baseline-aligned row
+            hoists the whole block to the top of the header — the date ended up
+            above the label it was meant to sit beside. */}
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div>
+            <p className="label">Net worth</p>
+            <p className="mt-1.5">
+              <AnimatedNumber
+                value={netWorth}
+                className="figure-hero"
+                title={fmt(netWorth)}
+              />
+            </p>
+            <p className="t-small mt-2 text-muted">
+              <span className="font-num text-body">{fmt(totalAssets)}</span> of assets less{" "}
+              <span className="font-num text-body">{fmt(totalLiabilities)}</span> of
+              liabilities
+              {snapshotTrend.length > 1 && (
+                <>
+                  {" · "}
+                  <Link href="/net-worth" className="text-accent hover:underline">
+                    {snapshots.length} snapshots
+                  </Link>
+                </>
+              )}
+            </p>
+          </div>
+          <div className="flex items-end gap-5">
+            {snapshotTrend.length > 1 && (
+              <Sparkline data={snapshotTrend} width={104} height={34} tone="accent" />
+            )}
+            <p className="t-micro text-right text-muted">
+              {MONTH_NAMES[now.getMonth()]} {now.getFullYear()}
+              <br />
+              Calculated server-side
+            </p>
+          </div>
         </div>
-        <kbd className="hidden rounded border border-white/[0.06] bg-surface px-2 py-1 text-[0.625rem] text-muted sm:block">
-          ⌘K
-        </kbd>
-      </div>
+      </header>
 
-      {/* Headline figures */}
-      <div className="stagger mb-12 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* ── This month ─────────────────────────────────────────────── */}
+      <p className="label mb-3">This month</p>
+      <div className="stagger mb-11 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric
           label="Take-home"
           value={fmt(monthly)}
           note={
             <>
-              {fmt(th.annual_take_home)}/yr · {pct(th.effective_rate)} effective tax
+              {abbr(th.annual_take_home)}/yr · {pct(th.effective_rate)} effective tax
             </>
           }
         />
         <Metric
           label={`Spent in ${MONTH_NAMES[now.getMonth()]}`}
           value={fmt(spent)}
+          spark={monthTotals}
           note={
             spendDelta === null ? (
               <>
@@ -156,7 +223,7 @@ export default function Dashboard() {
             ) : (
               <>
                 {monthExpenses.length} transaction{monthExpenses.length === 1 ? "" : "s"} ·{" "}
-                <span className={spendDelta > 0 ? "text-red" : "text-green"}>
+                <span className={spendDelta > 0 ? "text-critical" : "text-positive"}>
                   {spendDelta > 0 ? "+" : "−"}
                   {fmt(Math.abs(spendDelta))}
                 </span>{" "}
@@ -166,38 +233,41 @@ export default function Dashboard() {
           }
         />
         <Metric
-          label="Net worth"
-          value={fmt(netWorth)}
-          note={
-            <>
-              {fmt(totalAssets)} assets − {fmt(totalLiabilities)} liabilities
-            </>
-          }
-        />
-        <Metric
           label="Net savings"
           value={fmt(netSavings)}
-          tone={netSavings >= 0 ? "green" : "red"}
+          tone={netSavings >= 0 ? "positive" : "critical"}
+          note={savingsRate === null ? "no income entered" : `${pct(savingsRate, 0)} of take-home`}
+        />
+        <Metric
+          label="Budgeted"
+          value={fmt(budgetTotal)}
           note={
-            savingsRate === null ? "no income entered" : `${pct(savingsRate, 0)} of take-home`
+            budgeted.length === 0 ? (
+              <Link href="/budget" className="text-accent hover:underline">
+                Set some category amounts →
+              </Link>
+            ) : (
+              <>
+                across {budgeted.length} categor{budgeted.length === 1 ? "y" : "ies"} ·{" "}
+                {fmt(monthly - budgetTotal)} unallocated
+              </>
+            )
           }
         />
       </div>
 
-      {/* Health */}
-      <p className="mb-3 text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted">
-        Financial health
-      </p>
-      <div className="mb-12 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <div className="card flex flex-col items-center justify-center py-6">
+      {/* ── Health ─────────────────────────────────────────────────── */}
+      <p className="label mb-3">Financial health</p>
+      <div className="mb-11 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="card flex flex-col items-center justify-center py-5">
           {savingsRate === null ? (
-            <p className="text-[0.8rem] text-muted">No income entered</p>
+            <p className="t-small text-muted">No income entered</p>
           ) : (
             <RingChart
               value={Math.max(0, Math.min(savingsRate, 100))}
-              size={104}
-              strokeWidth={7}
-              color={savingsRate >= 20 ? "#4ade80" : savingsRate >= 10 ? "#fbbf24" : "#f87171"}
+              size={102}
+              strokeWidth={5}
+              tone={savingsRate >= 20 ? "positive" : savingsRate >= 10 ? "caution" : "critical"}
               label={`${savingsRate.toFixed(0)}%`}
               sublabel={`Saved in ${MONTH_NAMES[now.getMonth()]}`}
             />
@@ -209,7 +279,7 @@ export default function Dashboard() {
             label="Debt-to-income"
             value="—"
             status="Needs income"
-            color="blue"
+            tone="info"
             description="Enter your salary on Income Setup to measure this."
           />
         ) : (
@@ -217,7 +287,7 @@ export default function Dashboard() {
             label="Debt-to-income"
             value={pct(dti)}
             status={dti === 0 ? "No debt" : dti <= 20 ? "Healthy" : dti <= 36 ? "Manageable" : "High"}
-            color={dti <= 20 ? "green" : dti <= 36 ? "yellow" : "red"}
+            tone={dti <= 20 ? "positive" : dti <= 36 ? "caution" : "critical"}
             description={`${fmt(dashboard.monthly_debt_service)}/mo of ${
               dashboard.debt_service_source === "debts"
                 ? "minimums on the debts you entered"
@@ -231,7 +301,7 @@ export default function Dashboard() {
             label="Emergency fund"
             value="—"
             status="Not measurable"
-            color="blue"
+            tone="info"
             description={
               dashboard.monthly_needs === 0
                 ? "Budget some essential spending under Needs first."
@@ -243,7 +313,7 @@ export default function Dashboard() {
             label="Emergency fund"
             value={`${ef.toFixed(1)} mo`}
             status={ef >= 6 ? "Strong" : ef >= 3 ? "Building" : "Priority"}
-            color={ef >= 6 ? "green" : ef >= 3 ? "yellow" : "red"}
+            tone={ef >= 6 ? "positive" : ef >= 3 ? "caution" : "critical"}
             description={`${fmt(dashboard.liquid_assets)} counted from ${dashboard.emergency_fund_counted.join(
               ", ",
             )}, against ${fmt(dashboard.monthly_needs)}/mo of needs.`}
@@ -255,7 +325,7 @@ export default function Dashboard() {
             label="Budget adherence"
             value="—"
             status="No budget set"
-            color="blue"
+            tone="info"
             description="Set some category amounts on Budget Builder."
           />
         ) : (
@@ -263,7 +333,7 @@ export default function Dashboard() {
             label="Budget adherence"
             value={`${onTrack}/${budgeted.length}`}
             status={adherence >= 80 ? "On track" : "Watch"}
-            color={adherence >= 80 ? "blue" : "yellow"}
+            tone={adherence >= 80 ? "positive" : "caution"}
             description={`Categories within budget this month. Total budgeted ${fmt(
               budgetTotal,
             )}/mo.`}
@@ -271,65 +341,60 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Spending */}
-      <p className="mb-3 text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted">
-        Spending · {MONTH_NAMES[now.getMonth()]}
-      </p>
+      {/* ── Spending ───────────────────────────────────────────────── */}
+      <p className="label mb-3">Spending · {MONTH_NAMES[now.getMonth()]}</p>
       {categories.length === 0 ? (
-        <div className="card mb-12 py-10 text-center">
-          <p className="text-[0.85rem] text-dim">Nothing logged this month yet.</p>
-          <Link
-            href="/expenses"
-            className="mt-2 inline-block text-[0.8rem] font-medium text-accent hover:underline"
-          >
+        <div className="card mb-11 py-9 text-center">
+          <p className="t-small text-muted">Nothing logged this month yet.</p>
+          <Link href="/expenses" className="t-small mt-1.5 inline-block text-accent hover:underline">
             Add an expense →
           </Link>
         </div>
       ) : (
-        <div className="mb-12 grid grid-cols-1 gap-3 lg:grid-cols-5">
+        <div className="mb-11 grid grid-cols-1 gap-3 lg:grid-cols-5">
           <div className="lg:col-span-2">
             <DonutChart
               data={categories.map(([name, value]) => ({ name, value }))}
               height={280}
             />
           </div>
-          <div className="card overflow-hidden p-0 lg:col-span-3">
-            <div className="divide-y divide-white/[0.04]">
+          <div className="card card-flush overflow-hidden lg:col-span-3">
+            <div className="divide-y divide-hair-soft">
               {categories.map(([cat, amount], i) => {
                 const budget = allCats[cat];
-                const share = spent > 0 ? (amount / spent) * 100 : 0;
+                // Spend against budget, as a filled rule. Where there is no
+                // budget for the category there is no bar — an empty track
+                // would read as "nothing spent".
+                const used = budget > 0 ? (amount / budget) * 100 : null;
                 const over = budget > 0 && amount > budget;
                 return (
-                  <div
-                    key={cat}
-                    className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.02]"
-                  >
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{
-                        background: ["#5b8def", "#4ade80", "#818cf8", "#fbbf24", "#f472b6",
-                          "#22d3ee", "#c084fc", "#fb923c", "#2dd4bf", "#e879f9"][i % 10],
-                      }}
-                    />
-                    <span className="flex-1 text-[0.8125rem] text-dim">{cat}</span>
-                    {budget > 0 && (
+                  <div key={cat} className="px-4 py-2.5 transition-colors hover:bg-raise">
+                    <div className="flex items-center gap-2.5">
                       <span
-                        className={`font-num text-[0.7rem] ${over ? "text-red" : "text-muted"}`}
-                      >
-                        of {fmt(budget)}
+                        className="h-2 w-[3px] shrink-0"
+                        style={{ background: cssVar(SERIES[i % SERIES.length]) }}
+                        aria-hidden="true"
+                      />
+                      <span className="t-small flex-1 truncate text-body">{cat}</span>
+                      {budget > 0 && (
+                        <span
+                          className={`font-num t-micro ${over ? "text-critical" : "text-muted"}`}
+                        >
+                          {Math.round(used!)}% of {fmt(budget)}
+                        </span>
+                      )}
+                      <span className="font-num t-small w-20 text-right text-ink">
+                        {fmt(amount, 2)}
                       </span>
-                    )}
-                    <div className="hidden w-16 sm:block">
-                      <div className="h-1 overflow-hidden rounded-full bg-white/[0.05]">
+                    </div>
+                    {used !== null && (
+                      <div className="progress-track mt-1.5 ml-[13px]">
                         <div
-                          className="h-full rounded-full bg-accent"
-                          style={{ width: `${Math.min(share, 100)}%` }}
+                          className={`progress-fill ${over ? "bg-critical" : "bg-accent"}`}
+                          style={{ width: `${Math.min(used, 100)}%` }}
                         />
                       </div>
-                    </div>
-                    <span className="w-20 text-right font-num text-[0.8125rem] text-primary">
-                      {fmt(amount, 2)}
-                    </span>
+                    )}
                   </div>
                 );
               })}
@@ -338,11 +403,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Cash flow */}
-      <p className="mb-3 text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted">
-        Cash flow
-      </p>
-      <div className="mb-12">
+      {/* ── Cash flow ──────────────────────────────────────────────── */}
+      <p className="label mb-3">Cash flow</p>
+      <div className="mb-11">
         <BarsChart
           data={[
             { name: "Take-home", value: monthly },
@@ -351,31 +414,26 @@ export default function Dashboard() {
           ]}
           xKey="name"
           valueKey="value"
-          colors={["#5b8def", "#f87171", netSavings >= 0 ? "#4ade80" : "#f87171"]}
-          height={260}
+          tones={["accent", "critical", netSavings >= 0 ? "positive" : "critical"]}
+          height={250}
         />
       </div>
 
-      {/* Net worth trend — only from real snapshots */}
-      <p className="mb-3 text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted">
-        Net worth over time
-      </p>
+      {/* ── Net worth trend — only from real snapshots ─────────────── */}
+      <p className="label mb-3">Net worth over time</p>
       {snapshots.length < 2 ? (
-        <div className="card mb-12 py-10 text-center">
-          <p className="text-[0.85rem] text-dim">
+        <div className="card mb-11 py-9 text-center">
+          <p className="t-small text-muted">
             {snapshots.length === 0
               ? "No snapshots logged yet."
               : "One snapshot logged — two are needed to draw a trend."}
           </p>
-          <Link
-            href="/net-worth"
-            className="mt-2 inline-block text-[0.8rem] font-medium text-accent hover:underline"
-          >
+          <Link href="/net-worth" className="t-small mt-1.5 inline-block text-accent hover:underline">
             Log a snapshot →
           </Link>
         </div>
       ) : (
-        <div className="mb-12">
+        <div className="mb-11">
           <TrendChart
             data={snapshots.map((s) => ({
               date: s.date,
@@ -384,8 +442,8 @@ export default function Dashboard() {
             }))}
             xKey="date"
             series={[
-              { key: "Net worth", name: "Net worth", color: "#5b8def" },
-              { key: "Assets", name: "Assets", color: "#4ade80", area: false },
+              { key: "Net worth", name: "Net worth", tone: "accent" },
+              { key: "Assets", name: "Assets", tone: "s2", area: false },
             ]}
             height={300}
           />

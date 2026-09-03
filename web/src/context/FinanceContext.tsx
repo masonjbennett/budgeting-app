@@ -329,6 +329,26 @@ export function pct(v: number | null | undefined, decimals = 1): string {
   return `${v.toFixed(decimals)}%`;
 }
 
+/**
+ * A large figure, shortened for display — `$36.0M`.
+ *
+ * Formatting, not a rule: it decides nothing and changes no answer, which is
+ * the same standing `fmt`, `pct` and the charts' axis ticks already have. It
+ * exists because the FIRE page rendered $36,033,288 beside $148,039,029 at the
+ * same size, and at a glance those two read as the same number. Every caller
+ * shows the exact value as well — abbreviating and then hiding the real figure
+ * would be trading one unreadable number for a vaguer one.
+ */
+export function abbr(v: number | null | undefined, decimals = 1): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  const a = Math.abs(v);
+  const sign = v < 0 ? "-" : "";
+  if (a >= 1_000_000_000) return `${sign}$${(a / 1_000_000_000).toFixed(decimals)}B`;
+  if (a >= 1_000_000) return `${sign}$${(a / 1_000_000).toFixed(decimals)}M`;
+  if (a >= 100_000) return `${sign}$${(a / 1_000).toFixed(0)}k`;
+  return fmt(v);
+}
+
 export function sum(o: Record<string, number>): number {
   return Object.values(o).reduce((a, b) => a + (Number(b) || 0), 0);
 }

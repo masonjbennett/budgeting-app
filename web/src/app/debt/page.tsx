@@ -31,10 +31,10 @@ function StrategyCard({
   // it as a duration gives "-1 mo to debt-free", which reads as a number.
   if (result.never_pays_off) {
     return (
-      <div className="card border-red/25 bg-red/[0.03]">
-        <p className="text-[0.85rem] font-semibold text-primary">{name}</p>
-        <p className="mt-2 text-[0.85rem] text-red">Never pays off</p>
-        <p className="mt-1 text-[0.72rem] leading-snug text-muted">
+      <div className="card mark-critical">
+        <p className="label">{name}</p>
+        <p className="t-lead mt-2 text-critical">Never pays off</p>
+        <p className="t-micro mt-1.5 text-muted">
           The monthly payments do not cover the interest accruing, so the balance
           grows. Raise the minimums or the extra payment.
         </p>
@@ -42,18 +42,18 @@ function StrategyCard({
     );
   }
   return (
-    <div className={`card ${better ? "border-green/30 bg-green/[0.03]" : ""}`}>
-      <div className="flex items-baseline justify-between">
-        <p className="text-[0.85rem] font-semibold text-primary">{name}</p>
-        {better && <span className="badge badge-green">Lower interest</span>}
+    <div className={`card ${better ? "mark-accent" : ""}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="label">{name}</p>
+        {better && <span className="badge badge-positive">Lower interest</span>}
       </div>
-      <p className="mt-2 font-num text-[1.7rem] font-bold leading-none text-primary">
+      <p className="font-num t-h3 mt-2 leading-none font-medium text-ink">
         {months(result.months)}
       </p>
-      <p className="mt-1.5 text-[0.78rem] text-dim">
-        {fmt(result.total_interest)} of interest
+      <p className="t-small mt-1.5 text-body">
+        <span className="font-num">{fmt(result.total_interest)}</span> of interest
       </p>
-      <p className="mt-2 text-[0.7rem] leading-snug text-muted">{blurb}</p>
+      <p className="t-micro mt-2 text-muted">{blurb}</p>
     </div>
   );
 }
@@ -86,7 +86,7 @@ export default function DebtPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  if (!profile || !dashboard) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile || !dashboard) return <div className="skeleton h-96" />;
 
   const setDebts = (d: Debt[]) => update({ debts: d });
   const addDebt = () => {
@@ -125,12 +125,8 @@ export default function DebtPage() {
           ["With extra", `${fmt(totalMin + extra)}/mo`],
         ].map(([label, value]) => (
           <div key={label} className="card">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted">
-              {label}
-            </p>
-            <p className="mt-1 font-num text-[1.6rem] font-bold leading-none text-primary">
-              {value}
-            </p>
+            <p className="label">{label}</p>
+            <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">{value}</p>
           </div>
         ))}
       </div>
@@ -139,7 +135,7 @@ export default function DebtPage() {
         {debts.length === 0 ? (
           <Empty>No debts entered. Add one below to compare payoff strategies.</Empty>
         ) : (
-          <div className="card overflow-x-auto p-0">
+          <div className="card card-flush overflow-x-auto">
             <table>
               <thead>
                 <tr>
@@ -154,11 +150,11 @@ export default function DebtPage() {
               <tbody>
                 {debts.map((d, i) => (
                   <tr key={`${d.name}-${i}`}>
-                    <td className="text-primary">{d.name}</td>
-                    <td className="text-right font-num">{fmt(d.balance)}</td>
-                    <td className="text-right font-num">{d.rate.toFixed(2)}%</td>
-                    <td className="text-right font-num">{fmt(d.min_payment)}</td>
-                    <td className="text-right font-num text-muted">
+                    <td className="text-ink">{d.name}</td>
+                    <td className="font-num text-right">{fmt(d.balance)}</td>
+                    <td className="font-num text-right">{d.rate.toFixed(2)}%</td>
+                    <td className="font-num text-right">{fmt(d.min_payment)}</td>
+                    <td className="font-num text-right text-muted">
                       {shown?.avalanche.payoff_months?.[d.name]
                         ? months(shown.avalanche.payoff_months[d.name])
                         : "—"}
@@ -167,7 +163,7 @@ export default function DebtPage() {
                       <button
                         onClick={() => setDebts(debts.filter((_, j) => j !== i))}
                         aria-label={`Remove ${d.name}`}
-                        className="text-muted transition-colors hover:text-red"
+                        className="text-muted transition-colors hover:text-critical"
                       >
                         ✕
                       </button>
@@ -219,7 +215,7 @@ export default function DebtPage() {
             <button
               onClick={addDebt}
               disabled={!draft.name.trim() || draft.balance <= 0}
-              className="btn-primary w-full disabled:opacity-40"
+              className="btn-primary w-full"
             >
               Add debt
             </button>
@@ -246,9 +242,7 @@ export default function DebtPage() {
           </div>
 
           {error && (
-            <div className="card border-red/25 bg-red/[0.03] text-[0.82rem] text-red">
-              {error}
-            </div>
+            <div className="card mark-critical t-small text-critical">{error}</div>
           )}
 
           {shown && (
@@ -269,18 +263,16 @@ export default function DebtPage() {
               </div>
 
               {better === "tie" && (
-                <p className="mb-4 text-[0.78rem] text-muted">
+                <p className="t-small mb-4 text-muted">
                   Both strategies cost the same here — with these debts they attack in
                   the same order, so there is nothing to choose between them.
                 </p>
               )}
               {better === "avalanche" && (
-                <p className="mb-4 text-[0.78rem] text-dim">
+                <p className="t-small mb-4 text-body">
                   Avalanche saves{" "}
-                  <strong className="font-num text-green">
-                    {fmt(
-                      shown.snowball.total_interest - shown.avalanche.total_interest,
-                    )}
+                  <strong className="font-num text-positive">
+                    {fmt(shown.snowball.total_interest - shown.avalanche.total_interest)}
                   </strong>{" "}
                   in interest. Snowball clears its first debt sooner, which some people
                   find easier to stick to.
@@ -297,8 +289,8 @@ export default function DebtPage() {
                   }))}
                   xKey="month"
                   series={[
-                    { key: "Avalanche", name: "Avalanche", color: "#5b8def" },
-                    { key: "Snowball", name: "Snowball", color: "#fbbf24", area: false },
+                    { key: "Avalanche", name: "Avalanche", tone: "accent" },
+                    { key: "Snowball", name: "Snowball", tone: "caution", area: false },
                   ]}
                   height={300}
                   xFormatter={(v) => `${v}`}

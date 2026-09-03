@@ -27,7 +27,7 @@ export default function DataPage() {
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [confirming, setConfirming] = useState<"demo" | "empty" | null>(null);
 
-  if (!profile) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile) return <div className="skeleton h-96" />;
 
   const download = () => {
     const blob = new Blob([JSON.stringify(profile, null, 2)], {
@@ -78,34 +78,34 @@ export default function DataPage() {
   return (
     <div>
       <PageHeader
-        title="Settings & Data"
+        title="Settings"
         description="Where your figures live, and how to get them out."
       />
 
       <Section title="Storage">
         <div className="card">
           {!cloudConfigured ? (
-            <p className="text-[0.85rem] text-dim">
+            <p className="t-small text-body">
               Accounts are switched off for this deployment. Everything is calculated
               server-side but nothing is stored — your figures live in this browser tab
               only. Export below if you want to keep them.
             </p>
           ) : user ? (
             <>
-              <p className="text-[0.85rem] text-dim">
-                Signed in as <strong className="text-primary">{user.email}</strong>.
+              <p className="t-small text-body">
+                Signed in as <strong className="text-ink">{user.email}</strong>.
                 Changes save automatically a moment after you stop typing, and follow
                 you to any browser you sign in from.
               </p>
-              <p className="mt-2 text-[0.72rem] leading-relaxed text-muted">
+              <p className="t-micro mt-2 leading-relaxed text-muted">
                 Your row is readable only by your own account — the database enforces
                 that, not the app.
               </p>
             </>
           ) : (
-            <p className="text-[0.85rem] text-dim">
+            <p className="t-small text-body">
               Not signed in. Everything works, but your figures live in this browser tab
-              only and are gone when you close it. Sign in from the sidebar to save
+              only and are gone when you close it. Sign in from the navigation to save
               them, or export below.
             </p>
           )}
@@ -116,8 +116,8 @@ export default function DataPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {stats.map(([label, value]) => (
             <div key={label} className="card">
-              <p className="text-[0.65rem] leading-snug text-muted">{label}</p>
-              <p className="mt-1 font-num text-[1.2rem] font-bold text-primary">{value}</p>
+              <p className="label leading-snug">{label}</p>
+              <p className="font-num t-lead mt-1.5 font-medium text-ink">{value}</p>
             </div>
           ))}
         </div>
@@ -126,8 +126,8 @@ export default function DataPage() {
       <Section title="Export & import">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="card">
-            <h3 className="text-[0.85rem] font-semibold text-primary">Export</h3>
-            <p className="mt-1 text-[0.75rem] leading-snug text-muted">
+            <h3 className="label">Export</h3>
+            <p className="t-small mt-1.5 text-muted">
               Everything, as JSON — income, budget, expenses, net worth, debts and goals.
             </p>
             <button onClick={download} className="btn-primary mt-3">
@@ -135,8 +135,8 @@ export default function DataPage() {
             </button>
           </div>
           <div className="card">
-            <h3 className="text-[0.85rem] font-semibold text-primary">Import</h3>
-            <p className="mt-1 text-[0.75rem] leading-snug text-muted">
+            <h3 className="label">Import</h3>
+            <p className="t-small mt-1.5 text-muted">
               Replaces everything currently loaded. Export first if you want a way back.
             </p>
             <input
@@ -156,17 +156,15 @@ export default function DataPage() {
           </div>
         </div>
         {message && (
-          <p
-            className={`mt-3 text-[0.78rem] ${message.ok ? "text-green" : "text-red"}`}
-          >
+          <p className={`t-small mt-3 ${message.ok ? "text-positive" : "text-critical"}`}>
             {message.text}
           </p>
         )}
       </Section>
 
       <Section title="Start over">
-        <div className="card border-red/15">
-          <p className="text-[0.8rem] text-dim">
+        <div className="card mark-critical">
+          <p className="t-small text-body">
             Reset to the demo profile, or to an empty one. This replaces everything
             loaded now{user ? " and saves over your stored copy" : ""}.
           </p>
@@ -187,11 +185,7 @@ export default function DataPage() {
                   });
                 }}
                 onBlur={() => setConfirming(null)}
-                className={
-                  confirming === which
-                    ? "rounded-lg bg-red px-4 py-2 text-[0.8125rem] font-semibold text-white"
-                    : "btn-secondary"
-                }
+                className={confirming === which ? "btn-danger" : "btn-secondary"}
               >
                 {confirming === which
                   ? "Click again to confirm"
@@ -206,13 +200,13 @@ export default function DataPage() {
 
       <Section title="About">
         <div className="card">
-          <p className="text-[0.8rem] leading-relaxed text-dim">
+          <p className="t-small leading-relaxed text-body">
             Tax figures are IRS 2026 — Rev. Proc. 2025-32 as amended by the OBBBA — with
             brackets for all four filing statuses and every state plus DC. This is an
             estimate for planning, not tax advice, and it does not model credits,
             AMT, or the 2/37 limitation on itemized deductions at the top bracket.
           </p>
-          <p className="mt-3 text-[0.8rem] leading-relaxed text-dim">
+          <p className="t-small mt-3 leading-relaxed text-body">
             Every number on this site is calculated by one Python module, which the
             Streamlit version of this app and this one both import. It is covered by
             291 assertions, and none of them re-derive an expected answer with a second

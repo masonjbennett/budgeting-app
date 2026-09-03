@@ -8,11 +8,12 @@ import Footer from "@/components/Footer";
 import PageHeader from "@/components/PageHeader";
 import { api, ApiError, type Investment } from "@/lib/api";
 import { fmt, useFinance } from "@/context/FinanceContext";
+import { cssVar, type Token } from "@/lib/tokens";
 
-const SCENARIOS = [
-  { name: "Conservative", rate: 5, color: "#fbbf24" },
-  { name: "Moderate", rate: 7, color: "#5b8def" },
-  { name: "Aggressive", rate: 9, color: "#4ade80" },
+const SCENARIOS: { name: string; rate: number; tone: Token }[] = [
+  { name: "Conservative", rate: 5, tone: "caution" },
+  { name: "Moderate", rate: 7, tone: "accent" },
+  { name: "Aggressive", rate: 9, tone: "s2" },
 ];
 
 export default function InvestmentsPage() {
@@ -44,7 +45,7 @@ export default function InvestmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  if (!profile || !inv) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile || !inv) return <div className="skeleton h-96" />;
 
   const set = (p: Partial<typeof inv>) => update({ investment: { ...inv, ...p } });
 
@@ -114,9 +115,7 @@ export default function InvestmentsPage() {
       </Section>
 
       {error && (
-        <div className="card mb-8 border-red/25 bg-red/[0.03] text-[0.82rem] text-red">
-          {error}
-        </div>
+        <div className="card mark-critical t-small mb-8 text-critical">{error}</div>
       )}
 
       {runs && (
@@ -125,21 +124,21 @@ export default function InvestmentsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {SCENARIOS.map((s, i) => (
                 <div key={s.name} className="card">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-[0.78rem] font-medium text-dim">{s.name}</p>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="label">{s.name}</p>
                     <span
-                      className="font-num text-[0.72rem]"
-                      style={{ color: s.color }}
+                      className="font-num t-micro"
+                      style={{ color: cssVar(s.tone) }}
                     >
                       {s.rate}%/yr
                     </span>
                   </div>
-                  <p className="mt-1 font-num text-[1.7rem] font-bold leading-none text-primary">
+                  <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
                     {fmt(runs[i].final_value)}
                   </p>
-                  <p className="mt-1.5 text-[0.7rem] text-muted">
+                  <p className="t-micro mt-1.5 text-muted">
                     {fmt(runs[i].total_contributed)} contributed ·{" "}
-                    <span className="text-green">{fmt(runs[i].growth)} growth</span>
+                    <span className="text-positive">{fmt(runs[i].growth)} growth</span>
                   </p>
                 </div>
               ))}
@@ -154,15 +153,15 @@ export default function InvestmentsPage() {
                 ...SCENARIOS.map((s) => ({
                   key: s.name,
                   name: `${s.name} (${s.rate}%)`,
-                  color: s.color,
+                  tone: s.tone,
                   area: false as const,
                 })),
-                { key: "Contributed", name: "Contributed", color: "#666", dashed: true, area: false },
+                { key: "Contributed", name: "Contributed", tone: "muted" as const, dashed: true, area: false },
               ]}
               height={360}
               xFormatter={(v) => `${v}y`}
             />
-            <p className="mt-3 text-[0.72rem] leading-relaxed text-muted">
+            <p className="t-micro mt-3 leading-relaxed text-muted">
               Returns are assumed constant, which no market is — the three lines are
               there to show the spread, not to predict one. The FIRE page runs the
               same money through randomised, correlated returns instead.

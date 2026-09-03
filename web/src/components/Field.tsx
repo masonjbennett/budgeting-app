@@ -13,9 +13,9 @@ export function Field({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-[0.78rem] font-medium text-dim">{label}</label>
+      <label className="t-small mb-1.5 block font-medium text-body">{label}</label>
       {children}
-      {help && <p className="mt-1 text-[0.68rem] leading-snug text-muted">{help}</p>}
+      {help && <p className="t-micro mt-1 text-muted">{help}</p>}
     </div>
   );
 }
@@ -71,7 +71,7 @@ export function NumberInput({
   return (
     <div className="relative">
       {prefix && (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[0.8125rem] text-muted">
+        <span className="t-small pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted">
           {prefix}
         </span>
       )}
@@ -93,23 +93,25 @@ export function NumberInput({
           setDraft(null);
           commit(e.target.value);
         }}
-        // Padding is an INLINE STYLE, not a `pl-7` utility class. globals.css
-        // styles `input[type="number"]` by element+attribute (specificity
-        // 0,1,1), which beats a `.pl-7` class (0,1,0) — so the utility was dead
-        // and the "$" rendered directly on top of the value. Same shape as the
-        // Streamlit sidebar rules that lost to a matched descendant selector: a
-        // dead style rule is invisible until you measure it. Verified: padding
-        // was 12px with the class, and the prefix's right edge sat at exactly
-        // the x where the text began.
+        // Padding was an INLINE STYLE here rather than a `pl-7` utility, because
+        // globals.css styled `input[type="number"]` UNLAYERED (specificity
+        // 0,1,1 and above every utility layer), so the class was dead and the
+        // "$" rendered directly on top of the value. The element rules now live
+        // in `@layer base`, so a utility beats them and the class works — but
+        // the inline style stays, because it is the one form that cannot be
+        // beaten by anything and this is a control that must not break again.
+        // Measured before the layer fix: padding stayed at 12px with the class
+        // applied, and the prefix's right edge sat exactly at the x where the
+        // text began.
         style={{
-          paddingLeft: prefix ? "1.75rem" : undefined,
+          paddingLeft: prefix ? "1.5rem" : undefined,
           paddingRight: suffix ? "2rem" : undefined,
           ...rest.style,
         }}
         className={`font-num ${className}`}
       />
       {suffix && (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[0.8125rem] text-muted">
+        <span className="t-small pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-muted">
           {suffix}
         </span>
       )}
@@ -129,10 +131,9 @@ export function Section({
   return (
     <section className="mb-10">
       <div className="mb-4 flex items-center gap-3">
-        <h2 className="text-[0.72rem] font-medium uppercase tracking-[0.1em] text-muted">
-          {title}
-        </h2>
-        <div className="h-px flex-1 bg-white/[0.06]" />
+        <span className="h-[3px] w-6 shrink-0 bg-accent" aria-hidden="true" />
+        <h2 className="label text-[11px] text-ink">{title}</h2>
+        <div className="rule flex-1" />
         {action}
       </div>
       {children}
@@ -142,6 +143,6 @@ export function Section({
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="card py-10 text-center text-[0.85rem] text-dim">{children}</div>
+    <div className="card t-small py-9 text-center text-muted">{children}</div>
   );
 }

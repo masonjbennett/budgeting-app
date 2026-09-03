@@ -21,17 +21,17 @@ function Ledger({
   onChange: (name: string, v: number) => void;
   onRemove: (name: string) => void;
   onAdd: (name: string) => void;
-  tone: "green" | "red";
+  tone: "positive" | "critical";
 }) {
   const [name, setName] = useState("");
   const total = sum(rows);
   return (
     <div className="card">
-      <div className="mb-4 flex items-baseline justify-between">
-        <h3 className="text-[0.85rem] font-semibold text-primary">{title}</h3>
+      <div className="mb-4 flex items-baseline justify-between border-b border-hair-soft pb-2.5">
+        <h3 className="label">{title}</h3>
         <span
-          className={`font-num text-[1.05rem] font-bold ${
-            tone === "green" ? "text-green" : "text-red"
+          className={`font-num t-lead font-medium ${
+            tone === "positive" ? "text-positive" : "text-critical"
           }`}
         >
           {fmt(total)}
@@ -40,7 +40,7 @@ function Ledger({
       <div className="space-y-2.5">
         {Object.entries(rows).map(([n, v]) => (
           <div key={n} className="flex items-center gap-2">
-            <label className="w-28 shrink-0 truncate text-[0.8rem] text-dim" title={n}>
+            <label className="t-small w-28 shrink-0 truncate text-body" title={n}>
               {n}
             </label>
             <NumberInput
@@ -50,11 +50,7 @@ function Ledger({
               min={0}
               prefix="$"
             />
-            <button
-              onClick={() => onRemove(n)}
-              aria-label={`Remove ${n}`}
-              className="shrink-0 rounded-lg border border-white/[0.08] px-2 py-2 text-[0.72rem] text-muted transition-colors hover:border-red/40 hover:text-red"
-            >
+            <button onClick={() => onRemove(n)} aria-label={`Remove ${n}`} className="btn-remove">
               ✕
             </button>
           </div>
@@ -72,7 +68,6 @@ function Ledger({
               setName("");
             }
           }}
-          className="text-[0.8rem]"
         />
         <button
           onClick={() => {
@@ -82,7 +77,7 @@ function Ledger({
             }
           }}
           disabled={!name.trim()}
-          className="btn-secondary shrink-0 disabled:opacity-40"
+          className="btn-secondary shrink-0"
         >
           Add
         </button>
@@ -93,7 +88,7 @@ function Ledger({
 
 export default function NetWorthPage() {
   const { profile, dashboard, update } = useFinance();
-  if (!profile || !dashboard) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile || !dashboard) return <div className="skeleton h-96" />;
 
   const assets = profile.assets;
   const liabilities = profile.liabilities;
@@ -130,18 +125,16 @@ export default function NetWorthPage() {
       />
 
       <div className="stagger mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {[
-          ["Total assets", fmt(totalA), "text-green"],
-          ["Total liabilities", fmt(totalL), "text-red"],
-          ["Net worth", fmt(net), net >= 0 ? "text-primary" : "text-red"],
-        ].map(([label, value, tone]) => (
+        {(
+          [
+            ["Total assets", fmt(totalA), "text-positive"],
+            ["Total liabilities", fmt(totalL), "text-critical"],
+            ["Net worth", fmt(net), net >= 0 ? "text-ink" : "text-critical"],
+          ] as const
+        ).map(([label, value, tone]) => (
           <div key={label} className="card">
-            <p className="text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted">
-              {label}
-            </p>
-            <p className={`mt-1 font-num text-[1.9rem] font-bold leading-none ${tone}`}>
-              {value}
-            </p>
+            <p className="label">{label}</p>
+            <p className={`font-num t-h3 mt-1.5 leading-none font-medium ${tone}`}>{value}</p>
           </div>
         ))}
       </div>
@@ -150,7 +143,7 @@ export default function NetWorthPage() {
         <Ledger
           title="Assets"
           rows={assets}
-          tone="green"
+          tone="positive"
           onChange={(n, v) => update({ assets: { ...assets, [n]: v } })}
           onRemove={(n) => {
             const next = { ...assets };
@@ -162,7 +155,7 @@ export default function NetWorthPage() {
         <Ledger
           title="Liabilities"
           rows={liabilities}
-          tone="red"
+          tone="critical"
           onChange={(n, v) => update({ liabilities: { ...liabilities, [n]: v } })}
           onRemove={(n) => {
             const next = { ...liabilities };
@@ -175,9 +168,9 @@ export default function NetWorthPage() {
         />
       </div>
 
-      <div className="card mb-10 border-accent/20 bg-accent/[0.03]">
-        <p className="text-[0.8rem] text-dim">
-          <strong className="text-primary">
+      <div className="card mark-accent mb-10">
+        <p className="t-small text-body">
+          <strong className="font-num text-ink">
             {fmt(dashboard.liquid_assets)} counted as liquid
           </strong>
           {dashboard.emergency_fund_counted.length > 0 ? (
@@ -194,7 +187,7 @@ export default function NetWorthPage() {
       <Section
         title="Snapshots"
         action={
-          <button onClick={logSnapshot} className="btn-secondary text-[0.72rem]">
+          <button onClick={logSnapshot} className="btn-secondary">
             {alreadyToday ? "Update today's snapshot" : "Log today's snapshot"}
           </button>
         }
@@ -215,9 +208,9 @@ export default function NetWorthPage() {
             }))}
             xKey="date"
             series={[
-              { key: "Net worth", name: "Net worth", color: "#5b8def" },
-              { key: "Assets", name: "Assets", color: "#4ade80", area: false },
-              { key: "Liabilities", name: "Liabilities", color: "#f87171", area: false },
+              { key: "Net worth", name: "Net worth", tone: "accent" },
+              { key: "Assets", name: "Assets", tone: "s2", area: false },
+              { key: "Liabilities", name: "Liabilities", tone: "critical", area: false },
             ]}
             height={320}
           />
