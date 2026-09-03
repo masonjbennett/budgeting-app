@@ -106,4 +106,62 @@ if (findings.length) {
   process.exit(1);
 }
 
-console.log("check-tokens: no colour literals in src/");
+/* ── Every token TypeScript can NAME must exist in CSS, in all three states ──
+   `cssVar("s9")` type-checks if the union allows it, renders `var(--s9)` and
+   paints NOTHING — a colour that is absent rather than wrong, which is worse
+   than a literal because there is nothing to grep for. The VAR map in
+   tokens.ts is the list of names the app can ask for; globals.css is the list
+   it can answer. This asserts the first is a subset of the second in the light
+   block AND both dark blocks, because a token defined in only one of them is
+   invisible in the other theme — exactly the failure the token layer exists to
+   prevent.
+
+   Both halves fail loudly if their own regex goes stale, because a check that
+   silently matches nothing is the defect it was written to catch.            */
+const cssText = readFileSync(join(SRC, "app", "globals.css"), "utf8");
+const tokensText = readFileSync(join(SRC, "lib", "tokens.ts"), "utf8");
+
+const varMap = /const VAR: Record<Token, string> = \{([\s\S]*?)\n\};/.exec(tokensText);
+if (!varMap) {
+  console.error("check-tokens: could not find the VAR map in src/lib/tokens.ts");
+  process.exit(1);
+}
+const declared = [...varMap[1].matchAll(/"(--[\w-]+)"/g)].map((m) => m[1]);
+if (declared.length === 0) {
+  console.error("check-tokens: the VAR map parsed to zero tokens — the pattern has gone stale");
+  process.exit(1);
+}
+
+/** The three blocks that must each define the whole palette. */
+const THEME_BLOCKS = [
+  ["light :root", /\n:root \{([\s\S]*?)\n\}/],
+  ["prefers-color-scheme: dark", /:root:not\(\[data-theme="light"\]\) \{([\s\S]*?)\n  \}/],
+  ['[data-theme="dark"]', /:root\[data-theme="dark"\] \{([\s\S]*?)\n\}/],
+];
+
+const missing = [];
+for (const [name, re] of THEME_BLOCKS) {
+  const block = re.exec(cssText);
+  if (!block) {
+    console.error(`check-tokens: could not find the ${name} block in globals.css`);
+    process.exit(1);
+  }
+  for (const token of declared) {
+    if (!new RegExp(`${token}\\s*:`).test(block[1])) {
+      missing.push(`${token} is not defined in ${name}`);
+    }
+  }
+}
+if (missing.length) {
+  console.error(
+    `\ncheck-tokens: ${missing.length} token(s) named in tokens.ts but missing from globals.css\n`,
+  );
+  missing.forEach((m) => console.error("  " + m));
+  console.error("\nA token with no value renders var(--x) and paints nothing.\n");
+  process.exit(1);
+}
+
+console.log(
+  `check-tokens: no colour literals in src/; ` +
+    `${declared.length} tokens defined in all ${THEME_BLOCKS.length} theme states`,
+);

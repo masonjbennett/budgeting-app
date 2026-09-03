@@ -3,9 +3,10 @@
 import Link from "next/link";
 
 import AnimatedNumber from "@/components/AnimatedNumber";
-import { BarsChart, DonutChart, TrendChart } from "@/components/Chart";
+import { DonutChart, TrendChart } from "@/components/Chart";
 import Footer from "@/components/Footer";
 import RingChart from "@/components/RingChart";
+import CashFlowPanel from "@/components/CashFlowPanel";
 import Sparkline from "@/components/Sparkline";
 import StatusCard from "@/components/StatusCard";
 import { abbr, fmt, pct, sum, useFinance } from "@/context/FinanceContext";
@@ -403,20 +404,15 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Cash flow ──────────────────────────────────────────────── */}
-      <p className="label mb-3">Cash flow</p>
+      {/* ── Cash flow ──────────────────────────────────────────────────
+             The Sankey replaces a three-bar chart of take-home / spent / net.
+             It is the same money and a great deal more of the story: the bars
+             said nothing about the ~32% of gross pay that never reaches the
+             account, which is the part this app can describe better than any
+             competitor because it has a real tax engine behind it. ───────── */}
+      <p className="label mb-3">Where the money goes · monthly</p>
       <div className="mb-11">
-        <BarsChart
-          data={[
-            { name: "Take-home", value: monthly },
-            { name: "Spent", value: spent },
-            { name: "Net", value: netSavings },
-          ]}
-          xKey="name"
-          valueKey="value"
-          tones={["accent", "critical", netSavings >= 0 ? "positive" : "critical"]}
-          height={250}
-        />
+        <CashFlowPanel />
       </div>
 
       {/* ── Net worth trend — only from real snapshots ─────────────── */}

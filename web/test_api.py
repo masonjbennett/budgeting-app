@@ -286,6 +286,79 @@ salt = client.post("/api/salt-cap", json={"magi": 600_000, "filing": "Single"}).
 check("salt cap matches the engine",
       abs(salt["effective_cap"] - calc.calc_salt_cap(600_000, "Single")) < 1e-9)
 
+# ── 6b. Cash flow: the Sankey's numbers ──────────────────────────────
+print("\n--- cash flow ---")
+BUDGET = {"needs": NEEDS, "wants": {"Dining Out": 280, "Shopping": 120},
+          "savings": {"Emergency Fund": 400, "Brokerage": 550}}
+cf = client.post("/api/cash-flow", json={
+    "income": INCOME, "itemized": {}, "budget": BUDGET}).json()
+
+check("cash flow matches the engine", cf == calc.cash_flow(INCOME, {}, BUDGET))
+
+# THE PROPERTY THE DIAGRAM EXISTS FOR. A Sankey whose stages do not sum is a
+# picture of a flow rather than a flow, and no reader can tell the difference
+# by looking — so the balance is asserted here rather than assumed, and the
+# client refuses to draw one whose `balanced` is false.
+_stage_one = sum(n["value"] for n in cf["nodes"] if n["column"] == 1)
+check("stage one sums to gross, to the cent",
+      abs(_stage_one - cf["gross"]) < 0.01 and cf["balanced"],
+      f"{_stage_one} vs {cf['gross']}")
+check("every link's value equals its target node's value",
+      all(abs(l["value"]
+              - next(n["value"] for n in cf["nodes"] if n["id"] == l["target"])) < 1e-9
+          for l in cf["links"]))
+check("every node but the root has exactly one parent",
+      sorted(l["target"] for l in cf["links"])
+      == sorted(n["id"] for n in cf["nodes"] if n["id"] != "gross"))
+_out = {}
+for _l in cf["links"]:
+    _out[_l["source"]] = _out.get(_l["source"], 0) + _l["value"]
+check("no node sends out more than it took in",
+      all(v <= next(n["value"] for n in cf["nodes"] if n["id"] == src) + 0.01
+          for src, v in _out.items()),
+      "a parent's children exceed it, which cannot be drawn as a flow")
+check("the figures are MONTHLY, not annual",
+      abs(cf["gross"] * 12
+          - calc.compute_take_home(INCOME, {})["annual_gross"]) < 1e-6)
+
+# A zero figure gets NO node and is named instead: a zero-height ribbon with a
+# label beside it reads as a rendering fault rather than as "there is none".
+_TX = dict(INCOME, state="Texas")
+cf_tx = client.post("/api/cash-flow", json={
+    "income": _TX, "itemized": {}, "budget": BUDGET}).json()
+check("a state with no income tax gets no State tax node, and says so",
+      not any(n["id"] == "state" for n in cf_tx["nodes"])
+      and "State tax" in cf_tx["omitted"],
+      "a zero node was drawn, or an absent one went unexplained")
+
+# Over-allocation is not drawable as a flow — the outflow exceeds the inflow —
+# so it comes back as a number the page states in words.
+cf_over = client.post("/api/cash-flow", json={
+    "income": INCOME, "itemized": {},
+    "budget": {"needs": {"Rent": 99_000}, "wants": {}, "savings": {}}}).json()
+check("over-allocating reports a deficit and no unallocated node",
+      cf_over["deficit"] > 0 and cf_over["unallocated"] == 0
+      and not any(n["id"] == "unallocated" for n in cf_over["nodes"]))
+
+# THE TONE NAMES CROSS AN HTTP BOUNDARY, WHERE TYPESCRIPT CANNOT SEE THEM.
+# The engine emits "s1", "critical" and so on as plain strings and the client
+# turns each into var(--x). A name the client does not know resolves to nothing
+# and paints NOTHING — absent rather than wrong, so there is no literal for
+# check-tokens.mjs to find. This reads the map out of the shipping tokens.ts.
+import re as _re                                                # noqa: E402
+
+_tokens_src = open(os.path.join("src", "lib", "tokens.ts"), encoding="utf-8").read()
+_var_map = _re.search(r"const VAR: Record<Token, string> = \{(.*?)\n\};",
+                      _tokens_src, _re.S)
+_known = set(_re.findall(r"^\s*(\w+):", _var_map.group(1), _re.M)) if _var_map else set()
+check("the token map in tokens.ts could be read at all",
+      len(_known) > 10,
+      "the pattern went stale, so the check below would prove nothing")
+_emitted = {n["tone"] for n in cf["nodes"]} | {n["tone"] for n in cf_tx["nodes"]}
+check("every tone the engine emits is a token the client knows",
+      _emitted <= _known, f"unknown: {sorted(_emitted - _known)}")
+
+
 # ── 7. Nothing here touches user data ────────────────────────────────
 print("\n--- the API stays a pure calculator ---")
 # Read the CODE, not the prose about the code. The first version of this check

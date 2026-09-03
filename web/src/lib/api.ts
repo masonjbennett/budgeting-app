@@ -13,6 +13,8 @@
  * so there is no base URL to configure and no CORS.
  */
 
+import type { Token } from "@/lib/tokens";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -101,6 +103,25 @@ export interface PayoffResult {
   payoff_months: Record<string, number>;
 }
 
+export interface CashFlow {
+  /** `tone` is a palette token name. The engine emits these as strings, so
+   *  test_api.py checks every one it can produce against the map in
+   *  tokens.ts — TypeScript cannot see across the HTTP boundary. */
+  nodes: { id: string; label: string; column: number; value: number; tone: Token }[];
+  links: { source: string; target: string; value: number }[];
+  gross: number;
+  take_home: number;
+  allocated: number;
+  unallocated: number;
+  /** Positive only when the plan allocates more than take-home covers. */
+  deficit: number;
+  /** Figures that are genuinely zero this month, named rather than drawn. */
+  omitted: string[];
+  residual: number;
+  /** False means the stages do not sum — the diagram must not be drawn. */
+  balanced: boolean;
+}
+
 export interface Investment {
   values: number[];
   contributions: number[];
@@ -184,6 +205,12 @@ export const api = {
     budget_needs: Record<string, number>;
     assets: Record<string, number>;
   }) => request<Dashboard>("/dashboard", input),
+
+  cashFlow: (input: {
+    income: Income;
+    itemized?: Record<string, number>;
+    budget: Record<string, Record<string, number>>;
+  }) => request<CashFlow>("/cash-flow", input),
 
   debtPayoff: (debts: Debt[], extra: number) =>
     request<{ avalanche: PayoffResult; snowball: PayoffResult }>("/debt-payoff", {

@@ -869,3 +869,133 @@ def run_monte_carlo(current_age, retire_age, end_age, portfolio, annual_savings,
         "retire_age": retire_age,
         "stock_pct": stock_pct,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# CASH FLOW — the month as a flow, for the Sankey
+# ═══════════════════════════════════════════════════════════════════════
+
+MONTHS_PER_YEAR = 12
+
+
+def cash_flow(income, itemized=None, budget=None):
+    """One month's money as a flow: gross in, and everything it becomes.
+
+    Returns nodes and links for a Sankey. It lives here rather than in a route
+    or a component for the usual reason — two front ends will want it, and a
+    second copy is how this app's maths came to disagree with itself three
+    times. What the caller gets is values; where they go on screen is geometry
+    and belongs to the renderer.
+
+    THE DIAGRAM BALANCES BY CONSTRUCTION, which is the whole reason it is worth
+    drawing. `compute_take_home` defines annual_take_home as the REMAINDER
+    after pre-tax and the three taxes, so stage one sums to gross exactly, to
+    the cent, for every input. A Sankey whose stages did not sum would be a
+    picture of a flow rather than a flow, and the reader has no way to tell
+    those apart by looking. `balanced` and `residual` are returned so the
+    renderer can refuse to draw one that does not.
+
+    Two shapes have to be reported rather than drawn:
+      - a figure that is genuinely ZERO (no state tax in Texas, no HSA) gets no
+        node, because a zero-height ribbon with a label beside it reads as a
+        rendering fault. They come back in `omitted` so the page can say which,
+        rather than leaving the reader to notice an absence.
+      - a plan that allocates MORE than take-home has no "unallocated" node and
+        cannot be drawn as a flow at all — the outflow exceeds the inflow. That
+        is `deficit`, and it is the budget page's over-allocated state showing
+        up structurally.
+
+    `budget` is the profile's budget dict: {"needs": {...}, "wants": {...},
+    "savings": {...}}. Every figure returned is MONTHLY, because that is the
+    unit the budget is kept in; the tax figures are annual and divided here so
+    that no front end has to know which is which.
+    """
+    th = compute_take_home(income, itemized)
+    b = budget or {}
+
+    def monthly(annual):
+        return annual / MONTHS_PER_YEAR
+
+    gross = monthly(th["annual_gross"])
+    take_home = monthly(th["annual_take_home"])
+
+    nodes = []
+    links = []
+    omitted = []
+
+    def add(node_id, label, column, value, tone, parent=None):
+        """A node, unless it is worth nothing — then a note instead."""
+        if value <= 0:
+            omitted.append(label)
+            return False
+        nodes.append({"id": node_id, "label": label, "column": column,
+                      "value": value, "tone": tone})
+        if parent is not None:
+            links.append({"source": parent, "target": node_id, "value": value})
+        return True
+
+    nodes.append({"id": "gross", "label": "Gross pay", "column": 0,
+                  "value": gross, "tone": "ink"})
+
+    # ── Stage one: what the gross becomes. Sums to gross exactly. ──
+    stage_one = [
+        ("pretax", "Pre-tax", monthly(th["pretax"]), "s4"),
+        ("federal", "Federal tax", monthly(th["fed_tax"]), "critical"),
+        ("state", "State tax", monthly(th["state_tax"]), "s5"),
+        ("fica", "FICA", monthly(th["fica"]), "caution"),
+        ("takehome", "Take-home", take_home, "accent"),
+    ]
+    for node_id, label, value, tone in stage_one:
+        add(node_id, label, 1, value, tone, parent="gross")
+
+    # ── Pre-tax, broken out. Terminal: this money leaves the picture. ──
+    for node_id, label, value in (
+        ("k401", "401(k)", monthly(th["contrib_401k"])),
+        ("health", "Health premium", monthly(th["health"])),
+        ("hsa", "HSA", monthly(th["hsa"])),
+    ):
+        add(node_id, label, 2, value, "s4", parent="pretax")
+
+    # ── Stage two: what the take-home is planned to do. ──
+    buckets = (
+        ("needs", "Needs", b.get("needs") or {}, "s1"),
+        ("wants", "Wants", b.get("wants") or {}, "s2"),
+        ("savings", "Savings", b.get("savings") or {}, "s6"),
+    )
+    allocated = 0.0
+    for key, label, lines, tone in buckets:
+        total = sum(lines.values())
+        allocated += total
+        if not add(key, label, 2, total, tone, parent="takehome"):
+            continue
+        for name, amount in sorted(lines.items(), key=lambda kv: -kv[1]):
+            if amount <= 0:
+                continue
+            nodes.append({"id": key + ":" + name, "label": name, "column": 3,
+                          "value": amount, "tone": tone})
+            links.append({"source": key, "target": key + ":" + name,
+                          "value": amount})
+
+    unallocated = take_home - allocated
+    if unallocated > 0:
+        nodes.append({"id": "unallocated", "label": "Unallocated", "column": 2,
+                      "value": unallocated, "tone": "muted"})
+        links.append({"source": "takehome", "target": "unallocated",
+                      "value": unallocated})
+
+    stage_one_total = sum(value for _, _, value, _ in stage_one)
+    residual = gross - stage_one_total
+
+    return {
+        "nodes": nodes,
+        "links": links,
+        "gross": gross,
+        "take_home": take_home,
+        "allocated": allocated,
+        "unallocated": max(0.0, unallocated),
+        # Positive only when the plan spends more than the take-home covers.
+        "deficit": max(0.0, -unallocated),
+        "omitted": omitted,
+        "residual": residual,
+        "balanced": abs(residual) < 0.01,
+    }

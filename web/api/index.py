@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from app_data import _generate_demo_data, get_default_state
 from calculations import (
     COL_INDEX,
+    cash_flow,
     FEDERAL_BRACKETS_2026,
     FILING_STATUSES,
     HSA_INDIVIDUAL_LIMIT,
@@ -96,6 +97,13 @@ class DashboardRequest(BaseModel):
     debts: List[Debt] = Field(default_factory=list)
     budget_needs: Dict[str, float] = Field(default_factory=dict)
     assets: Dict[str, float] = Field(default_factory=dict)
+
+
+class CashFlowRequest(BaseModel):
+    """Everything one month's flow needs: the pay stub and the plan."""
+    income: Income
+    itemized: Dict[str, float] = Field(default_factory=dict)
+    budget: Dict[str, Dict[str, float]] = Field(default_factory=dict)
 
 
 class InvestmentRequest(BaseModel):
@@ -210,6 +218,18 @@ def api_dashboard(req: DashboardRequest) -> Dict[str, Any]:
         "emergency_fund_counted": ef_counted,
         "liquid_assets": liquid_total,
     }
+
+
+@app.post("/api/cash-flow")
+def api_cash_flow(req: CashFlowRequest) -> Dict[str, Any]:
+    """The Sankey's nodes and links.
+
+    A route rather than a component because the flow is DERIVED — annualised
+    tax figures reduced to the month the budget is kept in, bucket totals, and
+    the remainder that is left unallocated. The client draws the geometry and
+    works out nothing.
+    """
+    return cash_flow(req.income.model_dump(), req.itemized, req.budget)
 
 
 @app.post("/api/debt-payoff")
