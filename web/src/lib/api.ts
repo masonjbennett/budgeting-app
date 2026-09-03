@@ -13,6 +13,8 @@
  * so there is no base URL to configure and no CORS.
  */
 
+import type { Token } from "@/lib/tokens";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -87,6 +89,8 @@ export interface Dashboard {
   /** null when income is zero — not 0, which would read as "no debt". */
   dti_pct: number | null;
   monthly_needs: number;
+  /** The OBBBA 2/37 limitation the engine does NOT model, disclosed. */
+  top_bracket: { applies: boolean; threshold: number; filing: string };
   /** null means COULD NOT BE MEASURED. It is not the same as 0.0. */
   emergency_fund_months: number | null;
   emergency_fund_counted: string[];
@@ -101,6 +105,36 @@ export interface PayoffResult {
   payoff_months: Record<string, number>;
 }
 
+export interface CashFlow {
+  /** `tone` is a palette token name. The engine emits these as strings, so
+   *  test_api.py checks every one it can produce against the map in
+   *  tokens.ts — TypeScript cannot see across the HTTP boundary. */
+  nodes: { id: string; label: string; column: number; value: number; tone: Token }[];
+  links: { source: string; target: string; value: number }[];
+  gross: number;
+  take_home: number;
+  allocated: number;
+  unallocated: number;
+  /** Positive only when the plan allocates more than take-home covers. */
+  deficit: number;
+  /** Figures that are genuinely zero this month, named rather than drawn. */
+  omitted: string[];
+  residual: number;
+  /** False means the stages do not sum — the diagram must not be drawn. */
+  balanced: boolean;
+}
+
+export interface EmployerMatch {
+  annual_match: number;
+  monthly_match: number;
+  annual_missed: number;
+  contribution_pct: number;
+  match_limit: number;
+  match_pct: number;
+  /** True only when raising the contribution would collect more match. */
+  leaving_money: boolean;
+}
+
 export interface Investment {
   values: number[];
   contributions: number[];
@@ -108,6 +142,87 @@ export interface Investment {
   final_value: number;
   total_contributed: number;
   growth: number;
+  employer_match: EmployerMatch;
+  /** null where a delay cannot be modelled — never a zero, which would read
+   *  as "waiting costs nothing". */
+  cost_of_waiting: {
+    delay_years: number;
+    start_now: number;
+    start_later: number;
+    cost: number;
+    contributions_missed: number;
+    /** The part that is not simply the money you did not put in. */
+    growth_missed: number;
+  } | null;
+}
+
+export interface RaiseImpact {
+  base_salary: number;
+  new_salary: number;
+  increase: number;
+  gross_increase: number;
+  tax_increase: number;
+  /** Not a loss — a percentage-based 401(k) rises with the salary. */
+  pretax_increase: number;
+  take_home_increase: number;
+  monthly_take_home_increase: number;
+  marginal_fed: number;
+  marginal_state: number;
+  /** From marginal_fica_rate, not the average — above the wage base they differ by 5x. */
+  marginal_fica_pct: number;
+  tax_share_pct: number | null;
+  kept_share_pct: number | null;
+}
+
+export interface ScenarioInput {
+  name: string;
+  income: Income;
+  itemized?: Record<string, number>;
+  city: string;
+}
+
+export interface ScenarioRow {
+  name: string;
+  city: string;
+  /** null where the city is not in the index — never a silent default. */
+  col_index: number | null;
+  state: string;
+  filing: string;
+  gross: number;
+  total_tax: number;
+  effective_rate: number;
+  marginal_fed: number;
+  marginal_state: number;
+  pretax: number;
+  annual_take_home: number;
+  monthly_take_home: number;
+  /** Take-home restated in national-average dollars. The figure that matters. */
+  real_take_home: number | null;
+  vs_baseline: number;
+  vs_baseline_real: number | null;
+}
+
+export interface Comparison {
+  rows: ScenarioRow[];
+  baseline: string | null;
+  /** null unless EVERY row could be cost-of-living adjusted. */
+  best: string | null;
+  /** The winner on RAW take-home, so the page can say whether adjusting moved it. */
+  best_take_home: string | null;
+  /** True only where the adjustment changes the winner, not merely the gap. */
+  col_changes_answer: boolean;
+  all_comparable: boolean;
+}
+
+export interface ColComparison {
+  from_city: string;
+  to_city: string;
+  from_index: number;
+  to_index: number;
+  salary: number;
+  equivalent_salary: number;
+  difference: number;
+  pct_difference: number;
 }
 
 export interface MonteCarlo {
@@ -124,6 +239,7 @@ export interface MonteCarlo {
   p90_ending: number;
   retire_age: number;
   stock_pct: number;
+  ending_histogram: { start: number; end: number; count: number }[];
 }
 
 export interface RothComparison {
@@ -185,6 +301,12 @@ export const api = {
     assets: Record<string, number>;
   }) => request<Dashboard>("/dashboard", input),
 
+  cashFlow: (input: {
+    income: Income;
+    itemized?: Record<string, number>;
+    budget: Record<string, Record<string, number>>;
+  }) => request<CashFlow>("/cash-flow", input),
+
   debtPayoff: (debts: Debt[], extra: number) =>
     request<{ avalanche: PayoffResult; snowball: PayoffResult }>("/debt-payoff", {
       debts,
@@ -197,7 +319,24 @@ export const api = {
     rate: number;
     years: number;
     contribution_growth?: number;
+    /** With a salary, the employer's match is projected too. */
+    salary?: number;
+    contribution_pct?: number;
+    match_pct?: number;
+    match_limit?: number;
   }) => request<Investment>("/investment", input),
+
+  raiseImpact: (input: {
+    income: Income;
+    itemized?: Record<string, number>;
+    increase: number;
+  }) => request<RaiseImpact>("/raise", input),
+
+  compare: (scenarios: ScenarioInput[]) =>
+    request<Comparison>("/compare", { scenarios }),
+
+  costOfLiving: (input: { salary: number; from_city: string; to_city: string }) =>
+    request<{ comparison: ColComparison | null }>("/cost-of-living", input),
 
   monteCarlo: (input: {
     current_age: number;

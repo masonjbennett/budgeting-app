@@ -11,6 +11,7 @@ const COMMANDS = [
   { name: "Net Worth", href: "/net-worth", section: "Navigate" },
   { name: "Savings Goals", href: "/goals", section: "Navigate" },
   { name: "Debt Payoff", href: "/debt", section: "Navigate" },
+  { name: "Compare Scenarios", href: "/compare", section: "Navigate" },
   { name: "Investments", href: "/investments", section: "Navigate" },
   { name: "FIRE Calculator", href: "/fire", section: "Navigate" },
   { name: "Tax Estimator", href: "/tax", section: "Navigate" },
@@ -70,15 +71,12 @@ export default function CommandPalette() {
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
+      <div className="fixed inset-0 z-[200] bg-ink/35" onClick={() => setOpen(false)} />
 
-      {/* Dialog */}
-      <div className="fixed top-[20%] left-1/2 -translate-x-1/2 z-[201] w-full max-w-lg animate-fade-in">
-        <div className="bg-[#09090b] border border-[#171717] rounded-xl shadow-2xl shadow-black/50 overflow-hidden">
-          {/* Search */}
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-[#171717]">
-            <svg className="w-4 h-4 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <div className="animate-fade-in fixed top-[18%] left-1/2 z-[201] w-full max-w-lg -translate-x-1/2 px-4">
+        <div className="overflow-hidden rounded-md border border-hair bg-card">
+          <div className="flex items-center gap-2.5 border-b border-hair px-3.5 py-2.5">
+            <svg className="h-4 w-4 shrink-0 text-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -86,41 +84,43 @@ export default function CommandPalette() {
               value={query}
               onChange={e => { setQuery(e.target.value); setSelected(0); }}
               onKeyDown={handleKeyDown}
-              placeholder="Type a command or search..."
-              className="flex-1 bg-transparent text-[0.9rem] text-white placeholder-slate-600 outline-none border-none p-0"
+              placeholder="Go to…"
+              className="t-small flex-1 border-none bg-transparent p-0 text-ink focus:shadow-none"
             />
-            <kbd className="text-[0.6rem] text-slate-600 bg-[#171717] px-1.5 py-0.5 rounded border border-[rgba(255,255,255,0.08)]">ESC</kbd>
+            <kbd className="label rounded-xs border border-hair px-1.5 py-0.5">esc</kbd>
           </div>
 
-          {/* Results */}
-          <div className="max-h-[20rem] overflow-y-auto py-2">
+          <div className="max-h-[19rem] overflow-y-auto py-1.5">
             {filtered.length === 0 ? (
-              <p className="px-4 py-8 text-center text-[0.82rem] text-slate-600">No results found</p>
+              <p className="t-small px-4 py-7 text-center text-muted">Nothing matches that.</p>
             ) : (
               filtered.map((cmd, i) => (
                 <button
                   key={cmd.href}
                   onClick={() => handleSelect(cmd.href)}
                   onMouseEnter={() => setSelected(i)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                    i === selected ? "bg-blue-500/10 text-white" : "text-slate-400 hover:text-slate-300"
+                  className={`t-small flex w-full items-center gap-2.5 px-3.5 py-2 text-left transition-colors ${
+                    i === selected ? "bg-raise text-ink" : "text-body"
                   }`}
                 >
-                  <svg className={`w-4 h-4 shrink-0 ${i === selected ? "text-blue-400" : "text-slate-600"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                  </svg>
-                  <span className="text-[0.85rem]">{cmd.name}</span>
-                  <span className="ml-auto text-[0.68rem] text-slate-600">{cmd.section}</span>
+                  <span
+                    className={`h-3 w-[2px] shrink-0 ${i === selected ? "bg-accent" : "bg-transparent"}`}
+                    aria-hidden="true"
+                  />
+                  <span>{cmd.name}</span>
+                  <span className="label ml-auto">{cmd.section}</span>
                 </button>
               ))
             )}
           </div>
 
-          {/* Footer */}
-          <div className="border-t border-[#171717] px-4 py-2 flex items-center gap-4 text-[0.65rem] text-slate-600">
-            <span><kbd className="bg-[#171717] px-1 py-0.5 rounded border border-[rgba(255,255,255,0.08)] mr-1">↑↓</kbd> navigate</span>
-            <span><kbd className="bg-[#171717] px-1 py-0.5 rounded border border-[rgba(255,255,255,0.08)] mr-1">↵</kbd> select</span>
-            <span><kbd className="bg-[#171717] px-1 py-0.5 rounded border border-[rgba(255,255,255,0.08)] mr-1">esc</kbd> close</span>
+          <div className="flex items-center gap-4 border-t border-hair px-3.5 py-2">
+            {[["↑↓", "navigate"], ["↵", "select"], ["esc", "close"]].map(([k, what]) => (
+              <span key={what} className="t-micro text-muted">
+                <kbd className="mr-1 rounded-xs border border-hair px-1 py-0.5 font-mono text-[10px]">{k}</kbd>
+                {what}
+              </span>
+            ))}
           </div>
         </div>
       </div>

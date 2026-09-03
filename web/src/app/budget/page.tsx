@@ -23,7 +23,7 @@ export default function BudgetPage() {
   const [tab, setTab] = useState<Bucket>("needs");
   const [newName, setNewName] = useState("");
 
-  if (!profile || !dashboard) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile || !dashboard) return <div className="skeleton h-96" />;
 
   const budget = profile.budget;
   const monthly = dashboard.take_home.monthly_take_home;
@@ -49,24 +49,19 @@ export default function BudgetPage() {
   return (
     <div>
       <PageHeader
-        title="Budget Builder"
+        title="Budget"
         description="Allocate your monthly take-home across needs, wants and savings. Changes save automatically."
       />
 
-      <div
-        className={`card mb-6 ${
-          left >= 0 ? "border-green/20 bg-green/[0.03]" : "border-red/20 bg-red/[0.03]"
-        }`}
-      >
+      <div className={`card mb-6 ${left >= 0 ? "mark-accent" : "mark-critical"}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[0.85rem] text-dim">
-            Monthly take-home{" "}
-            <strong className="font-num text-primary">{fmt(monthly)}</strong> · allocated{" "}
-            <strong className="font-num text-primary">{fmt(allocated)}</strong>
+          <span className="t-small text-body">
+            Monthly take-home <strong className="font-num text-ink">{fmt(monthly)}</strong> ·
+            allocated <strong className="font-num text-ink">{fmt(allocated)}</strong>
           </span>
           <span
-            className={`font-num text-[0.9rem] font-bold ${
-              left >= 0 ? "text-green" : "text-red"
+            className={`font-num t-small font-medium ${
+              left >= 0 ? "text-positive" : "text-critical"
             }`}
           >
             {left >= 0 ? `${fmt(left)} unallocated` : `${fmt(Math.abs(left))} over budget`}
@@ -74,7 +69,7 @@ export default function BudgetPage() {
         </div>
       </div>
 
-      <div className="tab-list mb-6">
+      <div className="tab-list mb-6 flex-wrap">
         {BUCKETS.map((b) => (
           <button
             key={b.key}
@@ -87,16 +82,12 @@ export default function BudgetPage() {
       </div>
 
       <Section title={`${BUCKETS.find((b) => b.key === tab)!.label} lines`}>
-        <p className="mb-4 text-[0.78rem] text-muted">
-          {BUCKETS.find((b) => b.key === tab)!.blurb}
-        </p>
+        <p className="t-small mb-4 text-muted">{BUCKETS.find((b) => b.key === tab)!.blurb}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {Object.entries(budget[tab]).map(([name, amount]) => (
             <div key={name} className="flex items-end gap-2">
               <div className="flex-1">
-                <label className="mb-1.5 block text-[0.78rem] font-medium text-dim">
-                  {name}
-                </label>
+                <label className="t-small mb-1.5 block font-medium text-body">{name}</label>
                 <NumberInput
                   value={amount}
                   onChange={(v) => setLine(tab, name, v)}
@@ -108,7 +99,7 @@ export default function BudgetPage() {
               <button
                 onClick={() => removeLine(tab, name)}
                 aria-label={`Remove ${name}`}
-                className="mb-[1px] rounded-lg border border-white/[0.08] px-2.5 py-2 text-[0.75rem] text-muted transition-colors hover:border-red/40 hover:text-red"
+                className="btn-remove"
               >
                 ✕
               </button>
@@ -123,7 +114,7 @@ export default function BudgetPage() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addLine()}
-            className="max-w-xs text-[0.8125rem]"
+            className="max-w-xs"
           />
           <button onClick={addLine} disabled={!newName.trim()} className="btn-secondary">
             Add
@@ -141,20 +132,18 @@ export default function BudgetPage() {
             return (
               <div key={b.key} className="card">
                 <div className="flex items-baseline justify-between">
-                  <p className="text-[0.78rem] font-medium text-dim">
+                  <p className="label">
                     {b.label} · {Math.round(b.share * 100)}%
                   </p>
-                  <p className="font-num text-[0.72rem] text-muted">
-                    {pct(shareOfPlan, 0)} of plan
-                  </p>
+                  <p className="font-num t-micro text-muted">{pct(shareOfPlan, 0)} of plan</p>
                 </div>
-                <p className="mt-1 font-num text-[1.5rem] font-bold text-primary">
+                <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
                   {fmt(total)}
                 </p>
-                <p className="mt-0.5 text-[0.7rem] text-muted">
+                <p className="t-micro mt-1.5 text-muted">
                   Guideline {fmt(target)}
                   {target > 0 && (
-                    <span className={over ? " text-red" : " text-green"}>
+                    <span className={over ? "text-critical" : "text-positive"}>
                       {" "}
                       · {over ? "over by " : "under by "}
                       {fmt(Math.abs(total - target))}
@@ -163,7 +152,7 @@ export default function BudgetPage() {
                 </p>
                 <div className="progress-track mt-3">
                   <div
-                    className={`progress-fill ${over ? "bg-red" : "bg-green"}`}
+                    className={`progress-fill ${over ? "bg-critical" : "bg-accent"}`}
                     style={{
                       width: `${target > 0 ? Math.min((total / target) * 100, 100) : 0}%`,
                     }}

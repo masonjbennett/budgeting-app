@@ -8,11 +8,12 @@ import Footer from "@/components/Footer";
 import PageHeader from "@/components/PageHeader";
 import { api, ApiError, type Investment } from "@/lib/api";
 import { fmt, useFinance } from "@/context/FinanceContext";
+import { cssVar, type Token } from "@/lib/tokens";
 
-const SCENARIOS = [
-  { name: "Conservative", rate: 5, color: "#fbbf24" },
-  { name: "Moderate", rate: 7, color: "#5b8def" },
-  { name: "Aggressive", rate: 9, color: "#4ade80" },
+const SCENARIOS: { name: string; rate: number; tone: Token }[] = [
+  { name: "Conservative", rate: 5, tone: "caution" },
+  { name: "Moderate", rate: 7, tone: "accent" },
+  { name: "Aggressive", rate: 9, tone: "s2" },
 ];
 
 export default function InvestmentsPage() {
@@ -21,10 +22,11 @@ export default function InvestmentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const inv = profile?.investment;
-  const key = JSON.stringify(inv ?? {});
+  const income = profile?.income;
+  const key = JSON.stringify([inv, income?.gross_salary, income?.contribution_401k]);
 
   useEffect(() => {
-    if (!inv) return;
+    if (!inv || !income) return;
     let live = true;
     Promise.all(
       SCENARIOS.map((s) =>
@@ -33,6 +35,13 @@ export default function InvestmentsPage() {
           monthly: inv.monthly_contribution,
           rate: s.rate,
           years: inv.time_horizon,
+          // The match inputs rendered on this page and the projection ignored
+          // them, which understates a matched 401(k) by the most reliable
+          // return in the model.
+          salary: income?.gross_salary ?? 0,
+          contribution_pct: income?.contribution_401k ?? 0,
+          match_pct: inv.employer_match_pct,
+          match_limit: inv.employer_match_limit,
         }),
       ),
     )
@@ -44,7 +53,7 @@ export default function InvestmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  if (!profile || !inv) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile || !inv || !income) return <div className="skeleton h-96" />;
 
   const set = (p: Partial<typeof inv>) => update({ investment: { ...inv, ...p } });
 
@@ -114,37 +123,116 @@ export default function InvestmentsPage() {
       </Section>
 
       {error && (
-        <div className="card mb-8 border-red/25 bg-red/[0.03] text-[0.82rem] text-red">
-          {error}
-        </div>
+        <div className="card mark-critical t-small mb-8 text-critical">{error}</div>
       )}
 
       {runs && (
         <>
+          <Section title="Employer match">
+            {(() => {
+              const m = runs[0].employer_match;
+              return (
+                <div className={`card ${m.leaving_money ? "mark-caution" : "mark-accent"}`}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+                    <div>
+                      <p className="label">Employer adds</p>
+                      <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
+                        {fmt(m.annual_match)}/yr
+                      </p>
+                    </div>
+                    <p className="t-small max-w-[46ch] text-body">
+                      {m.leaving_money ? (
+                        <>
+                          You contribute {m.contribution_pct}% of salary and the match runs
+                          to {m.match_limit}%, so{" "}
+                          <strong className="font-num text-caution">
+                            {fmt(m.annual_missed)} a year
+                          </strong>{" "}
+                          is left on the table. That is an immediate {m.match_pct}% return
+                          on the difference, which no market assumption is needed to
+                          justify.
+                        </>
+                      ) : (
+                        <>
+                          You contribute enough to collect the whole match —{" "}
+                          {m.match_pct}% of the first {m.match_limit}% of salary. The
+                          projections below include it.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+          </Section>
+
           <Section title={`After ${inv.time_horizon} years`}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {SCENARIOS.map((s, i) => (
                 <div key={s.name} className="card">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-[0.78rem] font-medium text-dim">{s.name}</p>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="label">{s.name}</p>
                     <span
-                      className="font-num text-[0.72rem]"
-                      style={{ color: s.color }}
+                      className="font-num t-micro"
+                      style={{ color: cssVar(s.tone) }}
                     >
                       {s.rate}%/yr
                     </span>
                   </div>
-                  <p className="mt-1 font-num text-[1.7rem] font-bold leading-none text-primary">
+                  <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
                     {fmt(runs[i].final_value)}
                   </p>
-                  <p className="mt-1.5 text-[0.7rem] text-muted">
+                  <p className="t-micro mt-1.5 text-muted">
                     {fmt(runs[i].total_contributed)} contributed ·{" "}
-                    <span className="text-green">{fmt(runs[i].growth)} growth</span>
+                    <span className="text-positive">{fmt(runs[i].growth)} growth</span>
+                    {runs[i].employer_match.annual_match > 0 && (
+                      <>
+                        {" "}
+                        · includes {fmt(runs[i].employer_match.monthly_match)}/mo of match
+                      </>
+                    )}
                   </p>
                 </div>
               ))}
             </div>
           </Section>
+
+          {runs[1].cost_of_waiting && (
+            <Section title="The cost of waiting a year">
+              {(() => {
+                const w = runs[1].cost_of_waiting!;
+                return (
+                  <div className="card mark-caution">
+                    <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+                      <div>
+                        <p className="label">Starting a year later costs</p>
+                        <p className="font-num t-h2 mt-1.5 leading-none font-medium text-caution">
+                          {fmt(w.cost)}
+                        </p>
+                      </div>
+                      <p className="t-small max-w-[52ch] text-body">
+                        Only{" "}
+                        <span className="font-num text-ink">
+                          {fmt(w.contributions_missed)}
+                        </span>{" "}
+                        of that is money you did not put in. The other{" "}
+                        <strong className="font-num text-ink">
+                          {fmt(w.growth_missed)}
+                        </strong>{" "}
+                        is compounding you do not get back, because both runs end on the
+                        same date — which is why a year&apos;s delay costs so much more
+                        than a year&apos;s contributions.
+                      </p>
+                    </div>
+                    <p className="t-micro mt-3 border-t border-hair-soft pt-2.5 text-muted">
+                      {fmt(w.start_now)} starting now against {fmt(w.start_later)} starting
+                      in a year, both at {SCENARIOS[1].rate}% over {inv.time_horizon} years.
+                    </p>
+                  </div>
+                );
+              })()}
+            </Section>
+          )}
 
           <Section title="Projected balance">
             <TrendChart
@@ -154,15 +242,15 @@ export default function InvestmentsPage() {
                 ...SCENARIOS.map((s) => ({
                   key: s.name,
                   name: `${s.name} (${s.rate}%)`,
-                  color: s.color,
+                  tone: s.tone,
                   area: false as const,
                 })),
-                { key: "Contributed", name: "Contributed", color: "#666", dashed: true, area: false },
+                { key: "Contributed", name: "Contributed", tone: "muted" as const, dashed: true, area: false },
               ]}
               height={360}
               xFormatter={(v) => `${v}y`}
             />
-            <p className="mt-3 text-[0.72rem] leading-relaxed text-muted">
+            <p className="t-micro mt-3 leading-relaxed text-muted">
               Returns are assumed constant, which no market is — the three lines are
               there to show the spread, not to predict one. The FIRE page runs the
               same money through randomised, correlated returns instead.

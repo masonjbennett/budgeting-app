@@ -869,3 +869,444 @@ def run_monte_carlo(current_age, retire_age, end_age, portfolio, annual_savings,
         "retire_age": retire_age,
         "stock_pct": stock_pct,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# CASH FLOW — the month as a flow, for the Sankey
+# ═══════════════════════════════════════════════════════════════════════
+
+MONTHS_PER_YEAR = 12
+
+
+def cash_flow(income, itemized=None, budget=None):
+    """One month's money as a flow: gross in, and everything it becomes.
+
+    Returns nodes and links for a Sankey. It lives here rather than in a route
+    or a component for the usual reason — two front ends will want it, and a
+    second copy is how this app's maths came to disagree with itself three
+    times. What the caller gets is values; where they go on screen is geometry
+    and belongs to the renderer.
+
+    THE DIAGRAM BALANCES BY CONSTRUCTION, which is the whole reason it is worth
+    drawing. `compute_take_home` defines annual_take_home as the REMAINDER
+    after pre-tax and the three taxes, so stage one sums to gross exactly, to
+    the cent, for every input. A Sankey whose stages did not sum would be a
+    picture of a flow rather than a flow, and the reader has no way to tell
+    those apart by looking. `balanced` and `residual` are returned so the
+    renderer can refuse to draw one that does not.
+
+    Two shapes have to be reported rather than drawn:
+      - a figure that is genuinely ZERO (no state tax in Texas, no HSA) gets no
+        node, because a zero-height ribbon with a label beside it reads as a
+        rendering fault. They come back in `omitted` so the page can say which,
+        rather than leaving the reader to notice an absence.
+      - a plan that allocates MORE than take-home has no "unallocated" node and
+        cannot be drawn as a flow at all — the outflow exceeds the inflow. That
+        is `deficit`, and it is the budget page's over-allocated state showing
+        up structurally.
+
+    `budget` is the profile's budget dict: {"needs": {...}, "wants": {...},
+    "savings": {...}}. Every figure returned is MONTHLY, because that is the
+    unit the budget is kept in; the tax figures are annual and divided here so
+    that no front end has to know which is which.
+    """
+    th = compute_take_home(income, itemized)
+    b = budget or {}
+
+    def monthly(annual):
+        return annual / MONTHS_PER_YEAR
+
+    gross = monthly(th["annual_gross"])
+    take_home = monthly(th["annual_take_home"])
+
+    nodes = []
+    links = []
+    omitted = []
+
+    def add(node_id, label, column, value, tone, parent=None):
+        """A node, unless it is worth nothing — then a note instead."""
+        if value <= 0:
+            omitted.append(label)
+            return False
+        nodes.append({"id": node_id, "label": label, "column": column,
+                      "value": value, "tone": tone})
+        if parent is not None:
+            links.append({"source": parent, "target": node_id, "value": value})
+        return True
+
+    nodes.append({"id": "gross", "label": "Gross pay", "column": 0,
+                  "value": gross, "tone": "ink"})
+
+    # ── Stage one: what the gross becomes. Sums to gross exactly. ──
+    stage_one = [
+        ("pretax", "Pre-tax", monthly(th["pretax"]), "s4"),
+        ("federal", "Federal tax", monthly(th["fed_tax"]), "critical"),
+        ("state", "State tax", monthly(th["state_tax"]), "s5"),
+        ("fica", "FICA", monthly(th["fica"]), "caution"),
+        ("takehome", "Take-home", take_home, "accent"),
+    ]
+    for node_id, label, value, tone in stage_one:
+        add(node_id, label, 1, value, tone, parent="gross")
+
+    # ── Pre-tax, broken out. Terminal: this money leaves the picture. ──
+    for node_id, label, value in (
+        ("k401", "401(k)", monthly(th["contrib_401k"])),
+        ("health", "Health premium", monthly(th["health"])),
+        ("hsa", "HSA", monthly(th["hsa"])),
+    ):
+        add(node_id, label, 2, value, "s4", parent="pretax")
+
+    # ── Stage two: what the take-home is planned to do. ──
+    buckets = (
+        ("needs", "Needs", b.get("needs") or {}, "s1"),
+        ("wants", "Wants", b.get("wants") or {}, "s2"),
+        ("savings", "Savings", b.get("savings") or {}, "s6"),
+    )
+    allocated = 0.0
+    for key, label, lines, tone in buckets:
+        total = sum(lines.values())
+        allocated += total
+        if not add(key, label, 2, total, tone, parent="takehome"):
+            continue
+        for name, amount in sorted(lines.items(), key=lambda kv: -kv[1]):
+            if amount <= 0:
+                continue
+            nodes.append({"id": key + ":" + name, "label": name, "column": 3,
+                          "value": amount, "tone": tone})
+            links.append({"source": key, "target": key + ":" + name,
+                          "value": amount})
+
+    unallocated = take_home - allocated
+    if unallocated > 0:
+        nodes.append({"id": "unallocated", "label": "Unallocated", "column": 2,
+                      "value": unallocated, "tone": "muted"})
+        links.append({"source": "takehome", "target": "unallocated",
+                      "value": unallocated})
+
+    stage_one_total = sum(value for _, _, value, _ in stage_one)
+    residual = gross - stage_one_total
+
+    return {
+        "nodes": nodes,
+        "links": links,
+        "gross": gross,
+        "take_home": take_home,
+        "allocated": allocated,
+        "unallocated": max(0.0, unallocated),
+        # Positive only when the plan spends more than the take-home covers.
+        "deficit": max(0.0, -unallocated),
+        "omitted": omitted,
+        "residual": residual,
+        "balanced": abs(residual) < 0.01,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# THINGS THE ENGINE COULD ALREADY DO AND NO PAGE ASKED FOR
+# ═══════════════════════════════════════════════════════════════════════
+
+def employer_match(salary, contribution_pct, match_pct, match_limit):
+    """What the employer adds to a 401(k), and what a low contribution forfeits.
+
+    `contribution_pct` and `match_limit` are percentages OF SALARY;
+    `match_pct` is what the employer pays per dollar you do (50 = fifty cents).
+
+    The forfeited half is the point. It is the highest-value single sentence a
+    budgeting app can say — an immediate, riskless return that no market
+    assumption is needed to justify — and the web app rendered both inputs
+    while the projection ignored them entirely.
+    """
+    matched_pct = min(max(contribution_pct, 0.0), max(match_limit, 0.0))
+    per_dollar = max(match_pct, 0.0) / 100.0
+    matched = salary * matched_pct / 100.0 * per_dollar
+    shortfall_pct = max(0.0, match_limit - contribution_pct)
+    missed = salary * shortfall_pct / 100.0 * per_dollar
+    return {
+        "annual_match": matched,
+        "monthly_match": matched / MONTHS_PER_YEAR,
+        "annual_missed": missed,
+        "contribution_pct": contribution_pct,
+        "match_limit": match_limit,
+        "match_pct": match_pct,
+        # True only when raising the contribution would collect more match.
+        "leaving_money": missed > 0.005,
+    }
+
+
+def raise_impact(income, increase, itemized=None):
+    """What a raise is actually worth, after everything it moves.
+
+    Runs the WHOLE pay stub twice rather than applying a marginal rate to the
+    increment, because a raise moves more than tax: a 401(k) set as a PERCENT of
+    salary rises with it, so take-home grows by less than the after-tax raise
+    and the difference is saved rather than lost. Reporting one number without
+    that split is how a tool tells someone their raise vanished.
+
+    FICA on the increment comes from `marginal_fica_rate`, not the average.
+    Above the Social Security wage base the marginal rate falls from 7.65% to
+    1.45% — for exactly the earners who ask this question.
+    """
+    itemized = itemized or {}
+    before = compute_take_home(income, itemized)
+    after_income = dict(income)
+    after_income["gross_salary"] = income.get("gross_salary", 0) + increase
+    after = compute_take_home(after_income, itemized)
+
+    gross_increase = after["annual_gross"] - before["annual_gross"]
+    tax_increase = after["total_tax"] - before["total_tax"]
+    pretax_increase = after["pretax"] - before["pretax"]
+    take_home_increase = after["annual_take_home"] - before["annual_take_home"]
+
+    return {
+        "base_salary": income.get("gross_salary", 0),
+        "new_salary": after_income["gross_salary"],
+        "increase": increase,
+        "gross_increase": gross_increase,
+        "tax_increase": tax_increase,
+        # Not a loss: a percentage-based 401(k) rises with the salary.
+        "pretax_increase": pretax_increase,
+        "take_home_increase": take_home_increase,
+        "monthly_take_home_increase": take_home_increase / MONTHS_PER_YEAR,
+        "marginal_fed": after["marginal_fed"],
+        "marginal_state": after["marginal_state"],
+        "marginal_fica_pct": marginal_fica_rate(
+            before["annual_gross"], after["annual_gross"],
+            income.get("filing_status", "Single")) * 100,
+        # Share of the raise lost to tax, and the share that reaches the bank.
+        "tax_share_pct": (tax_increase / gross_increase * 100) if gross_increase else None,
+        "kept_share_pct": (take_home_increase / gross_increase * 100) if gross_increase else None,
+    }
+
+
+def col_compare(salary, from_city, to_city):
+    """The salary that buys the same life somewhere else.
+
+    Buying power ONLY. It says nothing about tax, and the two cities can differ
+    by tens of thousands on that alone — which is the whole reason the scenario
+    comparison exists. Returns None where either city is unknown rather than
+    falling back to the national average, because a silent default here is a
+    wrong answer that looks like a right one.
+    """
+    a = COL_INDEX.get(from_city)
+    b = COL_INDEX.get(to_city)
+    if a is None or b is None or a <= 0:
+        return None
+    equivalent = salary * b / a
+    return {
+        "from_city": from_city,
+        "to_city": to_city,
+        "from_index": a,
+        "to_index": b,
+        "salary": salary,
+        "equivalent_salary": equivalent,
+        "difference": equivalent - salary,
+        "pct_difference": (b - a) / a * 100,
+    }
+
+
+def top_bracket_limitation(taxable, filing="Single"):
+    """Whether the OBBBA 2/37 limitation on itemized deductions is in play.
+
+    In the top bracket, itemized deductions are worth 2/37 less than the
+    marginal rate suggests. This app does NOT model it, so the only honest
+    thing to do is say when it applies rather than quietly be wrong. The
+    threshold is a bracket boundary, which is why it is read from the same
+    table the tax is, and not typed again.
+    """
+    threshold = TOP_BRACKET_START.get(filing, TOP_BRACKET_START["Single"])
+    return {
+        "applies": taxable > threshold,
+        "threshold": threshold,
+        "filing": filing,
+    }
+
+
+def project_investment_with_match(start, monthly, rate, years, salary=0,
+                                  contribution_pct=0, match_pct=0,
+                                  match_limit=0, contribution_growth=0):
+    """A projection that spends the employer's money too.
+
+    The web app rendered the match inputs and then projected as though they
+    were zero, which understates a matched 401(k) by the most reliable return
+    in the whole model. The addition lives here rather than in the route
+    because the route is a pass-through by design; with no salary the match is
+    zero and this is `project_investment` exactly.
+    """
+    match = employer_match(salary, contribution_pct, match_pct, match_limit)
+    values, contributions = project_investment(
+        start, monthly + match["monthly_match"], rate, years, contribution_growth)
+    return values, contributions, match
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SCENARIOS — the same person, in a different situation
+# ═══════════════════════════════════════════════════════════════════════
+
+def compare_scenarios(scenarios):
+    """Several situations priced against each other, the first as the baseline.
+
+    This is the screen no competitor has, and the reason is not effort — it is
+    that comparing two jobs honestly needs a real tax engine for fifty states
+    and four filing statuses, plus a cost-of-living index, and a tracker built
+    on a bank connection has neither. Everything here is `compute_take_home`
+    run once per scenario; nothing new is modelled.
+
+    THE FIGURE THAT MATTERS IS `real_take_home` — annual take-home restated in
+    national-average dollars, so a salary in one city can be set beside a
+    salary in another. Take-home alone ranks the dearest city first, which is
+    the wrong answer to the question people are actually asking. It is a
+    deflation by the cost-of-living index and nothing more; it is labelled
+    everywhere it appears, because a number that quietly rebases itself is
+    worse than one that is merely wrong.
+
+    Each scenario: {"name", "income", "itemized" (optional), "city" (optional)}.
+    Returns rows in the order given, so the caller's baseline stays first.
+    """
+    if not scenarios:
+        return {"rows": [], "baseline": None, "best": None}
+
+    rows = []
+    for s in scenarios:
+        th = compute_take_home(s["income"], s.get("itemized") or {})
+        city = s.get("city") or "National Average"
+        index = COL_INDEX.get(city)
+        real = th["annual_take_home"] * 100.0 / index if index else None
+        rows.append({
+            "name": s.get("name") or "Scenario",
+            "city": city,
+            # None where the city is not in the index — never a silent default.
+            "col_index": index,
+            "state": s["income"].get("state"),
+            "filing": th["filing"],
+            "gross": th["annual_gross"],
+            "total_tax": th["total_tax"],
+            "effective_rate": th["effective_rate"],
+            "marginal_fed": th["marginal_fed"],
+            "marginal_state": th["marginal_state"],
+            "pretax": th["pretax"],
+            "annual_take_home": th["annual_take_home"],
+            "monthly_take_home": th["monthly_take_home"],
+            "real_take_home": real,
+        })
+
+    base = rows[0]
+    for r in rows:
+        r["vs_baseline"] = r["annual_take_home"] - base["annual_take_home"]
+        r["vs_baseline_real"] = (
+            r["real_take_home"] - base["real_take_home"]
+            if r["real_take_home"] is not None and base["real_take_home"] is not None
+            else None
+        )
+
+    # Best on the cost-of-living-adjusted figure, and only where EVERY scenario
+    # has one — ranking a set where some rows could not be adjusted would be
+    # comparing two different measures and calling one of them the winner.
+    comparable = [r for r in rows if r["real_take_home"] is not None]
+    usable = len(comparable) == len(rows) and len(rows) > 1
+    best = max(comparable, key=lambda r: r["real_take_home"])["name"] if usable else None
+
+    # The winner on RAW take-home as well, so the page can say whether the
+    # cost-of-living adjustment actually changed the answer. Without it the
+    # copy has to guess, and it guessed wrong: it claimed take-home "would rank
+    # these differently" on a pair where the same city won both ways.
+    best_take_home = (max(rows, key=lambda r: r["annual_take_home"])["name"]
+                      if len(rows) > 1 else None)
+
+    return {
+        "rows": rows,
+        "baseline": base["name"],
+        "best": best,
+        "best_take_home": best_take_home,
+        # True only where the adjustment moves the winner, not merely the gap.
+        "col_changes_answer": bool(usable and best != best_take_home),
+        "all_comparable": len(comparable) == len(rows),
+    }
+
+
+def histogram(values, bins=24, isolate=None):
+    """Bin a list of numbers for a distribution chart.
+
+    The fan chart shows the RANGE of a Monte Carlo; the shape is a different
+    question and the answer is often more useful — a run can have a comfortable
+    median and a long tail of failures, and a band chart hides that. The ending
+    balances were already in the payload and nothing drew them.
+
+    `isolate` GIVES ONE OUTCOME ITS OWN BIN, first, and it exists because
+    without it the failures are invisible in the very case they matter. A path
+    that runs out stays at zero, so every failure ends at EXACTLY the same
+    value; ordinary binning drops them into a bucket spanning $0 to several
+    million alongside the paths that merely did badly, and a bar that is part
+    catastrophe and part success cannot honestly be coloured either way.
+    Measured before this existed: at every retirement age tried, the failing
+    bars were either all of the chart or none of it, and never the mixture the
+    colour was for.
+
+    Returns [] for no values rather than a single degenerate bin, and puts
+    everything in one bin where every value is identical, which is a real
+    outcome (a plan that cannot fail) and not an error.
+    """
+    values = [v for v in values if v is not None]
+    if not values:
+        return []
+
+    isolated = []
+    if isolate is not None:
+        isolated = [v for v in values if v <= isolate]
+        values = [v for v in values if v > isolate]
+        if not values:
+            return [{"start": isolate, "end": isolate, "count": len(isolated)}]
+
+    lead = ([{"start": isolate, "end": isolate, "count": len(isolated)}]
+            if isolated else [])
+
+    lo, hi = min(values), max(values)
+    if hi <= lo:
+        return lead + [{"start": lo, "end": lo, "count": len(values)}]
+    width = (hi - lo) / bins
+    counts = [0] * bins
+    for v in values:
+        i = int((v - lo) / width)
+        counts[min(i, bins - 1)] += 1     # the maximum lands in the last bin
+    return lead + [{"start": lo + i * width, "end": lo + (i + 1) * width, "count": c}
+                   for i, c in enumerate(counts)]
+
+
+def cost_of_waiting(start, monthly, rate, years, delay_years=1):
+    """What a year of not starting costs, at the end.
+
+    The most persuasive single number an investing page can show, and it is
+    persuasive precisely because it is not a rate: a year's delay does not cost
+    a year's contributions, it costs a year of COMPOUNDING on everything, which
+    is a much larger and much less intuitive figure.
+
+    Both runs end at the same date. The delayed one contributes for fewer
+    years, so the difference is the delayed contributions AND the growth they
+    would have had — the split is returned, because the second part is the
+    whole point and a single number hides it.
+    """
+    if years <= 0 or delay_years <= 0 or delay_years >= years:
+        return None
+    now_values, now_contrib = project_investment(start, monthly, rate, years)
+    # Waiting means the starting balance still grows, untouched, in the gap.
+    idle_values, _ = project_investment(start, 0, rate, delay_years)
+    later_values, later_contrib = project_investment(
+        idle_values[-1], monthly, rate, years - delay_years)
+    lost = now_values[-1] - later_values[-1]
+    # Each run's contributions NET of the balance it began with. The delayed run
+    # starts from a balance that has already grown for `delay_years`, and
+    # project_investment counts that opening balance as contributed — so
+    # subtracting the original `start` from the difference leaves the idle
+    # growth mixed in, and a year of $500/mo came out as $853 missed instead of
+    # $6,000. Caught by reading the number, not by an assertion.
+    contributed_now = now_contrib[-1] - start
+    contributed_later = later_contrib[-1] - idle_values[-1]
+    contributions_missed = contributed_now - contributed_later
+    return {
+        "delay_years": delay_years,
+        "start_now": now_values[-1],
+        "start_later": later_values[-1],
+        "cost": lost,
+        "contributions_missed": contributions_missed,
+        # The part that is not simply the money you did not put in.
+        "growth_missed": lost - contributions_missed,
+    }

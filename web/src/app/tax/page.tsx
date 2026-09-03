@@ -62,7 +62,7 @@ export default function TaxPage() {
     };
   }, [th, contribution, currentRate, futureRate, rothReturn, rothYears, magi, filing]);
 
-  if (!profile || !dashboard || !th) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile || !dashboard || !th) return <div className="skeleton h-96" />;
 
   const itemized = profile.itemized;
   const setItemized = (k: string, v: number) =>
@@ -71,25 +71,23 @@ export default function TaxPage() {
   return (
     <div>
       <PageHeader
-        title="Tax Estimator"
+        title="Taxes"
         description="2026 federal and state liability from IRS Rev. Proc. 2025-32 as amended by the OBBBA. An estimate, not a return."
       />
 
       <Section title="This year">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            ["Total tax", fmt(th.total_tax), "text-red"],
-            ["Effective rate", pct(th.effective_rate), "text-primary"],
-            ["Marginal federal", pct(th.marginal_fed, 0), "text-primary"],
-            ["Marginal state", pct(th.marginal_state, 2), "text-primary"],
-          ].map(([label, value, tone]) => (
+          {(
+            [
+              ["Total tax", fmt(th.total_tax), "text-critical"],
+              ["Effective rate", pct(th.effective_rate), "text-ink"],
+              ["Marginal federal", pct(th.marginal_fed, 0), "text-ink"],
+              ["Marginal state", pct(th.marginal_state, 2), "text-ink"],
+            ] as const
+          ).map(([label, value, tone]) => (
             <div key={label} className="card">
-              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted">
-                {label}
-              </p>
-              <p className={`mt-1 font-num text-[1.6rem] font-bold leading-none ${tone}`}>
-                {value}
-              </p>
+              <p className="label">{label}</p>
+              <p className={`font-num t-h3 mt-1.5 leading-none font-medium ${tone}`}>{value}</p>
             </div>
           ))}
         </div>
@@ -103,8 +101,8 @@ export default function TaxPage() {
             ]}
             xKey="name"
             valueKey="value"
-            colors={["#f87171", "#fb923c", "#fbbf24"]}
-            height={240}
+            tones={["critical", "s5", "caution"]}
+            height={230}
           />
         </div>
 
@@ -115,8 +113,8 @@ export default function TaxPage() {
             ["Taxable income", fmt(th.taxable)],
           ].map(([label, value]) => (
             <div key={label} className="card">
-              <p className="text-[0.72rem] text-muted">{label}</p>
-              <p className="mt-0.5 font-num text-[1.1rem] text-primary">{value}</p>
+              <p className="label">{label}</p>
+              <p className="font-num t-lead mt-1 text-ink">{value}</p>
             </div>
           ))}
         </div>
@@ -146,32 +144,44 @@ export default function TaxPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div
-            className={`card ${!th.itemizing ? "border-green/30 bg-green/[0.03]" : ""}`}
-          >
-            <div className="flex items-baseline justify-between">
-              <p className="text-[0.85rem] font-semibold text-primary">Standard</p>
-              {!th.itemizing && <span className="badge badge-green">Taken</span>}
+          <div className={`card ${!th.itemizing ? "mark-accent" : ""}`}>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="label">Standard</p>
+              {!th.itemizing && <span className="badge badge-positive">Taken</span>}
             </div>
-            <p className="mt-1 font-num text-[1.5rem] font-bold text-primary">
+            <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
               {fmt(th.std_ded)}
             </p>
-            <p className="mt-1 text-[0.7rem] text-muted">For {th.filing} in 2026.</p>
+            <p className="t-micro mt-1.5 text-muted">For {th.filing} in 2026.</p>
           </div>
-          <div className={`card ${th.itemizing ? "border-green/30 bg-green/[0.03]" : ""}`}>
-            <div className="flex items-baseline justify-between">
-              <p className="text-[0.85rem] font-semibold text-primary">Itemized</p>
-              {th.itemizing && <span className="badge badge-green">Taken</span>}
+          <div className={`card ${th.itemizing ? "mark-accent" : ""}`}>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="label">Itemized</p>
+              {th.itemizing && <span className="badge badge-positive">Taken</span>}
             </div>
-            <p className="mt-1 font-num text-[1.5rem] font-bold text-primary">
+            <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
               {fmt(th.itemized_total)}
             </p>
-            <p className="mt-1 text-[0.7rem] text-muted">
+            <p className="t-micro mt-1.5 text-muted">
               After the SALT cap and the AGI floors on charity and medical.
             </p>
           </div>
         </div>
-        <p className="mt-3 text-[0.72rem] leading-relaxed text-muted">
+        {dashboard.top_bracket.applies && (
+          <div className="card mark-caution mt-3">
+            <p className="t-small text-body">
+              <strong className="text-ink">
+                Your taxable income is in the top bracket
+              </strong>{" "}
+              — above {fmt(dashboard.top_bracket.threshold)} for {th.filing}. The OBBBA
+              limits the value of itemized deductions there to 2/37 less than your
+              marginal rate implies, and this estimate does NOT model that. The itemized
+              figure above is therefore worth slightly less than it looks.
+            </p>
+          </div>
+        )}
+
+        <p className="t-micro mt-3 leading-relaxed text-muted">
           Whichever is larger is the one used, and it is used everywhere — take-home,
           savings rate, the dashboard and the FIRE timeline all read the same figure.
           A tax page that recommends itemizing while the rest of the app assumes the
@@ -213,55 +223,39 @@ export default function TaxPage() {
         </div>
 
         {error && (
-          <div className="card border-red/25 bg-red/[0.03] text-[0.82rem] text-red">
-            {error}
-          </div>
+          <div className="card mark-critical t-small text-critical">{error}</div>
         )}
 
         {roth && (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div
-                className={`card ${
-                  roth.better === "Traditional" ? "border-green/30 bg-green/[0.03]" : ""
-                }`}
-              >
-                <p className="text-[0.85rem] font-semibold text-primary">
-                  Traditional (pre-tax)
-                </p>
-                <p className="mt-1 font-num text-[1.5rem] font-bold text-primary">
+              <div className={`card ${roth.better === "Traditional" ? "mark-accent" : ""}`}>
+                <p className="label">Traditional (pre-tax)</p>
+                <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
                   {fmt(roth.traditional_after_tax)}
                 </p>
-                <p className="mt-1 text-[0.72rem] leading-snug text-muted">
+                <p className="t-micro mt-1.5 text-muted">
                   Contribute {fmt(roth.contribution)}/yr pre-tax → grows to{" "}
                   {fmt(roth.traditional_future)} → {futureRate}% tax on withdrawal.
                 </p>
               </div>
-              <div
-                className={`card ${
-                  roth.better !== "Traditional" ? "border-green/30 bg-green/[0.03]" : ""
-                }`}
-              >
-                <p className="text-[0.85rem] font-semibold text-primary">
-                  Roth (post-tax)
-                </p>
-                <p className="mt-1 font-num text-[1.5rem] font-bold text-primary">
+              <div className={`card ${roth.better !== "Traditional" ? "mark-accent" : ""}`}>
+                <p className="label">Roth (post-tax)</p>
+                <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
                   {fmt(roth.roth_future)}
                 </p>
-                <p className="mt-1 text-[0.72rem] leading-snug text-muted">
+                <p className="t-micro mt-1.5 text-muted">
                   Pay {pct(roth.current_rate * 100, 0)} tax now → invest{" "}
                   {fmt(roth.roth_invested)}/yr → nothing owed on withdrawal.
                 </p>
               </div>
             </div>
 
-            <div className="card mt-3 border-l-2 border-accent">
+            <div className="card mark-accent mt-3">
               {roth.better === "Equivalent" ? (
                 <>
-                  <p className="text-[0.85rem] font-semibold text-primary">
-                    They come out the same
-                  </p>
-                  <p className="mt-1 text-[0.8rem] leading-relaxed text-dim">
+                  <p className="t-base font-semibold text-ink">They come out the same</p>
+                  <p className="t-small mt-1 leading-relaxed text-body">
                     Your combined marginal rate now ({pct(roth.current_rate * 100, 1)})
                     equals the rate you expect in retirement, and at equal rates the two
                     are mathematically identical — whatever the contribution, the return
@@ -272,10 +266,10 @@ export default function TaxPage() {
                 </>
               ) : (
                 <>
-                  <p className="text-[0.85rem] font-semibold text-primary">
+                  <p className="t-base font-semibold text-ink">
                     {roth.better} comes out ahead by {fmt(roth.difference)}
                   </p>
-                  <p className="mt-1 text-[0.8rem] leading-relaxed text-dim">
+                  <p className="t-small mt-1 leading-relaxed text-body">
                     Your combined federal and state marginal rate is{" "}
                     {pct(roth.current_rate * 100, 1)} now against {futureRate}% expected
                     in retirement.{" "}
@@ -292,7 +286,7 @@ export default function TaxPage() {
 
       {ref && (
         <Section title={`${th.filing} brackets · 2026`}>
-          <div className="card overflow-x-auto p-0">
+          <div className="card card-flush overflow-x-auto">
             <table>
               <thead>
                 <tr>
@@ -306,15 +300,16 @@ export default function TaxPage() {
                   const active =
                     th.taxable > floor && (ceiling === null || th.taxable <= ceiling);
                   return (
-                    <tr key={i} className={active ? "bg-accent/[0.06]" : undefined}>
-                      <td className={active ? "text-primary" : undefined}>
-                        {fmt(floor)} –{" "}
-                        {ceiling === null ? "and above" : fmt(ceiling)}
+                    <tr key={i}>
+                      <td className={active ? "font-medium text-ink" : undefined}>
+                        <span className="font-num">
+                          {fmt(floor)} – {ceiling === null ? "and above" : fmt(ceiling)}
+                        </span>
                         {active && (
-                          <span className="ml-2 text-[0.68rem] text-accent">you are here</span>
+                          <span className="badge badge-info ml-2">you are here</span>
                         )}
                       </td>
-                      <td className="text-right font-num">{(rate * 100).toFixed(0)}%</td>
+                      <td className="font-num text-right">{(rate * 100).toFixed(0)}%</td>
                     </tr>
                   );
                 })}

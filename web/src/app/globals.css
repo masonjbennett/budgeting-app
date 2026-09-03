@@ -1,254 +1,722 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════
+   PAPER & INK — the budget app's skin.
+
+   This is masonjbennett.com's brand adapted into an INSTRUMENT rather than
+   copied from the newspaper. Same palette, same type trio, same hairline
+   discipline; none of the editorial furniture. Denser, quieter, operated
+   rather than read.
+
+   HOW THEMING WORKS, AND THE ONE RULE.
+   `@theme inline` makes every Tailwind colour utility emit `var(--x)` instead
+   of a resolved hex, so `bg-card` follows whatever `--card` currently is. The
+   values themselves live in plain `:root` blocks below.
+
+   THE RULE: no component may contain a colour literal. Not a hex, not an
+   `rgb()`, and not a Tailwind stock-palette class like `text-slate-400` —
+   those are literals with a friendlier spelling. A colour defined anywhere but
+   here is a colour that only works in one theme, and it fails silently: the
+   page renders one theme's text on the other theme's ground. The re-skin began
+   with 116 of them across src/; `npm run check:tokens` is what keeps the count
+   at zero, and `npm run build` runs it.
+
+   Three theme states, not two. An explicit choice stamps data-theme on <html>;
+   the default "system" setting stamps NOTHING, so most visitors are only
+   separated by prefers-color-scheme.
+
+   EVERYTHING BELOW IS IN A CASCADE LAYER, AND THAT IS LOAD-BEARING.
+   Tailwind's utilities live in `@layer utilities`. Unlayered CSS beats every
+   layered rule no matter how weak its selector, so an unlayered
+   `.card { padding: 18px 20px }` silently beats `p-0`, and an unlayered
+   `thead th { text-align: left }` silently beats `text-right`. Both were
+   really happening: `<div class="card p-0">` measured 18px 20px of padding and
+   every right-aligned table header rendered left. Putting element rules in
+   `base` and component classes in `components` restores the order a reader
+   assumes — a utility in the markup wins. Same family as the `pl-7` that lost
+   to `input[type="number"]`, and as the Streamlit sidebar rules that lost to a
+   matched descendant selector: a dead style rule is invisible until measured.
+   ═══════════════════════════════════════════════════════════════════════ */
+
 @theme inline {
-  --color-bg: #09090b;
-  --color-surface: #141414;
-  --color-card: #171717;
-  --color-border: rgba(255,255,255,0.06);
-  --color-border-subtle: rgba(255,255,255,0.04);
-  --color-primary: #ededed;
-  --color-dim: #888888;
-  --color-muted: #555555;
-  --color-accent: #3b82f6;
-  --color-green: #4ade80;
-  --color-red: #f87171;
-  --color-yellow: #fbbf24;
-  --color-purple: #c084fc;
-  --color-pink: #f472b6;
-  --font-sans: 'Inter', -apple-system, sans-serif;
+  /* Surfaces */
+  --color-paper: var(--paper);
+  --color-raise: var(--raise);
+  --color-card: var(--card);
+  --color-hair: var(--hair);
+  --color-hair-soft: var(--hair-soft);
+
+  /* Text */
+  --color-ink: var(--ink);
+  --color-body: var(--body-c);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  /* Meaning. Teal is both "primary" and "positive" on this palette — that is
+     deliberate and it holds, because nothing decorative is allowed to use
+     claret or bronze. The moment something does, the alarm states stop
+     reading as alarms. */
+  --color-accent: var(--accent);
+  --color-positive: var(--positive);
+  --color-critical: var(--critical);
+  --color-caution: var(--caution);
+  --color-info: var(--info);
+
+  /* Categorical series, for charts only. Derived from the palette at
+     controlled lightness rather than picked to be distinct, so a twelve-slice
+     donut still reads as one system. */
+  --color-s1: var(--s1);
+  --color-s2: var(--s2);
+  --color-s3: var(--s3);
+  --color-s4: var(--s4);
+  --color-s5: var(--s5);
+  --color-s6: var(--s6);
+  --color-s7: var(--s7);
+  --color-s8: var(--s8);
+
+  --font-display: var(--font-instrument-serif), Georgia, serif;
+  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
+
+  /* Hairlines, not pills. */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
 }
 
-/* ── Base ── */
-body {
-  background: #09090b;
-  color: #ededed;
-  font-family: 'Inter', -apple-system, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ── Light: the default, and the one the app ships in ─────────────────── */
+:root {
+  --paper:     #faf3ea;
+  --raise:     #f4ebdd;
+  --card:      #fffaf3;
+  --hair:      #ddcfb8;
+  --hair-soft: #ebe0cd;
+
+  --ink:       #262421;
+  --body-c:    #4a443c;
+  --muted:     #7a7264;
+  --faint:     #a39885;
+
+  --accent:    #0d6d56;
+  --positive:  #0d6d56;
+  --critical:  #990f3d;
+  --caution:   #b0741e;
+  --info:      #1f5a9e;
+
+  --s1: #0d6d56;
+  --s2: #1f5a9e;
+  --s3: #b0741e;
+  --s4: #6d549e;
+  --s5: #990f3d;
+  --s6: #2f8f74;
+  --s7: #4a7db8;
+  --s8: #8a6a2f;
+
+  --tint: 0.07;
+
+  color-scheme: light;
 }
 
-h1, h2, h3 {
-  font-family: 'Inter', sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #ededed;
+/* ── Dark: guarded so an explicit light choice beats a dark OS ─────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:     #1b1916;
+    --raise:     #232019;
+    --card:      #221f1a;
+    --hair:      #3b352c;
+    --hair-soft: #2e2921;
+
+    --ink:       #f2ebde;
+    --body-c:    #cdc4b4;
+    --muted:     #968c7c;
+    --faint:     #6f665a;
+
+    --accent:    #4cbf9e;
+    --positive:  #4cbf9e;
+    --critical:  #e87a99;
+    --caution:   #e0a54e;
+    --info:      #77a9e0;
+
+    --s1: #4cbf9e;
+    --s2: #77a9e0;
+    --s3: #e0a54e;
+    --s4: #b79ae0;
+    --s5: #e87a99;
+    --s6: #6fd4b6;
+    --s7: #9dc2ec;
+    --s8: #c9a978;
+
+    --tint: 0.13;
+
+    color-scheme: dark;
+  }
 }
 
-h1 { font-size: 1.5rem; line-height: 2rem; }
-h2 { font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; }
-h3 { font-size: 0.8125rem; line-height: 1.25rem; font-weight: 600; }
+/* ── Dark by explicit choice, so the toggle wins in both directions ────── */
+:root[data-theme="dark"] {
+  --paper:     #1b1916;
+  --raise:     #232019;
+  --card:      #221f1a;
+  --hair:      #3b352c;
+  --hair-soft: #2e2921;
 
-/* ── Tabular numbers ── */
-.font-num {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
+  --ink:       #f2ebde;
+  --body-c:    #cdc4b4;
+  --muted:     #968c7c;
+  --faint:     #6f665a;
+
+  --accent:    #4cbf9e;
+  --positive:  #4cbf9e;
+  --critical:  #e87a99;
+  --caution:   #e0a54e;
+  --info:      #77a9e0;
+
+  --s1: #4cbf9e;
+  --s2: #77a9e0;
+  --s3: #e0a54e;
+  --s4: #b79ae0;
+  --s5: #e87a99;
+  --s6: #6fd4b6;
+  --s7: #9dc2ec;
+  --s8: #c9a978;
+
+  --tint: 0.13;
+
+  color-scheme: dark;
 }
 
-/* ── Gradient text ── */
-.text-gradient-blue {
-  background: linear-gradient(135deg, #60a5fa 0%, #c084fc 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* ═══ Base — element defaults, below every utility ════════════════════ */
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    text-wrap: balance;
+    margin: 0;
+  }
+  h1 { font-size: 34px; line-height: 1.1; }
+  h2 { font-size: 24px; line-height: 1.2; }
+  h3 { font-size: 18px; line-height: 1.3; }
+
+  /* ── Controls ── */
+  input[type="number"],
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="date"],
+  input[type="search"],
+  select,
+  textarea {
+    width: 100%;
+    background: var(--paper);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--ink);
+    transition: border-color 0.14s ease, box-shadow 0.14s ease;
+  }
+  input:hover:not(:disabled),
+  select:hover:not(:disabled),
+  textarea:hover:not(:disabled) { border-color: var(--faint); }
+  input:disabled, select:disabled { opacity: 0.5; cursor: not-allowed; }
+  input::placeholder { color: var(--faint); }
+  select option { background: var(--card); color: var(--ink); }
+
+  /* Native number spinners fight a tabular figure and are useless at these
+     step sizes. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 22px;
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 2px;
+    background: var(--hair);
+    border-radius: 1px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 13px; height: 13px;
+    margin-top: -5.5px;
+    background: var(--accent);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  input[type="range"]::-moz-range-track { height: 2px; background: var(--hair); }
+  input[type="range"]::-moz-range-thumb {
+    width: 13px; height: 13px;
+    background: var(--accent);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: left;
+    padding: 9px 14px;
+    background: var(--raise);
+    border-bottom: 1px solid var(--hair);
+    white-space: nowrap;
+  }
+  td {
+    padding: 9px 14px;
+    font-size: 13.5px;
+    color: var(--body-c);
+    border-bottom: 1px solid var(--hair-soft);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--raise); }
+
+  hr { border: none; border-top: 1px solid var(--hair); margin: 0; }
+
+  /* ── Focus ── */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 1px;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  ::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--hair);
+    border: 3px solid var(--paper);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--faint); }
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+/* ═══ Components — named classes, still below every utility ═══════════ */
+@layer components {
 
-/* ── Focus ── */
-input:focus, select:focus, textarea:focus, button:focus-visible {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  /* ── Type scale: 11 / 13 / 15 / 18 / 24 / 34 / 52. Stay on it. ── */
+  .t-micro { font-size: 11px; line-height: 1.4; }
+  .t-small { font-size: 13px; line-height: 1.45; }
+  .t-base  { font-size: 15px; line-height: 1.55; }
+  .t-lead  { font-size: 18px; line-height: 1.45; }
+  .t-h3    { font-size: 24px; line-height: 1.25; }
+  .t-h2    { font-size: 34px; line-height: 1.15; }
+  .t-h1    { font-size: 52px; line-height: 1.05; }
+
+  /* Every number, everywhere. Money that changes width as it updates reads as
+     unreliable, which is the opposite of what this app is for. */
+  .font-num,
+  input[type="number"],
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* The one label treatment. Does most of the work of looking designed. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Hero figure — one per screen, and only ever one.
+
+     MONO, and this was measured rather than inherited from the site. All three
+     faces were rendered at 52px against the real figures and the serif lost on
+     a ground that is not taste: Instrument Serif carries no tabular figures, so
+     the string width swings 65.3px across the digits a count-up passes through
+     and `font-variant-numeric: tabular-nums` does not fix it — the feature is
+     absent from the font. Space Grotesk swings 68.9px and IS fixed by the same
+     property (0px), so it was the real runner-up. Mono is 0px by construction,
+     it is already the convention for every other number in the app, and at this
+     size it is the widest of the three (312px against the serif's 189px for the
+     same figure) — so it reads as the largest thing on the page, which is the
+     entire job. The serif keeps the page titles, which is what it is for. */
+  .figure-hero {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: clamp(2.4rem, 6vw, 3.25rem);
+    line-height: 1;
+    letter-spacing: -0.035em;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+
+  /* ── Surfaces ── */
+
+  /* A card is a 1px rule on the card surface. Elevation on paper is done with
+     rules and spacing, never with a shadow. */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+  }
+  .card-flush { padding: 0; }
+
+  .panel {
+    background: var(--raise);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-md);
+  }
+
+  /* Semantic emphasis. A left rule, never a fill — a tinted card competes with
+     the hero panel and everything ends up shouting. */
+  .mark-accent   { border-left: 2px solid var(--accent); }
+  .mark-positive { border-left: 2px solid var(--positive); }
+  .mark-critical { border-left: 2px solid var(--critical); }
+  .mark-caution  { border-left: 2px solid var(--caution); }
+  .mark-info     { border-left: 2px solid var(--info); }
+
+  .tint-accent   { background: color-mix(in srgb, var(--accent)   calc(var(--tint) * 100%), var(--card)); }
+  .tint-positive { background: color-mix(in srgb, var(--positive) calc(var(--tint) * 100%), var(--card)); }
+  .tint-critical { background: color-mix(in srgb, var(--critical) calc(var(--tint) * 100%), var(--card)); }
+  .tint-caution  { background: color-mix(in srgb, var(--caution)  calc(var(--tint) * 100%), var(--card)); }
+  .tint-info     { background: color-mix(in srgb, var(--info)     calc(var(--tint) * 100%), var(--card)); }
+
+  /* ── Buttons ── */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: var(--accent);
+    color: var(--card);
+    padding: 8px 16px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: filter 0.14s ease;
+  }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.12); }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: var(--card);
+    color: var(--body-c);
+    padding: 8px 16px;
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.14s ease, color 0.14s ease;
+  }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--faint); color: var(--ink); }
+  .btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--critical);
+    color: var(--card);
+    padding: 8px 16px;
+    border: 1px solid var(--critical);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: var(--radius-xs);
+    transition: color 0.14s ease, background 0.14s ease;
+  }
+  .btn-ghost:hover { color: var(--ink); background: var(--raise); }
+
+  /* A row-level remove control. Square, hairline, claret only on hover — the
+     alarm colour is not spent until the pointer is on the thing it removes. */
+  .btn-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 32px;
+    flex: none;
+    background: transparent;
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.14s ease, color 0.14s ease;
+  }
+  .btn-remove:hover { border-color: var(--critical); color: var(--critical); }
+
+  /* ── Segmented control ── */
+  .tab-list {
+    display: inline-flex;
+    gap: 0;
+    background: var(--raise);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+  }
+  .tab {
+    padding: 6px 14px;
+    border: none;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.14s ease, background 0.14s ease;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab-active { background: var(--card); color: var(--ink); box-shadow: 0 0 0 1px var(--hair); }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px;
+    border: 1px solid;
+    border-radius: var(--radius-xs);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .badge-positive { color: var(--positive); border-color: var(--positive); background: color-mix(in srgb, var(--positive) calc(var(--tint) * 100%), transparent); }
+  .badge-critical { color: var(--critical); border-color: var(--critical); background: color-mix(in srgb, var(--critical) calc(var(--tint) * 100%), transparent); }
+  .badge-caution  { color: var(--caution);  border-color: var(--caution);  background: color-mix(in srgb, var(--caution)  calc(var(--tint) * 100%), transparent); }
+  .badge-info     { color: var(--info);     border-color: var(--info);     background: color-mix(in srgb, var(--info)     calc(var(--tint) * 100%), transparent); }
+  .badge-neutral  { color: var(--muted);    border-color: var(--hair);     background: transparent; }
+
+  /* ── Progress ── */
+  .progress-track {
+    height: 3px;
+    background: var(--hair-soft);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* ── Skeleton ── */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--raise) 25%,
+      var(--hair-soft) 50%,
+      var(--raise) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+    border-radius: var(--radius-sm);
+  }
+
+  .rule { height: 1px; background: var(--hair); }
+  .ring-container { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+  .ring-container svg { transform: rotate(-90deg); }
 }
 
-/* ── Cards ── */
-.card {
-  background: #171717;
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 0.75rem;
-  padding: 1.25rem;
+/* ═══ Motion ═════════════════════════════════════════════════════════
+   Deliberately CSS and React only. Chart-library entry animation stays off
+   everywhere — Recharts leaves a pie's sectors as empty groups until its
+   animation completes, so where it never completes the chart is silently and
+   permanently blank. Nothing here can leave a blank: at worst it appears
+   without moving.                                                        */
+@keyframes shimmer {
+  0%   { background-position: -180% 0; }
+  100% { background-position: 180% 0; }
 }
-.card:hover {
-  border-color: rgba(255,255,255,0.1);
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
-/* ── Ring indicator ── */
-.ring-container {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.ring-container svg { transform: rotate(-90deg); }
-
-/* ── Toast ── */
 @keyframes slideInRight {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from { transform: translateX(105%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
 }
 @keyframes slideOutRight {
   from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(100%); opacity: 0; }
-}
-.toast-enter { animation: slideInRight 0.3s ease-out; }
-.toast-exit { animation: slideOutRight 0.3s ease-in forwards; }
-
-/* ── Inputs ── */
-input[type="number"],
-input[type="text"],
-input[type="email"],
-input[type="password"],
-input[type="date"],
-select,
-textarea {
-  background: #0a0a0a;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8125rem;
-  color: #ededed;
-  width: 100%;
-}
-input:hover, select:hover {
-  border-color: rgba(255,255,255,0.12);
-}
-input::placeholder { color: #555555; }
-
-input[type="range"] {
-  accent-color: #3b82f6;
-  background: transparent;
-  border: none;
-  padding: 0;
-}
-select option {
-  background: #171717;
-  color: #ededed;
+  to   { transform: translateX(105%); opacity: 0; }
 }
 
-/* ── Buttons ── */
-.btn-primary {
-  background: #ededed;
-  color: #09090b;
-  padding: 0.5rem 1.25rem;
-  border-radius: 0.5rem;
-  font-weight: 600;
-  font-size: 0.8125rem;
-  border: none;
-  cursor: pointer;
-}
-.btn-primary:hover {
-  background: #ffffff;
+@layer components {
+  .animate-fade-in { animation: fadeUp 0.24s ease-out both; }
+  .stagger > * { animation: fadeUp 0.26s ease-out both; }
+  .stagger > *:nth-child(1) { animation-delay: 0.02s; }
+  .stagger > *:nth-child(2) { animation-delay: 0.05s; }
+  .stagger > *:nth-child(3) { animation-delay: 0.08s; }
+  .stagger > *:nth-child(4) { animation-delay: 0.11s; }
+  .stagger > *:nth-child(5) { animation-delay: 0.14s; }
+  .stagger > *:nth-child(6) { animation-delay: 0.17s; }
+
+  .toast-enter { animation: slideInRight 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
+  .toast-exit  { animation: slideOutRight 0.22s ease-in forwards; }
 }
 
-.btn-secondary {
-  background: transparent;
-  color: #888888;
-  padding: 0.5rem 1.25rem;
-  border-radius: 0.5rem;
-  font-weight: 500;
-  font-size: 0.8125rem;
-  border: 1px solid rgba(255,255,255,0.08);
-  cursor: pointer;
-}
-.btn-secondary:hover {
-  border-color: rgba(255,255,255,0.15);
-  color: #ededed;
+/* Unlayered on purpose: this has to beat everything above it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
-/* ── Tables ── */
-table { width: 100%; border-collapse: collapse; }
-thead { background: #0f0f0f; }
-th {
-  text-align: left; padding: 0.625rem 1rem;
-  font-size: 0.6875rem; font-weight: 500;
-  text-transform: uppercase; letter-spacing: 0.06em;
-  color: #555555;
-}
-td {
-  padding: 0.625rem 1rem; font-size: 0.8125rem;
-  border-top: 1px solid rgba(255,255,255,0.04);
-  color: #888888;
-}
-tbody tr:hover { background: rgba(255,255,255,0.02); }
+/* ═══ Print ══════════════════════════════════════════════════════════
+   A page anyone can hand to an adviser, a partner or a lender.
 
-/* ── Progress bars ── */
-.progress-track {
-  background: rgba(255,255,255,0.04);
-  border-radius: 9999px;
-  height: 0.375rem;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  border-radius: 9999px;
-  transition: width 0.5s ease;
-}
+   This is a whole feature for the cost of a stylesheet, and the only thing it
+   needs to get right is what to REMOVE: navigation goes (paper has none), the
+   theme toggle goes (paper has no theme), and every input renders as the value
+   it holds rather than as a control with a border and a focus ring.
 
-/* ── Tabs ── */
-.tab-list {
-  display: flex; gap: 0.125rem;
-  background: #0f0f0f;
-  padding: 0.1875rem; border-radius: 0.5rem;
-  border: 1px solid rgba(255,255,255,0.04);
-}
-.tab {
-  flex: 1; padding: 0.5rem 0.875rem; border-radius: 0.375rem;
-  font-size: 0.8125rem; font-weight: 500; color: #555555;
-  cursor: pointer; text-align: center; border: none; background: transparent;
-}
-.tab:hover { color: #888888; }
-.tab-active {
-  background: #1a1a1a; color: #ededed; font-weight: 500;
-}
+   The palette is forced to light regardless of the viewer's theme. A dark-mode
+   visitor printing this would otherwise get cream text on white, or a solid
+   ink page — the browser's "background graphics" setting decides which, and
+   neither is a document. Unlayered so it beats the theme blocks above.       */
+@media print {
+  :root,
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]) {
+    --paper: #ffffff;
+    --raise: #ffffff;
+    --card: #ffffff;
+    --hair: #b9ac96;
+    --hair-soft: #d8cdb8;
+    --ink: #1a1815;
+    --body-c: #33302c;
+    --muted: #55504a;
+    --faint: #77706a;
+    --accent: #0b5745;
+    --positive: #0b5745;
+    --critical: #7d0c32;
+    --caution: #8a5a15;
+    --info: #17497f;
+    --tint: 0.06;
+    color-scheme: light;
+  }
 
-/* ── Badges ── */
-.badge {
-  display: inline-flex; align-items: center; gap: 0.25rem;
-  padding: 0.125rem 0.5rem; border-radius: 9999px;
-  font-size: 0.6875rem; font-weight: 500;
+  /* Navigation, the command palette and toasts are not part of a document. */
+  aside,
+  header[class*="fixed"],
+  [role="dialog"],
+  [aria-label="Colour theme"],
+  .no-print {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  body {
+    background: #ffffff;
+    font-size: 10.5pt;
+  }
+
+  /* A control on paper is just its value. */
+  input,
+  select,
+  textarea {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    -webkit-appearance: none;
+    appearance: none;
+    font-weight: 500;
+  }
+  button {
+    display: none !important;
+  }
+
+  /* Keep a card whole rather than letting a figure land on the next sheet
+     away from the label that says what it is. */
+  .card,
+  section,
+  table {
+    break-inside: avoid;
+  }
+  .card {
+    border: 1px solid var(--hair);
+    padding: 10px 12px;
+  }
+
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 8pt;
+    color: var(--muted);
+  }
+
+  /* Nothing may animate onto a sheet of paper — an element mid-fade prints
+     mid-fade, or blank. */
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+  }
 }
-.badge-green { background: rgba(74, 222, 128, 0.1); color: #4ade80; }
-.badge-red { background: rgba(248, 113, 113, 0.1); color: #f87171; }
-.badge-yellow { background: rgba(251, 191, 36, 0.1); color: #fbbf24; }
-.badge-blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-
-/* ── Dividers ── */
-hr { border: none; border-top: 1px solid rgba(255,255,255,0.04); }
-
-/* ── Section label ── */
-.section-divider {
-  display: none;
-}
-
-/* ── Loading skeleton ── */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.skeleton {
-  background: linear-gradient(90deg, #141414 25%, #1a1a1a 50%, #141414 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 0.5rem;
-}
-
-/* ── Animations ── */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
-
-.stagger > * { opacity: 0; animation: fadeIn 0.25s ease-out forwards; }
-.stagger > *:nth-child(1) { animation-delay: 0.03s; }
-.stagger > *:nth-child(2) { animation-delay: 0.06s; }
-.stagger > *:nth-child(3) { animation-delay: 0.09s; }
-.stagger > *:nth-child(4) { animation-delay: 0.12s; }
-.stagger > *:nth-child(5) { animation-delay: 0.15s; }
-.stagger > *:nth-child(6) { animation-delay: 0.18s; }
-
-main { animation: fadeIn 0.2s ease-out; }

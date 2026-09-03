@@ -28,7 +28,7 @@ export default function GoalsPage() {
     deadline: "",
   });
 
-  if (!profile) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile) return <div className="skeleton h-96" />;
 
   const goals = profile.savings_goals;
   const setGoals = (g: Goal[]) => update({ savings_goals: g });
@@ -59,12 +59,8 @@ export default function GoalsPage() {
             ["Total target", fmt(totalTarget)],
           ].map(([label, value]) => (
             <div key={label} className="card">
-              <p className="text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-muted">
-                {label}
-              </p>
-              <p className="mt-1 font-num text-[1.6rem] font-bold leading-none text-primary">
-                {value}
-              </p>
+              <p className="label">{label}</p>
+              <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">{value}</p>
             </div>
           ))}
         </div>
@@ -84,27 +80,27 @@ export default function GoalsPage() {
                 <div key={`${g.name}-${i}`} className="card">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div>
-                      <p className="text-[0.9rem] font-semibold text-primary">{g.name}</p>
-                      <p className="mt-0.5 text-[0.72rem] text-muted">
-                        {fmt(g.current)} of {fmt(g.target)} · {share.toFixed(0)}%
+                      <p className="t-base font-semibold text-ink">{g.name}</p>
+                      <p className="t-micro mt-0.5 text-muted">
+                        <span className="font-num">{fmt(g.current)}</span> of{" "}
+                        <span className="font-num">{fmt(g.target)}</span> ·{" "}
+                        <span className="font-num">{share.toFixed(0)}%</span>
                       </p>
                     </div>
                     <div className="text-right">
                       {done ? (
-                        <span className="badge badge-green">Funded</span>
+                        <span className="badge badge-positive">Funded</span>
                       ) : m === null ? (
-                        <p className="text-[0.72rem] text-muted">
+                        <p className="t-micro text-muted">
                           {fmt(remaining)} to go · no deadline set
                         </p>
                       ) : m <= 0 ? (
-                        <p className="text-[0.72rem] text-red">
+                        <p className="t-micro text-critical">
                           {fmt(remaining)} short, deadline passed
                         </p>
                       ) : (
-                        <p className="text-[0.72rem] text-dim">
-                          <strong className="font-num text-primary">
-                            {fmt(remaining / m)}
-                          </strong>
+                        <p className="t-micro text-body">
+                          <strong className="font-num text-ink">{fmt(remaining / m)}</strong>
                           /mo for {m} month{m === 1 ? "" : "s"}
                         </p>
                       )}
@@ -114,7 +110,7 @@ export default function GoalsPage() {
                   <div className="progress-track mt-3">
                     <div
                       className={`progress-fill ${
-                        done ? "bg-green" : share >= 50 ? "bg-accent" : "bg-yellow"
+                        done ? "bg-positive" : share >= 50 ? "bg-accent" : "bg-caution"
                       }`}
                       style={{ width: `${share}%` }}
                     />
@@ -159,7 +155,7 @@ export default function GoalsPage() {
                       <button
                         onClick={() => setGoals(goals.filter((_, j) => j !== i))}
                         aria-label={`Remove ${g.name}`}
-                        className="mb-[1px] rounded-lg border border-white/[0.08] px-2.5 py-2 text-[0.75rem] text-muted transition-colors hover:border-red/40 hover:text-red"
+                        className="btn-remove"
                       >
                         ✕
                       </button>
@@ -211,7 +207,7 @@ export default function GoalsPage() {
             <button
               onClick={add}
               disabled={!draft.name.trim() || draft.target <= 0}
-              className="btn-primary w-full disabled:opacity-40"
+              className="btn-primary w-full"
             >
               Add goal
             </button>

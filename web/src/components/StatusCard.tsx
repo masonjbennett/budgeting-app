@@ -1,34 +1,40 @@
 "use client";
 
+/**
+ * A measured figure with the verdict the API returned beside it.
+ *
+ * `tone` names a MEANING, not a colour. Claret and bronze are spent only here
+ * and on the badges — the moment something decorative uses them the alarm
+ * states stop reading as alarms.
+ */
+type Tone = "positive" | "caution" | "critical" | "info";
+
 interface StatusCardProps {
   label: string;
   value: string;
   status: string;
-  color: "green" | "yellow" | "red" | "blue";
+  tone: Tone;
   description?: string;
 }
 
-const colorMap = {
-  green: { text: "text-green", bg: "bg-green/10", dot: "bg-green" },
-  yellow: { text: "text-yellow", bg: "bg-yellow/10", dot: "bg-yellow" },
-  red: { text: "text-red", bg: "bg-red/10", dot: "bg-red" },
-  blue: { text: "text-accent", bg: "bg-accent/10", dot: "bg-accent" },
+const TONE: Record<Tone, { text: string; badge: string }> = {
+  positive: { text: "text-positive", badge: "badge-positive" },
+  caution: { text: "text-caution", badge: "badge-caution" },
+  critical: { text: "text-critical", badge: "badge-critical" },
+  info: { text: "text-info", badge: "badge-info" },
 };
 
-export default function StatusCard({ label, value, status, color, description }: StatusCardProps) {
-  const c = colorMap[color];
+export default function StatusCard({ label, value, status, tone, description }: StatusCardProps) {
+  const c = TONE[tone];
   return (
-    <div className="card animate-fade-in">
-      <p className="text-[0.6875rem] uppercase tracking-[0.06em] text-muted font-medium">{label}</p>
-      <p className={`text-[1.75rem] font-bold mt-1 leading-tight font-num tracking-tight ${c.text}`}>
-        {value}
+    <div className="card flex flex-col">
+      <p className="label">{label}</p>
+      <p className={`font-num t-h3 mt-1.5 leading-none font-medium ${c.text}`}>{value}</p>
+      <p className="mt-2.5">
+        <span className={`badge ${c.badge}`}>{status}</span>
       </p>
-      <div className={`inline-flex items-center gap-1.5 mt-2 px-2 py-0.5 rounded-full ${c.bg}`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-        <span className={`text-[0.6875rem] font-medium ${c.text}`}>{status}</span>
-      </div>
       {description && (
-        <p className="text-[0.6875rem] text-muted mt-2 leading-relaxed">{description}</p>
+        <p className="t-micro mt-2.5 text-muted">{description}</p>
       )}
     </div>
   );

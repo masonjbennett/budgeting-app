@@ -2,15 +2,39 @@
 
 import { useState } from "react";
 
-import { FanChart, PathsChart } from "@/components/Chart";
+import AnimatedNumber from "@/components/AnimatedNumber";
+import { FanChart, HistogramChart, PathsChart } from "@/components/Chart";
 import { Field, NumberInput, Section } from "@/components/Field";
 import Footer from "@/components/Footer";
 import PageHeader from "@/components/PageHeader";
 import StatusCard from "@/components/StatusCard";
 import { api, ApiError, type MonteCarlo } from "@/lib/api";
-import { fmt, pct, sum, useFinance } from "@/context/FinanceContext";
+import { abbr, fmt, pct, sum, useFinance } from "@/context/FinanceContext";
 
 const SWR = 0.04; // Trinity Study safe withdrawal rate — a stated assumption.
+
+/**
+ * A figure large enough that its digits stop being readable.
+ *
+ * This page used to render $36,033,288 beside $148,039,029 at the same size,
+ * and at a glance those are the same number. The short form is the one the eye
+ * takes; the exact one is printed underneath rather than hidden behind a hover,
+ * because a hover is not available on the phone this link gets opened on.
+ */
+function BigFigure({ label, value, note }: { label: string; value: number; note?: string }) {
+  const short = abbr(value);
+  const full = fmt(value);
+  return (
+    <div className="card">
+      <p className="label">{label}</p>
+      <p className="font-num t-h2 mt-1.5 leading-none font-medium text-ink" title={full}>
+        {short}
+      </p>
+      {short !== full && <p className="font-num t-micro mt-1.5 text-muted">{full}</p>}
+      {note && <p className="t-micro mt-1.5 text-muted">{note}</p>}
+    </div>
+  );
+}
 
 export default function FirePage() {
   const { profile, dashboard } = useFinance();
@@ -27,15 +51,14 @@ export default function FirePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!profile || !dashboard) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile || !dashboard) return <div className="skeleton h-96" />;
 
   const th = dashboard.take_home;
 
   // These come from the profile rather than being typed again, so the FIRE page
   // models the person the rest of the app knows about. The abandoned scaffold's
   // version held its own useState and ignored your income and assets entirely.
-  const annualExpenses =
-    (sum(profile.budget.needs) + sum(profile.budget.wants)) * 12;
+  const annualExpenses = (sum(profile.budget.needs) + sum(profile.budget.wants)) * 12;
   const annualSavings = Math.max(0, th.annual_take_home - annualExpenses);
   const portfolio = sum(profile.assets);
   const fireNumber = annualExpenses / SWR;
@@ -73,16 +96,39 @@ export default function FirePage() {
   return (
     <div>
       <PageHeader
-        title="FIRE Calculator"
+        title="FIRE"
         description="How long your portfolio lasts, tested across thousands of randomised market paths rather than one assumed return."
       />
+
+      {/* The one hero on this page: the number the whole model is about. */}
+      <div className="animate-fade-in mb-9 border-b border-hair pb-6">
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+          <div>
+            <p className="label">FIRE number</p>
+            <p className="mt-1.5">
+              <AnimatedNumber value={fireNumber} className="figure-hero" title={fmt(fireNumber)} />
+            </p>
+            <p className="t-small mt-2 text-muted">
+              <span className="font-num text-body">{fmt(annualExpenses)}</span>/yr of
+              budgeted spending at a {(SWR * 100).toFixed(0)}% withdrawal rate
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="label">Portfolio today</p>
+            <p className="font-num t-h3 mt-1 leading-none font-medium text-ink">
+              {fmt(portfolio)}
+            </p>
+            <p className="t-micro mt-1.5 text-muted">
+              {fireNumber > 0 ? `${pct((portfolio / fireNumber) * 100, 1)} of the way` : "—"}
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <div className="card">
-            <h3 className="mb-4 text-[0.85rem] font-semibold text-primary">
-              From your profile
-            </h3>
+            <h3 className="label mb-4">From your profile</h3>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[
                 ["Annual take-home", fmt(th.annual_take_home)],
@@ -91,21 +137,19 @@ export default function FirePage() {
                 ["Portfolio today", fmt(portfolio)],
               ].map(([label, value]) => (
                 <div key={label}>
-                  <p className="text-[0.68rem] text-muted">{label}</p>
-                  <p className="mt-0.5 font-num text-[1.05rem] text-primary">{value}</p>
+                  <p className="t-micro text-muted">{label}</p>
+                  <p className="font-num t-lead mt-0.5 text-ink">{value}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-3 text-[0.68rem] leading-snug text-muted">
+            <p className="t-micro mt-3 text-muted">
               Expenses are your budgeted needs and wants; savings is what your
-              take-home leaves after them. Change them on Budget Builder and Net Worth.
+              take-home leaves after them. Change them on Budget and Net Worth.
             </p>
           </div>
 
           <div className="card">
-            <h3 className="mb-4 text-[0.85rem] font-semibold text-primary">
-              Simulation settings
-            </h3>
+            <h3 className="label mb-4">Simulation settings</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Current age">
                 <NumberInput
@@ -165,7 +209,7 @@ export default function FirePage() {
               </Field>
             </div>
             {!ordered && (
-              <p className="mt-3 text-[0.75rem] text-yellow">
+              <p className="t-small mt-3 text-caution">
                 Retirement age must be after your current age, and the plan must run
                 past retirement.
               </p>
@@ -174,38 +218,30 @@ export default function FirePage() {
         </div>
 
         <div className="stagger space-y-3">
-          <div className="card border-accent/20 bg-gradient-to-br from-accent/10 to-transparent">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-accent">
-              FIRE number
-            </p>
-            <p className="mt-1 font-num text-[1.9rem] font-bold leading-tight text-primary">
-              {fmt(fireNumber)}
-            </p>
-            <p className="mt-1 text-[0.72rem] text-muted">
-              {fmt(annualExpenses)}/yr at a {(SWR * 100).toFixed(0)}% withdrawal rate
-            </p>
-          </div>
           {savingsRate === null ? (
             <StatusCard
               label="Savings rate"
               value="—"
               status="Needs income"
-              color="blue"
-              description="Enter a salary on Income Setup."
+              tone="info"
+              description="Enter a salary on Income."
             />
           ) : (
             <StatusCard
               label="Savings rate (budgeted)"
               value={pct(savingsRate, 0)}
               status={savingsRate >= 50 ? "Excellent" : savingsRate >= 25 ? "Good" : "Low"}
-              color={savingsRate >= 50 ? "green" : savingsRate >= 25 ? "yellow" : "red"}
+              tone={savingsRate >= 50 ? "positive" : savingsRate >= 25 ? "caution" : "critical"}
               description="Take-home less your BUDGETED needs and wants. The dashboard's figure uses what you actually spent this month, so the two differ."
             />
           )}
           <div className="card">
-            <p className="text-[0.68rem] text-muted">Portfolio as % of FIRE number</p>
-            <p className="mt-1 font-num text-[1.4rem] font-bold text-primary">
-              {fireNumber > 0 ? pct((portfolio / fireNumber) * 100, 1) : "—"}
+            <p className="label">Still to accumulate</p>
+            <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
+              {fmt(Math.max(0, fireNumber - portfolio))}
+            </p>
+            <p className="t-micro mt-1.5 text-muted">
+              At {fmt(annualSavings)}/yr saved, before any market return.
             </p>
           </div>
         </div>
@@ -214,15 +250,13 @@ export default function FirePage() {
       <button
         onClick={run}
         disabled={busy || !ordered}
-        className="btn-primary mb-10 flex w-full items-center justify-center gap-2 py-3.5 text-[0.9rem] disabled:opacity-40"
+        className="btn-primary mb-10 w-full py-3"
       >
         {busy ? `Running ${nSims.toLocaleString()} simulations…` : "Run Monte Carlo simulation"}
       </button>
 
       {error && (
-        <div className="card mb-8 border-red/25 bg-red/[0.03] text-[0.82rem] text-red">
-          {error}
-        </div>
+        <div className="card mark-critical t-small mb-8 text-critical">{error}</div>
       )}
 
       {result && (
@@ -239,42 +273,22 @@ export default function FirePage() {
                       ? "Moderate"
                       : "At risk"
                 }
-                color={
+                tone={
                   result.success_rate >= 85
-                    ? "green"
+                    ? "positive"
                     : result.success_rate >= 70
-                      ? "yellow"
-                      : "red"
+                      ? "caution"
+                      : "critical"
                 }
                 description={`Money left at age ${endAge} in ${result.success_count.toLocaleString()} of ${result.n_sims.toLocaleString()} paths.`}
               />
-              <div className="card">
-                <p className="text-[0.6875rem] uppercase tracking-[0.06em] text-muted">
-                  Median ending
-                </p>
-                <p className="mt-1 font-num text-[1.6rem] font-bold text-primary">
-                  {fmt(result.median_ending)}
-                </p>
-              </div>
-              <div className="card">
-                <p className="text-[0.6875rem] uppercase tracking-[0.06em] text-muted">
-                  Worst 10%
-                </p>
-                <p className="mt-1 font-num text-[1.6rem] font-bold text-primary">
-                  {fmt(Math.max(0, result.p10_ending))}
-                </p>
-                <p className="mt-1 text-[0.65rem] text-muted">
-                  9 in 10 paths end better than this
-                </p>
-              </div>
-              <div className="card">
-                <p className="text-[0.6875rem] uppercase tracking-[0.06em] text-muted">
-                  Best 10%
-                </p>
-                <p className="mt-1 font-num text-[1.6rem] font-bold text-primary">
-                  {fmt(result.p90_ending)}
-                </p>
-              </div>
+              <BigFigure label="Median ending" value={result.median_ending} />
+              <BigFigure
+                label="Worst 10%"
+                value={Math.max(0, result.p10_ending)}
+                note="9 in 10 paths end better than this"
+              />
+              <BigFigure label="Best 10%" value={result.p90_ending} />
             </div>
           </Section>
 
@@ -317,6 +331,26 @@ export default function FirePage() {
             />
           </div>
 
+          {result.ending_histogram.length > 0 && (
+            <div className="mb-8">
+              <HistogramChart
+                title="Where the paths end up"
+                bins={result.ending_histogram}
+                height={280}
+                formatBin={(v) => abbr(v)}
+                note={
+                  <>
+                    The two charts above show the RANGE; this shows the shape. Bars in
+                    claret are paths that ran out of money before age {endAge} —{" "}
+                    {(result.n_sims - result.success_count).toLocaleString()} of{" "}
+                    {result.n_sims.toLocaleString()}. A run can have a comfortable median
+                    and a long tail of failures, and a band chart hides that.
+                  </>
+                }
+              />
+            </div>
+          )}
+
           {ss && (
             <Section title="Social Security estimate">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -330,24 +364,24 @@ export default function FirePage() {
                   ],
                 ].map(([label, value, note]) => (
                   <div key={label} className="card">
-                    <p className="text-[0.68rem] text-muted">{label}</p>
-                    <p className="mt-1 font-num text-[1.4rem] font-bold text-primary">
+                    <p className="label">{label}</p>
+                    <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
                       {value}
                     </p>
-                    {note && <p className="mt-1 text-[0.65rem] text-muted">{note}</p>}
+                    {note && <p className="t-micro mt-1.5 text-muted">{note}</p>}
                   </div>
                 ))}
               </div>
-              <p className="mt-3 text-[0.72rem] leading-relaxed text-muted">
+              <p className="t-micro mt-3 leading-relaxed text-muted">
                 A simplified estimate from the 2026 bend points on your current salary.
                 Real benefits depend on your full 35-year earnings record.
               </p>
             </Section>
           )}
 
-          <div className="card bg-white/[0.02]">
-            <h3 className="mb-2 text-[0.82rem] font-semibold text-primary">Method</h3>
-            <p className="text-[0.78rem] leading-relaxed text-muted">
+          <div className="panel p-5">
+            <h3 className="label mb-2">Method</h3>
+            <p className="t-small leading-relaxed text-body">
               {result.n_sims.toLocaleString()} paths with correlated stock and bond
               returns drawn each year (Cholesky factorisation of a 0.05 correlation).
               Stocks 10% mean / 18% standard deviation, bonds 5% / 6%, at{" "}

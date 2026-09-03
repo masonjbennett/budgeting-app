@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import BillsCalendar from "@/components/BillsCalendar";
 import { BarsChart } from "@/components/Chart";
 import { Empty, Field, NumberInput, Section } from "@/components/Field";
 import Footer from "@/components/Footer";
@@ -44,7 +45,7 @@ export default function ExpensesPage() {
     ];
   }, [profile]);
 
-  if (!profile) return <div className="skeleton h-96 rounded-xl" />;
+  if (!profile) return <div className="skeleton h-96" />;
 
   const expenses = [...profile.expenses].sort((a, b) => b.date.localeCompare(a.date));
   const months = Array.from(new Set(expenses.map((e) => e.date.slice(0, 7)))).sort().reverse();
@@ -90,7 +91,7 @@ export default function ExpensesPage() {
   return (
     <div>
       <PageHeader
-        title="Expense Tracker"
+        title="Expenses"
         description="Log what you actually spend. The dashboard's spending panel and budget adherence both read from here."
       />
 
@@ -137,17 +138,21 @@ export default function ExpensesPage() {
             <button
               onClick={add}
               disabled={draft.amount <= 0 || categories.length === 0}
-              className="btn-primary w-full disabled:opacity-40"
+              className="btn-primary w-full"
             >
               Add
             </button>
           </div>
         </div>
         {categories.length === 0 && (
-          <p className="mt-2 text-[0.72rem] text-yellow">
+          <p className="t-micro mt-2 text-caution">
             Add some budget categories first — an expense needs somewhere to go.
           </p>
         )}
+      </Section>
+
+      <Section title="Recurring bills">
+        <BillsCalendar templates={profile.recurring_templates ?? []} />
       </Section>
 
       {monthSeries.length > 1 && (
@@ -156,8 +161,8 @@ export default function ExpensesPage() {
             data={monthSeries}
             xKey="name"
             valueKey="value"
-            colors={monthSeries.map(() => "#5b8def")}
-            height={240}
+            tones={monthSeries.map(() => "accent" as const)}
+            height={230}
           />
         </Section>
       )}
@@ -169,7 +174,7 @@ export default function ExpensesPage() {
             <select
               value={filterMonth}
               onChange={(e) => setFilterMonth(e.target.value)}
-              className="w-auto py-1 text-[0.72rem]"
+              className="t-micro w-auto py-1"
             >
               <option value="">All months</option>
               {months.map((m) => (
@@ -181,7 +186,7 @@ export default function ExpensesPage() {
             <select
               value={filterCat}
               onChange={(e) => setFilterCat(e.target.value)}
-              className="w-auto py-1 text-[0.72rem]"
+              className="t-micro w-auto py-1"
             >
               <option value="">All categories</option>
               {Array.from(new Set(expenses.map((e) => e.category))).map((c) => (
@@ -196,7 +201,7 @@ export default function ExpensesPage() {
         {visible.length === 0 ? (
           <Empty>Nothing recorded for this filter.</Empty>
         ) : (
-          <div className="card overflow-x-auto p-0">
+          <div className="card card-flush overflow-x-auto">
             <table>
               <thead>
                 <tr>
@@ -212,24 +217,24 @@ export default function ExpensesPage() {
                   const b = budgetFor(e.category);
                   return (
                     <tr key={e.id}>
-                      <td className="whitespace-nowrap font-num">{e.date}</td>
-                      <td className="text-dim">
+                      <td className="font-num whitespace-nowrap">{e.date}</td>
+                      <td className="text-ink">
                         {e.category}
                         {b > 0 && (
-                          <span className="ml-1.5 text-[0.68rem] text-muted">
+                          <span className="t-micro ml-1.5 text-muted">
                             ({fmt(b)}/mo budgeted)
                           </span>
                         )}
                       </td>
                       <td className="text-muted">{e.note || "—"}</td>
-                      <td className="whitespace-nowrap text-right font-num text-primary">
+                      <td className="font-num text-right whitespace-nowrap text-ink">
                         {fmt(e.amount, 2)}
                       </td>
                       <td className="w-8 text-right">
                         <button
                           onClick={() => remove(e.id)}
                           aria-label="Delete expense"
-                          className="text-muted transition-colors hover:text-red"
+                          className="text-muted transition-colors hover:text-critical"
                         >
                           ✕
                         </button>

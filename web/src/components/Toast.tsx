@@ -41,17 +41,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const iconMap = {
     success: (
-      <svg className="w-4 h-4 text-green shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <svg className="h-4 w-4 shrink-0 text-positive" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path d="M5 13l4 4L19 7" />
       </svg>
     ),
     error: (
-      <svg className="w-4 h-4 text-red shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <svg className="h-4 w-4 shrink-0 text-critical" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path d="M6 18L18 6M6 6l12 12" />
       </svg>
     ),
     info: (
-      <svg className="w-4 h-4 text-accent shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <svg className="h-4 w-4 shrink-0 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     ),
@@ -60,15 +60,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      {/* Toast container */}
-      <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2">
+      <div className="fixed right-5 bottom-5 z-[100] flex flex-col gap-2">
         {toasts.map(t => (
           <div
             key={t.id}
-            className={`flex items-center gap-2.5 px-4 py-3 rounded-lg bg-[#171717] border border-[rgba(255,255,255,0.06)] shadow-xl shadow-black/30 ${t.exiting ? "toast-exit" : "toast-enter"}`}
+            className={`t-small flex items-center gap-2.5 rounded-sm border border-hair bg-card px-3.5 py-2.5 text-ink ${
+              t.exiting ? "toast-exit" : "toast-enter"
+            }`}
           >
             {iconMap[t.type]}
-            <span className="text-[0.82rem] text-slate-200">{t.message}</span>
+            <span>{t.message}</span>
           </div>
         ))}
       </div>

@@ -26,6 +26,10 @@ from pydantic import BaseModel, Field
 from app_data import _generate_demo_data, get_default_state
 from calculations import (
     COL_INDEX,
+    cash_flow,
+    col_compare,
+    compare_scenarios,
+    cost_of_waiting,
     FEDERAL_BRACKETS_2026,
     FILING_STATUSES,
     HSA_INDIVIDUAL_LIMIT,
@@ -36,12 +40,15 @@ from calculations import (
     calc_social_security,
     compute_take_home,
     emergency_fund_months,
+    histogram,
     liquid_assets,
     monthly_debt_service,
-    project_investment,
+    project_investment_with_match,
+    raise_impact,
     roth_vs_traditional,
     run_monte_carlo,
     simulate_payoff,
+    top_bracket_limitation,
 )
 
 app = FastAPI(title="Budget Tracker API", version="5.0")
@@ -98,12 +105,51 @@ class DashboardRequest(BaseModel):
     assets: Dict[str, float] = Field(default_factory=dict)
 
 
+class CashFlowRequest(BaseModel):
+    """Everything one month's flow needs: the pay stub and the plan."""
+    income: Income
+    itemized: Dict[str, float] = Field(default_factory=dict)
+    budget: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+
+
 class InvestmentRequest(BaseModel):
     start: float = 0
     monthly: float = 0
     rate: float = 7.0
     years: int = 30
     contribution_growth: float = 0
+    # A year's delay is the default question; the page lets it be changed.
+    delay_years: float = 1
+    # Optional: with a salary the employer's match is projected too. Left at
+    # zero this is the plain projection, which is what it always was.
+    salary: float = 0
+    contribution_pct: float = 0
+    match_pct: float = 0
+    match_limit: float = 0
+
+
+class Scenario(BaseModel):
+    name: str = "Scenario"
+    income: Income
+    itemized: Dict[str, float] = Field(default_factory=dict)
+    city: str = "National Average"
+
+
+class CompareRequest(BaseModel):
+    """Several situations, the FIRST of which is the baseline."""
+    scenarios: List[Scenario] = Field(default_factory=list)
+
+
+class RaiseRequest(BaseModel):
+    income: Income
+    itemized: Dict[str, float] = Field(default_factory=dict)
+    increase: float = 0
+
+
+class ColRequest(BaseModel):
+    salary: float = 0
+    from_city: str = "National Average"
+    to_city: str = "National Average"
 
 
 class MonteCarloRequest(BaseModel):
@@ -209,7 +255,25 @@ def api_dashboard(req: DashboardRequest) -> Dict[str, Any]:
         "emergency_fund_months": ef_months,
         "emergency_fund_counted": ef_counted,
         "liquid_assets": liquid_total,
+        # Not a calculation the app performs — a disclosure that it does NOT.
+        # In the top bracket, itemized deductions are worth 2/37 less than the
+        # marginal rate implies, and this engine does not model that. Saying so
+        # is the only honest option; the alternative is being quietly wrong for
+        # the people it affects.
+        "top_bracket": top_bracket_limitation(th["taxable"], th["filing"]),
     }
+
+
+@app.post("/api/cash-flow")
+def api_cash_flow(req: CashFlowRequest) -> Dict[str, Any]:
+    """The Sankey's nodes and links.
+
+    A route rather than a component because the flow is DERIVED — annualised
+    tax figures reduced to the month the budget is kept in, bucket totals, and
+    the remainder that is left unallocated. The client draws the geometry and
+    works out nothing.
+    """
+    return cash_flow(req.income.model_dump(), req.itemized, req.budget)
 
 
 @app.post("/api/debt-payoff")
@@ -237,8 +301,10 @@ def api_investment(req: InvestmentRequest) -> Dict[str, Any]:
     # series are only told apart by position. Naming them is the whole job of
     # this route; a client that got the tuple would be one index slip away from
     # plotting contributions as the portfolio value.
-    values, contributions = project_investment(
-        req.start, req.monthly, req.rate, req.years, req.contribution_growth)
+    values, contributions, match = project_investment_with_match(
+        req.start, req.monthly, req.rate, req.years, req.salary,
+        req.contribution_pct, req.match_pct, req.match_limit,
+        req.contribution_growth)
     return {
         "values": values,
         "contributions": contributions,
@@ -246,15 +312,48 @@ def api_investment(req: InvestmentRequest) -> Dict[str, Any]:
         "final_value": values[-1],
         "total_contributed": contributions[-1],
         "growth": values[-1] - contributions[-1],
+        "employer_match": match,
+        # None where a delay cannot be modelled (no horizon, or a delay as long
+        # as the horizon) — never a zero, which would read as "costs nothing".
+        "cost_of_waiting": cost_of_waiting(
+            req.start, req.monthly, req.rate, req.years, req.delay_years),
     }
+
+
+@app.post("/api/raise")
+def api_raise(req: RaiseRequest) -> Dict[str, Any]:
+    """What a raise is worth after tax, pre-tax deductions and marginal FICA."""
+    return raise_impact(req.income.model_dump(), req.increase, req.itemized)
+
+
+@app.post("/api/compare")
+def api_compare(req: CompareRequest) -> Dict[str, Any]:
+    """The same person in several situations, priced against each other."""
+    return compare_scenarios([s.model_dump() for s in req.scenarios])
+
+
+@app.post("/api/cost-of-living")
+def api_cost_of_living(req: ColRequest) -> Dict[str, Any]:
+    """Buying power between two metros. Null where either is unknown."""
+    return {"comparison": col_compare(req.salary, req.from_city, req.to_city)}
 
 
 @app.post("/api/monte-carlo")
 def api_monte_carlo(req: MonteCarloRequest) -> Dict[str, Any]:
-    return run_monte_carlo(
+    out = run_monte_carlo(
         req.current_age, req.retire_age, req.end_age, req.portfolio,
         req.annual_savings, req.annual_expenses, req.stock_pct,
         req.inflation, req.n_sims, req.seed)
+    # Binned here rather than inside run_monte_carlo, so that function's
+    # contract — which test_calc compares against directly — does not move.
+    # The fan chart shows the RANGE; the shape is a different question, and a
+    # comfortable median with a long tail of failures looks fine on a band.
+    # `isolate=0` gives the paths that RAN OUT a bar of their own. Without it
+    # they share a bucket with the merely-poor survivors and the chart cannot
+    # honestly colour it either way — measured, the claret was all of the chart
+    # or none of it and never the mixture it exists for.
+    out["ending_histogram"] = histogram(out["ending"], isolate=0)
+    return out
 
 
 @app.post("/api/social-security")

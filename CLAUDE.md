@@ -72,10 +72,14 @@ The file follows this order:
 ## Critical Rules
 - **Never add duplicate kwargs** when calling `fig.update_layout(**default_layout(), ...)`. The `default_layout()` already sets `legend`, `margin`, `hovermode`, `xaxis`, `yaxis`. To override, modify the dict before spreading: `layout = default_layout(); layout["margin"] = ...; fig.update_layout(**layout, ...)`
 - **Run all FOUR suites after every change** — `test_calc.py` (81),
-  `test_cloud.py` (42), `test_stress.py` (168) and `web/test_api.py` (49) = 340,
-  plus `web/test_api_mutations.py`, which reintroduces nine shipped bugs and
+  `test_cloud.py` (42), `test_stress.py` (168) and `web/test_api.py` (86) = 377,
+  plus `web/test_api_mutations.py`, which reintroduces ELEVEN shipped bugs and
   requires the API suite to fail on each. All four import the shipping code;
   none redefines its subject.
+  **They are the floor, not the ceiling.** Every defect the September re-skin
+  found was invisible to a green suite and visible on a rendered page — dead
+  CSS rules, a chart with no paths, a gradient id containing a space. Anything
+  touching `web/src` also needs a browser; see the block in `web/README.md`.
 - **After adding a NEW name to `calculations.py`, REBOOT the deployed app.**
   Streamlit re-runs the script in a long-lived process, so `import calculations`
   can return the copy already in `sys.modules` — the one from before that name
@@ -285,3 +289,41 @@ Three things measured during the build that are worth not re-deriving:
 **NOT YET DEPLOYED.** Three Vercel settings and two first-deploy checks are in
 `web/README.md`. The Supabase project is the LIVE one (`shxjjqcuuhqlvgpbujby`) —
 reuse it, do not create another.
+
+## The re-skin and the five features after it (September 2026)
+
+`web/` is now paper and ink, mobile-usable, and carries the screens the review
+in `project-notes` asked for. Read `web/README.md` rules 5 and 6 before
+touching any styling — both exist because the opposite was measurably shipping.
+
+- **Colour lives in globals.css and `npm run check:tokens` enforces it**,
+  including Tailwind's stock palette (`text-slate-400` is a literal with a
+  friendlier spelling) and including tokens TypeScript can name but CSS does
+  not define, which paint *nothing*. 116 literals to zero.
+- **globals.css is inside cascade layers.** Unlayered CSS beats every Tailwind
+  utility: `.card p-0` really was rendering 18px of padding and every
+  right-aligned `th` really was rendering left, on master, before this.
+- **The hero figure is JetBrains Mono, measured not assumed.** Instrument Serif
+  has no tabular figures — 65.3px of width swing across a count-up, which
+  `tabular-nums` cannot fix because the feature is absent from the font.
+- **The Sankey (`/api/cash-flow`) balances by construction**, because
+  `compute_take_home` defines take-home as the remainder. A stage that did not
+  sum would be undetectable by eye, so `balanced` comes back with the data and
+  the panel refuses to draw a false one.
+- **Scenario comparison (`/api/compare`)** restates take-home in
+  national-average dollars — the row the screen exists for, since take-home
+  alone ranks the dearest city first. Scenarios live in the profile, so they
+  save and export through machinery that already exists.
+- **Five capabilities that existed in Python and rendered nowhere** are now on
+  pages: employer match (the projection ignored the inputs it rendered), the
+  OBBBA 2/37 disclosure, marginal-FICA raise modelling, cost of living, and the
+  bills calendar.
+
+Counts: **377 assertions** across the four suites (81 + 42 + 168 + 86), 11 API
+mutations each required to fail the suite, plus browser checks that are NOT in
+the repo — 158 over every route in both themes, 36 interaction, 35 print. The
+Python is the floor here, not the ceiling: every defect found during this work
+was invisible to a green suite and visible on a rendered page.
+
+**Still not done from the review:** CSV transaction import, savings-rate
+against years-to-FIRE, and a year-to-date summary.

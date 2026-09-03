@@ -5,11 +5,12 @@
   "scripts": {
     "predev": "node scripts/sync-calculations.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/sync-calculations.mjs",
+    "prebuild": "node scripts/sync-calculations.mjs && node scripts/check-tokens.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sync": "node scripts/sync-calculations.mjs"
+    "sync": "node scripts/sync-calculations.mjs",
+    "check:tokens": "node scripts/check-tokens.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

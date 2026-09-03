@@ -286,6 +286,234 @@ salt = client.post("/api/salt-cap", json={"magi": 600_000, "filing": "Single"}).
 check("salt cap matches the engine",
       abs(salt["effective_cap"] - calc.calc_salt_cap(600_000, "Single")) < 1e-9)
 
+# ── 6b. Cash flow: the Sankey's numbers ──────────────────────────────
+print("\n--- cash flow ---")
+BUDGET = {"needs": NEEDS, "wants": {"Dining Out": 280, "Shopping": 120},
+          "savings": {"Emergency Fund": 400, "Brokerage": 550}}
+cf = client.post("/api/cash-flow", json={
+    "income": INCOME, "itemized": {}, "budget": BUDGET}).json()
+
+check("cash flow matches the engine", cf == calc.cash_flow(INCOME, {}, BUDGET))
+
+# THE PROPERTY THE DIAGRAM EXISTS FOR. A Sankey whose stages do not sum is a
+# picture of a flow rather than a flow, and no reader can tell the difference
+# by looking — so the balance is asserted here rather than assumed, and the
+# client refuses to draw one whose `balanced` is false.
+_stage_one = sum(n["value"] for n in cf["nodes"] if n["column"] == 1)
+check("stage one sums to gross, to the cent",
+      abs(_stage_one - cf["gross"]) < 0.01 and cf["balanced"],
+      f"{_stage_one} vs {cf['gross']}")
+check("every link's value equals its target node's value",
+      all(abs(l["value"]
+              - next(n["value"] for n in cf["nodes"] if n["id"] == l["target"])) < 1e-9
+          for l in cf["links"]))
+check("every node but the root has exactly one parent",
+      sorted(l["target"] for l in cf["links"])
+      == sorted(n["id"] for n in cf["nodes"] if n["id"] != "gross"))
+_out = {}
+for _l in cf["links"]:
+    _out[_l["source"]] = _out.get(_l["source"], 0) + _l["value"]
+check("no node sends out more than it took in",
+      all(v <= next(n["value"] for n in cf["nodes"] if n["id"] == src) + 0.01
+          for src, v in _out.items()),
+      "a parent's children exceed it, which cannot be drawn as a flow")
+check("the figures are MONTHLY, not annual",
+      abs(cf["gross"] * 12
+          - calc.compute_take_home(INCOME, {})["annual_gross"]) < 1e-6)
+
+# A zero figure gets NO node and is named instead: a zero-height ribbon with a
+# label beside it reads as a rendering fault rather than as "there is none".
+_TX = dict(INCOME, state="Texas")
+cf_tx = client.post("/api/cash-flow", json={
+    "income": _TX, "itemized": {}, "budget": BUDGET}).json()
+check("a state with no income tax gets no State tax node, and says so",
+      not any(n["id"] == "state" for n in cf_tx["nodes"])
+      and "State tax" in cf_tx["omitted"],
+      "a zero node was drawn, or an absent one went unexplained")
+
+# Over-allocation is not drawable as a flow — the outflow exceeds the inflow —
+# so it comes back as a number the page states in words.
+cf_over = client.post("/api/cash-flow", json={
+    "income": INCOME, "itemized": {},
+    "budget": {"needs": {"Rent": 99_000}, "wants": {}, "savings": {}}}).json()
+check("over-allocating reports a deficit and no unallocated node",
+      cf_over["deficit"] > 0 and cf_over["unallocated"] == 0
+      and not any(n["id"] == "unallocated" for n in cf_over["nodes"]))
+
+# THE TONE NAMES CROSS AN HTTP BOUNDARY, WHERE TYPESCRIPT CANNOT SEE THEM.
+# The engine emits "s1", "critical" and so on as plain strings and the client
+# turns each into var(--x). A name the client does not know resolves to nothing
+# and paints NOTHING — absent rather than wrong, so there is no literal for
+# check-tokens.mjs to find. This reads the map out of the shipping tokens.ts.
+import re as _re                                                # noqa: E402
+
+_tokens_src = open(os.path.join("src", "lib", "tokens.ts"), encoding="utf-8").read()
+_var_map = _re.search(r"const VAR: Record<Token, string> = \{(.*?)\n\};",
+                      _tokens_src, _re.S)
+_known = set(_re.findall(r"^\s*(\w+):", _var_map.group(1), _re.M)) if _var_map else set()
+check("the token map in tokens.ts could be read at all",
+      len(_known) > 10,
+      "the pattern went stale, so the check below would prove nothing")
+_emitted = {n["tone"] for n in cf["nodes"]} | {n["tone"] for n in cf_tx["nodes"]}
+check("every tone the engine emits is a token the client knows",
+      _emitted <= _known, f"unknown: {sorted(_emitted - _known)}")
+
+
+# ── 6c. The capabilities the engine had and no page asked for ────────
+print("\n--- raise, employer match, cost of living, top bracket ---")
+
+rz = client.post("/api/raise", json={
+    "income": INCOME, "itemized": {}, "increase": 10_000}).json()
+check("a raise matches the engine", rz == calc.raise_impact(INCOME, 10_000, {}))
+check("the raise splits tax from the pre-tax that rose with it",
+      abs(rz["gross_increase"]
+          - (rz["tax_increase"] + rz["pretax_increase"] + rz["take_home_increase"]))
+      < 0.01,
+      "the parts of the raise do not add back up to it")
+
+# THE REASON marginal_fica_rate EXISTS. Above the Social Security wage base the
+# 6.2% has already stopped, so the marginal rate on a raise collapses — and the
+# AVERAGE rate, which is what a naive implementation reaches for, overstates the
+# tax on that raise several times over.
+_low = client.post("/api/raise", json={
+    "income": dict(INCOME, gross_salary=60_000, bonus_type="None"),
+    "itemized": {}, "increase": 10_000}).json()
+_high = client.post("/api/raise", json={
+    "income": dict(INCOME, gross_salary=300_000, bonus_type="None"),
+    "itemized": {}, "increase": 10_000}).json()
+check("marginal FICA collapses above the wage base",
+      _low["marginal_fica_pct"] > 7.0 and _high["marginal_fica_pct"] < 3.0,
+      f"{_low['marginal_fica_pct']:.2f}% at 60k vs {_high['marginal_fica_pct']:.2f}% at 300k")
+check("a raise of nothing moves nothing",
+      client.post("/api/raise", json={
+          "income": INCOME, "itemized": {}, "increase": 0,
+      }).json()["take_home_increase"] == 0)
+
+inv_match = client.post("/api/investment", json={
+    "start": 5_000, "monthly": 500, "rate": 7.0, "years": 30,
+    "salary": 100_000, "contribution_pct": 3, "match_pct": 50,
+    "match_limit": 6}).json()
+check("employer match matches the engine",
+      inv_match["employer_match"] == calc.employer_match(100_000, 3, 50, 6))
+check("the match is actually INVESTED, not just reported",
+      inv_match["final_value"]
+      > client.post("/api/investment", json={
+          "start": 5_000, "monthly": 500, "rate": 7.0, "years": 30}).json()["final_value"],
+      "the projection ignored the match, which is the bug this closes")
+check("contributing under the limit is flagged as money left behind",
+      inv_match["employer_match"]["leaving_money"]
+      and inv_match["employer_match"]["annual_missed"] > 0)
+check("contributing up to the limit forfeits nothing",
+      not client.post("/api/investment", json={
+          "start": 0, "monthly": 0, "rate": 7.0, "years": 1, "salary": 100_000,
+          "contribution_pct": 6, "match_pct": 50, "match_limit": 6,
+      }).json()["employer_match"]["leaving_money"])
+check("with no salary the projection is unchanged",
+      client.post("/api/investment", json={
+          "start": 5_000, "monthly": 500, "rate": 7.0, "years": 30,
+      }).json()["values"] == calc.project_investment(5_000, 500, 7.0, 30, 0)[0])
+
+col = client.post("/api/cost-of-living", json={
+    "salary": 100_000, "from_city": "National Average",
+    "to_city": "New York, NY"}).json()["comparison"]
+check("cost of living matches the engine",
+      col == calc.col_compare(100_000, "National Average", "New York, NY"))
+check("a dearer city needs a bigger salary for the same life",
+      col["equivalent_salary"] > 100_000 and col["pct_difference"] > 0)
+# An unknown city returns null rather than quietly falling back to the national
+# average, which would be a wrong answer wearing a right one's clothes.
+check("an unknown city returns null, not a default",
+      client.post("/api/cost-of-living", json={
+          "salary": 100_000, "from_city": "Atlantis", "to_city": "New York, NY",
+      }).json()["comparison"] is None)
+
+_top = client.post("/api/dashboard", json={
+    "income": dict(INCOME, gross_salary=900_000, bonus_type="None"),
+    "itemized": {}, "debts": [], "budget_needs": NEEDS, "assets": ASSETS,
+}).json()["top_bracket"]
+check("the top-bracket limitation is disclosed where it applies",
+      _top["applies"] and _top["threshold"] == calc.TOP_BRACKET_START["Single"])
+check("and is not claimed where it does not",
+      not client.post("/api/dashboard", json={
+          "income": INCOME, "itemized": {}, "debts": DEBTS,
+          "budget_needs": NEEDS, "assets": ASSETS,
+      }).json()["top_bracket"]["applies"])
+
+
+# ── 6d. Scenario comparison ──────────────────────────────────────────
+print("\n--- scenarios ---")
+_NYC = {"name": "NYC now", "income": dict(INCOME, gross_salary=95_000,
+                                          state="New York", bonus_type="None"),
+        "itemized": {}, "city": "New York, NY"}
+_ATX = {"name": "Austin offer", "income": dict(INCOME, gross_salary=110_000,
+                                               state="Texas", bonus_type="None"),
+        "itemized": {}, "city": "Austin, TX"}
+cmp_ = client.post("/api/compare", json={"scenarios": [_NYC, _ATX]}).json()
+
+check("comparison matches the engine",
+      cmp_ == calc.compare_scenarios([_NYC, _ATX]))
+check("the first scenario is the baseline and rows keep their order",
+      cmp_["baseline"] == "NYC now"
+      and [r["name"] for r in cmp_["rows"]] == ["NYC now", "Austin offer"])
+check("each row is the engine's own take-home, recalculated per scenario",
+      all(abs(r["annual_take_home"]
+              - calc.compute_take_home(s["income"], {})["annual_take_home"]) < 1e-9
+          for r, s in zip(cmp_["rows"], [_NYC, _ATX])),
+      "a column was scaled from the baseline instead of computed")
+
+# THE POINT OF THE SCREEN. Take-home alone ranks the dearest city first, which
+# is the wrong answer to the question people are actually asking; deflating by
+# the cost-of-living index is what makes two cities comparable at all.
+_nyc, _atx = cmp_["rows"]
+check("no-income-tax Texas beats New York on take-home",
+      _atx["annual_take_home"] > _nyc["annual_take_home"])
+check("and beats it by MORE once cost of living is taken out",
+      _atx["real_take_home"] - _nyc["real_take_home"]
+      > _atx["annual_take_home"] - _nyc["annual_take_home"],
+      "the adjustment did not change the size of the gap")
+check("real take-home is the take-home deflated by the local index",
+      abs(_nyc["real_take_home"]
+          - _nyc["annual_take_home"] * 100.0 / calc.COL_INDEX["New York, NY"]) < 1e-9)
+check("the baseline compares against itself as zero",
+      _nyc["vs_baseline"] == 0 and _nyc["vs_baseline_real"] == 0)
+
+# A set where one row cannot be adjusted has no like-for-like ranking, and
+# naming a winner anyway would be comparing two different measures.
+_odd = client.post("/api/compare", json={
+    "scenarios": [_NYC, dict(_ATX, city="Atlantis")]}).json()
+check("an unindexed city yields no ranking rather than a wrong one",
+      _odd["best"] is None and _odd["all_comparable"] is False
+      and _odd["rows"][1]["real_take_home"] is None)
+check("its tax figures are still exact",
+      _odd["rows"][1]["annual_take_home"] == cmp_["rows"][1]["annual_take_home"])
+
+check("one scenario alone is not a comparison",
+      client.post("/api/compare", json={"scenarios": [_NYC]}).json()["best"] is None)
+
+# The page's verdict sentence is driven by this, and it has to be, because the
+# first version asserted "take-home alone would rank these differently" on a
+# pair where the same city won both ways. Here Austin wins on BOTH measures...
+check("where the same scenario wins both ways, the answer is not 'changed'",
+      cmp_["best"] == "Austin offer" and cmp_["best_take_home"] == "Austin offer"
+      and cmp_["col_changes_answer"] is False)
+# ...and here it does not: a bigger salary in a much dearer city pays more
+# take-home and is worth less once the cost of living is taken out.
+_flip = client.post("/api/compare", json={"scenarios": [
+    {"name": "Cheap", "income": dict(INCOME, gross_salary=100_000, state="Texas",
+                                     bonus_type="None"),
+     "itemized": {}, "city": "Austin, TX"},
+    {"name": "Dear", "income": dict(INCOME, gross_salary=125_000, state="New York",
+                                    bonus_type="None"),
+     "itemized": {}, "city": "New York, NY"},
+]}).json()
+check("where cost of living flips the winner, the answer says so",
+      _flip["best_take_home"] == "Dear" and _flip["best"] == "Cheap"
+      and _flip["col_changes_answer"] is True,
+      f"best={_flip['best']} raw={_flip['best_take_home']}")
+check("no scenarios is empty, not an error",
+      client.post("/api/compare", json={"scenarios": []}).json()["rows"] == [])
+
+
 # ── 7. Nothing here touches user data ────────────────────────────────
 print("\n--- the API stays a pure calculator ---")
 # Read the CODE, not the prose about the code. The first version of this check
