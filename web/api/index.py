@@ -18,13 +18,32 @@ CALCULATOR over numbers the caller supplies. Nothing here may read or write
 user_data. If something ever needs to, it needs authentication first.
 """
 
+import os
+import sys
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from app_data import _generate_demo_data, get_default_state
-from calculations import (
+# THIS DIRECTORY HAS TO BE ON sys.path AND ONLY PRODUCTION SAYS SO.
+#
+# `calculations` and `app_data` are siblings of this file, written here by
+# scripts/sync-calculations.mjs. Every local way of running the API already put
+# this directory on the path without being asked: uvicorn is started with
+# `--app-dir api`, and test_api.py inserts it itself. Vercel is the one context
+# that does neither — it imports `api/index.py` with /var/task as the root, so
+# `import app_data` has nowhere to resolve from.
+#
+# The first deploy therefore built a function that crashed on import, every
+# /api route 404d or 500d, and NOTHING in the build log was red: the sync had
+# printed its verified byte-for-byte line, the bundle contained both files, and
+# the failure only existed at invocation time. It took the runtime log to see
+# it. Four local suites, 106 API assertions and a green production build all
+# passed over it, because all of them had already made the path right.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from app_data import _generate_demo_data, get_default_state  # noqa: E402
+from calculations import (  # noqa: E402
     COL_INDEX,
     MONTHS_PER_YEAR,
     SWR_DEFAULT,

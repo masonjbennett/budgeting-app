@@ -12,3 +12,4 @@ next-env.d.ts
 # intended failure — a stale copy that still answers is the one that hurt before.
 api/calculations.py
 api/app_data.py
+.env*

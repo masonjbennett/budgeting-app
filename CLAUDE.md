@@ -444,12 +444,33 @@ of the OTHER front end — run it before pushing anything that touches
 `calculations.py`, because Streamlit Cloud auto-deploys from master and that is
 the live recruiter link.
 
-Counts: **519 Python assertions** (203 + 42 + 168 + 106) and **33 mutations**
+Counts: **521 Python assertions** (203 + 42 + 168 + 108) and **33 mutations**
 across the two harnesses; **225 browser assertions** in `web/browser-checks/`
 — 130 sweep, 63 interact, 21 regression, 11 big-import — with each of the five
 sweep checks proved able to fail against an injected fault before being
 trusted. **Of the nine failures those turned up on their first runs, seven were
 the CHECK's fault**, which is written up in that directory's README.
 
+**The first deploy found what no suite could: `api/index.py` crashed on import
+in production and every /api route 404d or 500d, with a completely green build
+log.** `calculations` and `app_data` are siblings written beside it by the sync
+script, and every local way of running the API had already put that directory
+on `sys.path` without being asked — uvicorn via `--app-dir api`, test_api.py by
+inserting it itself. Vercel does neither: it loads the entrypoint with
+/var/task as the root. The bundle was correct and the sync had verified
+byte-for-byte; the failure existed only at invocation, and only the runtime log
+showed it. `api/index.py` now puts its own directory on the path, and
+test_api.py loads the entrypoint BY PATH IN A SUBPROCESS with that directory
+removed — a subprocess because this one has already imported both modules and
+would resolve them from `sys.modules` whatever `sys.path` said, which is how an
+in-process version of the check would pass on the broken code.
+
+Three other things about that deploy, each of which cost a cycle: the framework
+preset rendered BLANK on the import screen and meant "Other", so a perfect build
+failed with `No Output Directory named "public"` — now pinned in `vercel.json`.
+The outside-the-root-directory toggle turned out not to be needed. And the
+Vercel CLI (`vercel logs <url> --json`) is what ended two hours of guessing from
+screenshots; reach for it first next time.
+
 **`web/DEPLOY.md` is the click-by-click for the first deploy.** Still not
-deployed; the Streamlit app is still live and still the recruiter-safe link.
+deployed to the domain; the Streamlit app is still live and still the recruiter-safe link.

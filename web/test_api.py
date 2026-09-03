@@ -514,6 +514,53 @@ check("no scenarios is empty, not an error",
       client.post("/api/compare", json={"scenarios": []}).json()["rows"] == [])
 
 
+# ── 6b. The entrypoint imports the way VERCEL imports it ─────────────
+#
+# THE ONE FAILURE EVERY OTHER ASSERTION IN THIS FILE WAS BLIND TO, and it took
+# down the first production deploy completely: every /api route 404d or 500d
+# while the build log was entirely green.
+#
+# `calculations` and `app_data` are siblings of api/index.py, put there by the
+# sync script. Every local way of running this code had already placed that
+# directory on sys.path without being asked — uvicorn is started with
+# `--app-dir api`, and the line at the top of THIS file does the same. Vercel
+# does neither: it loads api/index.py with /var/task as the root, so
+# `import app_data` had nowhere to resolve from and the function died on
+# import. The bundle was correct, the sync had verified byte-for-byte, and the
+# only place the failure existed was at invocation.
+#
+# So this loads the entrypoint the way the platform does: BY PATH, with the api
+# directory removed from sys.path. It is the only check here that would have
+# caught it, and it is written to fail loudly if the guard is ever removed.
+print("\n--- the entrypoint imports with only the repo root on sys.path ---")
+import importlib.util as _ilu                    # noqa: E402
+import subprocess as _sp                         # noqa: E402
+
+_PROBE = r"""
+import importlib.util, os, sys
+here = os.path.dirname(os.path.abspath(os.path.join("api", "index.py")))
+sys.path = [p for p in sys.path if os.path.abspath(p) != here]
+spec = importlib.util.spec_from_file_location("vercel_entry", os.path.join("api", "index.py"))
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+print(len([r for r in mod.app.routes if getattr(r, "path", "").startswith("/api")]))
+"""
+# A SUBPROCESS, because this process has already imported calculations and
+# app_data — they are in sys.modules and would resolve from the cache no matter
+# what sys.path said. An in-process version of this check passes on the broken
+# code, which is the same defect as the check it replaces.
+_r = _sp.run([sys.executable, "-c", _PROBE], capture_output=True, text=True,
+             cwd=os.path.dirname(os.path.abspath(__file__)))
+check("api/index.py imports with its own directory OFF sys.path",
+      _r.returncode == 0,
+      (_r.stderr.strip().splitlines() or ["?"])[-1])
+check("and it still defines every route once imported that way",
+      _r.returncode == 0 and _r.stdout.strip().isdigit()
+      and int(_r.stdout.strip()) == len([r for r in index.app.routes
+                                         if getattr(r, "path", "").startswith("/api")]),
+      f"subprocess saw {_r.stdout.strip()!r}")
+
+
 # ── 7. Nothing here touches user data ────────────────────────────────
 print("\n--- the API stays a pure calculator ---")
 # Read the CODE, not the prose about the code. The first version of this check
