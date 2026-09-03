@@ -15,13 +15,13 @@ budgeting-app/
   budget_app.py         ← Streamlit front end (deploys to Streamlit Cloud)
   test_calc / test_cloud / test_stress    291 assertions
   web/                  ← THIS. Vercel Root Directory.
-    api/index.py        one Vercel Function, ten routes, no arithmetic
+    api/index.py        one Vercel Function, fourteen routes, no arithmetic
     api/calculations.py GENERATED at build time. Gitignored. Never edit.
     api/app_data.py     GENERATED at build time. Gitignored. Never edit.
     scripts/sync-calculations.mjs
     src/                Next.js App Router, Tailwind 4, Recharts
-    test_api.py         49 assertions against the shipping routes
-    test_api_mutations.py   9 shipped bugs, each required to fail the suite
+    test_api.py         86 assertions against the shipping routes
+    test_api_mutations.py   11 shipped bugs, each required to fail the suite
 ```
 
 ## Running it locally
@@ -44,11 +44,33 @@ Or from the website working folder: `preview_start "budget-api"` then
 `preview_start "budget-web"`.
 
 ```bash
-npm run build          # runs the sync first, then next build
+npm run build          # sync, then check:tokens, then next build
+npm run check:tokens   # colour literals and missing tokens, on its own
 npx eslint src         # must be clean
 .venv/Scripts/python.exe test_api.py
 .venv/Scripts/python.exe test_api_mutations.py
 ```
+
+**The suites are not enough here and never have been.** Every defect this
+project has found lately was invisible to a green suite and visible on a
+rendered page: dead CSS rules, a chart with no paths, white-on-white in the
+other theme, three Sankey ribbons painted grey because a gradient id contained
+a space. The browser checks used during the re-skin live in the session
+scratchpad rather than the repo (they need a real Chrome and a running dev
+server, which CI here does not have) and are worth rebuilding rather than
+skipping:
+
+- **every route in both themes** — theme tokens resolve, every rendered text
+  node clears 3:1, charts have paths, every painted chart colour is a palette
+  token, no console errors;
+- **the interactions** — the cascade-layer fix by computed value, the mobile
+  drawer at 375px including focus and body-scroll, the theme toggle across a
+  reload, a real Monte Carlo run;
+- **print emulation in both themes**, which is how a print rule usually ships
+  dead.
+
+Break each on purpose and watch it fail before trusting it. Two of the print
+check's own first failures were the check's fault, not the code's.
 
 ## The rules this codebase is built around
 
@@ -126,6 +148,49 @@ the parsed AST, not the file text — the first version of that check matched th
 module docstring's own sentence saying `user_data` must not appear, and failed
 on a file that was already correct.
 
+### 5. Colour lives in globals.css, and a check enforces it
+
+Every colour is a CSS custom property defined once, in three theme states
+(light on bare `:root`, `prefers-color-scheme` guarded with
+`:not([data-theme="light"])`, and an explicit `[data-theme="dark"]` so the
+toggle wins both ways). No component may hold one.
+
+That is not self-enforcing: a `#5b8def` typed into a component works perfectly
+in the theme it was typed for and silently renders one theme's ink on the
+other theme's paper — no error, no warning, no failing test. So
+`scripts/check-tokens.mjs` fails the build on a hex, on `rgb()`/`hsl()`, and on
+Tailwind's **stock palette**, because `text-slate-400` is `#94a3b8` with a
+friendlier spelling and there were 30 of them. It also asserts that every token
+`tokens.ts` can NAME exists in all three theme blocks — `cssVar("s9")` type-
+checks, renders `var(--s9)` and paints *nothing*, which is worse than a literal
+because there is nothing to grep for.
+
+The re-skin began with 116 literals across `src/`. The count is zero.
+
+**Charts read resolved values through `usePalette`, not `var()` strings.**
+Handing Recharts `"var(--s1)"` does work — an SVG presentation attribute is
+parsed as CSS in Chromium, verified — but whether Safari and Firefox agree
+cannot be checked from here, and the failure mode is a chart drawn in black on
+a phone. Our own SVG (the Sankey) uses the `style` prop, where a custom
+property is guaranteed.
+
+The engine emits tone names as plain strings, which TypeScript cannot follow
+across HTTP, so `test_api.py` reads the map out of the shipping `tokens.ts` and
+requires every tone the engine can emit to be in it.
+
+### 6. globals.css is inside cascade layers, and that is load-bearing
+
+Element rules go in `@layer base`, component classes in `@layer components`.
+Tailwind's utilities live in `@layer utilities`, and **unlayered CSS beats
+every layered rule** no matter how weak its selector — so an unlayered
+`.card { padding: 1.25rem }` silently beat `p-0`, and
+`thead th { text-align: left }` silently beat `text-right`.
+
+Both were really happening before the re-skin: a `card p-0` probe computed
+`18px 20px` of padding, and every right-aligned table header rendered left.
+Same family as the `pl-7` that lost to `input[type="number"]`. If you add a
+rule here, put it in a layer.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944
@@ -155,6 +220,31 @@ a constant matrix, percentiles and array storage; none of that needs a
 dependency. The largest run the UI offers — 5,000 sims × 71 years — takes
 **0.91s** in pure Python, against a 60s function limit. So `requirements.txt` is
 two lines and `calculations.py` stays stdlib-only.
+
+**The hero figure is JetBrains Mono, and that was measured.** All three faces
+were rendered at 52px against real figures. Instrument Serif carries no tabular
+figures, so the string width swings **65.3px** across the digits a count-up
+passes through and `font-variant-numeric: tabular-nums` cannot fix it — the
+feature is absent from the font. Space Grotesk swings 68.9px and IS fixed by
+that property, so it was the runner-up. Mono is 0px by construction, is already
+the convention for every other number, and is the widest of the three at size
+(312px against the serif's 189px for one figure) — so it reads as the largest
+thing on the page, which is the job. Page titles stay Instrument Serif.
+
+**The Sankey is hand-rolled, and the layout fits by measuring.** Recharts'
+Sankey solves for arbitrary graphs; this one has four fixed columns whose
+children sum exactly to their parent, so stacking each node's children from its
+own top edge cannot produce a crossing. Reserving gaps from the column counts
+over-reserves — the gaps that accumulate are along the DEEPEST path, not the
+widest column, and that left 110px of a 634px box empty. It lays out, measures
+what the box did not spend on money, and gives the rest back.
+
+**The Monte Carlo histogram isolates the failures into their own bar.** A path
+that runs out stays at zero, so every failure ends at the same value; ordinary
+binning drops them into a bucket spanning $0 to several million alongside paths
+that merely did badly, and that bar cannot honestly be coloured either way.
+Measured at four retirement ages, the claret was all of the chart or none of
+it, never the mixture it exists for.
 
 **The paths chart shares the fan chart's axis.** Uncapped, one lucky path an
 order of magnitude above the median set the scale and flattened the median and
@@ -205,8 +295,13 @@ which is why deploying to a preview URL early is cheap:
 ### Suggested sequence
 
 Deploy to a **preview URL first** and leave `budget.masonjbennett.com`
-unattached. The app is currently unusable on a phone (the sidebar is `fixed`,
-240px, never hidden, and covers 64% of a 375px viewport with no toggle), and the
-Streamlit app is still live and linked as recruiter-safe. Attach the domain once
-the mobile navigation and the re-skin have landed — that is what "genuinely
-better" means here.
+unattached until it has been looked at in a browser that is not this one.
+
+The two blockers that made that advice conditional are gone: the mobile
+navigation and the re-skin have both landed. The app is a rail at `lg` and up
+and an off-canvas drawer below it, verified at 375px — `elementFromPoint(60,
+300)` returns page content rather than a sidebar element, there is no
+horizontal overflow, and the drawer closes on Escape, on navigation and on the
+backdrop, returning focus to the opener. The Streamlit app is still live and
+still the recruiter-safe link; swap it only once the preview has been used in
+anger.
