@@ -90,12 +90,32 @@ service" — which reads like a dead project rather than a bad string.
 
 ## 4. Build settings
 
-Leave every one of these on the default. Vercel reads `package.json`, and
-`prebuild` already runs the sync and the token check:
+Leave Build Command, Install Command and Output Directory on the default.
+Vercel reads `package.json`, and `prebuild` already runs the sync and the token
+check.
 
-- Build Command: default (`npm run build`)
-- Install Command: default
-- Output Directory: default
+**But check the Framework Preset actually says Next.js.** On the import screen
+it is the field labelled *Application Preset*, above Root Directory.
+
+THIS IS THE ONE THAT BIT ON THE FIRST REAL DEPLOY. The field rendered blank,
+which looks like a loading skeleton and is not — it means the preset is
+"Other". Everything then builds perfectly: the sync runs, the token check
+passes, TypeScript passes, all sixteen pages generate, the route table prints.
+And *then* the deploy fails with
+
+```
+Error: No Output Directory named "public" found after the Build completed.
+```
+
+because with no framework, Vercel stops looking for a Next.js build and starts
+looking for a folder of static files. The error names `public`, mentions an
+Output Directory, and says nothing whatsoever about the framework — so it reads
+as a build problem when the build was fine. Nothing in the log above it is red.
+
+`vercel.json` now carries `"framework": "nextjs"` so a fresh import cannot
+repeat it, and so the answer lives in the repo rather than in a dashboard
+someone has to remember. If you hit it anyway: **Settings → Build and
+Deployment → Framework Settings → Next.js**, then redeploy.
 
 `vercel.json` in `web/` configures the Python function and nothing else.
 **There is deliberately no production rewrite for `/api`** — see the section in
@@ -132,6 +152,13 @@ then the shared engine was copied from the same commit that was built. If the
 deploy instead **failed** with `ModuleNotFoundError: calculations`, step 2's
 toggle is off. That is the failure working as designed — it refuses to ship an
 API with no maths rather than shipping one with a stale copy.
+
+On the first real deploy that toggle turned out not to be needed: Vercel
+included the parent directory anyway and the sync printed its verified line
+without it. Check the line is there rather than assuming either way.
+
+**If it fails with `No Output Directory named "public"`, go back to step 4** —
+the build was fine and the framework preset is not set.
 
 ---
 
