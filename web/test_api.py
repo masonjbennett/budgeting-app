@@ -359,6 +359,87 @@ check("every tone the engine emits is a token the client knows",
       _emitted <= _known, f"unknown: {sorted(_emitted - _known)}")
 
 
+# ── 6c. The capabilities the engine had and no page asked for ────────
+print("\n--- raise, employer match, cost of living, top bracket ---")
+
+rz = client.post("/api/raise", json={
+    "income": INCOME, "itemized": {}, "increase": 10_000}).json()
+check("a raise matches the engine", rz == calc.raise_impact(INCOME, 10_000, {}))
+check("the raise splits tax from the pre-tax that rose with it",
+      abs(rz["gross_increase"]
+          - (rz["tax_increase"] + rz["pretax_increase"] + rz["take_home_increase"]))
+      < 0.01,
+      "the parts of the raise do not add back up to it")
+
+# THE REASON marginal_fica_rate EXISTS. Above the Social Security wage base the
+# 6.2% has already stopped, so the marginal rate on a raise collapses — and the
+# AVERAGE rate, which is what a naive implementation reaches for, overstates the
+# tax on that raise several times over.
+_low = client.post("/api/raise", json={
+    "income": dict(INCOME, gross_salary=60_000, bonus_type="None"),
+    "itemized": {}, "increase": 10_000}).json()
+_high = client.post("/api/raise", json={
+    "income": dict(INCOME, gross_salary=300_000, bonus_type="None"),
+    "itemized": {}, "increase": 10_000}).json()
+check("marginal FICA collapses above the wage base",
+      _low["marginal_fica_pct"] > 7.0 and _high["marginal_fica_pct"] < 3.0,
+      f"{_low['marginal_fica_pct']:.2f}% at 60k vs {_high['marginal_fica_pct']:.2f}% at 300k")
+check("a raise of nothing moves nothing",
+      client.post("/api/raise", json={
+          "income": INCOME, "itemized": {}, "increase": 0,
+      }).json()["take_home_increase"] == 0)
+
+inv_match = client.post("/api/investment", json={
+    "start": 5_000, "monthly": 500, "rate": 7.0, "years": 30,
+    "salary": 100_000, "contribution_pct": 3, "match_pct": 50,
+    "match_limit": 6}).json()
+check("employer match matches the engine",
+      inv_match["employer_match"] == calc.employer_match(100_000, 3, 50, 6))
+check("the match is actually INVESTED, not just reported",
+      inv_match["final_value"]
+      > client.post("/api/investment", json={
+          "start": 5_000, "monthly": 500, "rate": 7.0, "years": 30}).json()["final_value"],
+      "the projection ignored the match, which is the bug this closes")
+check("contributing under the limit is flagged as money left behind",
+      inv_match["employer_match"]["leaving_money"]
+      and inv_match["employer_match"]["annual_missed"] > 0)
+check("contributing up to the limit forfeits nothing",
+      not client.post("/api/investment", json={
+          "start": 0, "monthly": 0, "rate": 7.0, "years": 1, "salary": 100_000,
+          "contribution_pct": 6, "match_pct": 50, "match_limit": 6,
+      }).json()["employer_match"]["leaving_money"])
+check("with no salary the projection is unchanged",
+      client.post("/api/investment", json={
+          "start": 5_000, "monthly": 500, "rate": 7.0, "years": 30,
+      }).json()["values"] == calc.project_investment(5_000, 500, 7.0, 30, 0)[0])
+
+col = client.post("/api/cost-of-living", json={
+    "salary": 100_000, "from_city": "National Average",
+    "to_city": "New York, NY"}).json()["comparison"]
+check("cost of living matches the engine",
+      col == calc.col_compare(100_000, "National Average", "New York, NY"))
+check("a dearer city needs a bigger salary for the same life",
+      col["equivalent_salary"] > 100_000 and col["pct_difference"] > 0)
+# An unknown city returns null rather than quietly falling back to the national
+# average, which would be a wrong answer wearing a right one's clothes.
+check("an unknown city returns null, not a default",
+      client.post("/api/cost-of-living", json={
+          "salary": 100_000, "from_city": "Atlantis", "to_city": "New York, NY",
+      }).json()["comparison"] is None)
+
+_top = client.post("/api/dashboard", json={
+    "income": dict(INCOME, gross_salary=900_000, bonus_type="None"),
+    "itemized": {}, "debts": [], "budget_needs": NEEDS, "assets": ASSETS,
+}).json()["top_bracket"]
+check("the top-bracket limitation is disclosed where it applies",
+      _top["applies"] and _top["threshold"] == calc.TOP_BRACKET_START["Single"])
+check("and is not claimed where it does not",
+      not client.post("/api/dashboard", json={
+          "income": INCOME, "itemized": {}, "debts": DEBTS,
+          "budget_needs": NEEDS, "assets": ASSETS,
+      }).json()["top_bracket"]["applies"])
+
+
 # ── 7. Nothing here touches user data ────────────────────────────────
 print("\n--- the API stays a pure calculator ---")
 # Read the CODE, not the prose about the code. The first version of this check

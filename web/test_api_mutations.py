@@ -40,10 +40,29 @@ MUTATIONS = [
      "the -1 'never pays off' sentinel is returned as if it were a duration",
      ('            "never_pays_off": months == -1,',
       '            "never_pays_off": False,')),
+    # THE MATCH INPUTS RENDERED AND THE PROJECTION IGNORED THEM. That is what
+    # shipped: two fields on the Investments page feeding nothing, so a matched
+    # 401(k) was understated by the most reliable return in the whole model.
+    (API,
+     "the projection ignores the employer match it was handed",
+     ("        req.start, req.monthly, req.rate, req.years, req.salary,",
+      "        req.start, req.monthly, req.rate, req.years, 0,")),
+    # An unknown city falling back to the national average is a wrong answer
+    # wearing a right one's clothes — the same shape as the emergency fund
+    # reading 0.0 months as though it had been measured.
+    # Mutating the ROUTE rather than the engine on purpose. Any edit to
+    # api/calculations.py also trips the byte-for-byte sync check, so a CALC
+    # mutation would report itself "caught" even if the assertion it is aimed
+    # at were decoration. Here only the cost-of-living assertion can fail.
+    (API,
+     "an unknown city silently falls back to the national average",
+     ('    return {"comparison": col_compare(req.salary, req.from_city, req.to_city)}',
+      '    return {"comparison": col_compare(req.salary, req.from_city, req.to_city)\n'
+      '            or col_compare(req.salary, "National Average", req.to_city)}')),
     (API,
      "the investment route returns the tuple transposed",
-     ("    values, contributions = project_investment(",
-      "    contributions, values = project_investment(")),
+     ("    values, contributions, match = project_investment_with_match(",
+      "    contributions, values, match = project_investment_with_match(")),
     # The top tax bracket's ceiling is float("inf"), which is not JSON. There
     # are TWO independent guards and removing either one alone changes nothing,
     # so a mutation that removes one is not a defect and correctly survives:

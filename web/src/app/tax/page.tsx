@@ -167,6 +167,20 @@ export default function TaxPage() {
             </p>
           </div>
         </div>
+        {dashboard.top_bracket.applies && (
+          <div className="card mark-caution mt-3">
+            <p className="t-small text-body">
+              <strong className="text-ink">
+                Your taxable income is in the top bracket
+              </strong>{" "}
+              — above {fmt(dashboard.top_bracket.threshold)} for {th.filing}. The OBBBA
+              limits the value of itemized deductions there to 2/37 less than your
+              marginal rate implies, and this estimate does NOT model that. The itemized
+              figure above is therefore worth slightly less than it looks.
+            </p>
+          </div>
+        )}
+
         <p className="t-micro mt-3 leading-relaxed text-muted">
           Whichever is larger is the one used, and it is used everywhere — take-home,
           savings rate, the dashboard and the FIRE timeline all read the same figure.

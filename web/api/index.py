@@ -27,6 +27,7 @@ from app_data import _generate_demo_data, get_default_state
 from calculations import (
     COL_INDEX,
     cash_flow,
+    col_compare,
     FEDERAL_BRACKETS_2026,
     FILING_STATUSES,
     HSA_INDIVIDUAL_LIMIT,
@@ -39,10 +40,12 @@ from calculations import (
     emergency_fund_months,
     liquid_assets,
     monthly_debt_service,
-    project_investment,
+    project_investment_with_match,
+    raise_impact,
     roth_vs_traditional,
     run_monte_carlo,
     simulate_payoff,
+    top_bracket_limitation,
 )
 
 app = FastAPI(title="Budget Tracker API", version="5.0")
@@ -112,6 +115,24 @@ class InvestmentRequest(BaseModel):
     rate: float = 7.0
     years: int = 30
     contribution_growth: float = 0
+    # Optional: with a salary the employer's match is projected too. Left at
+    # zero this is the plain projection, which is what it always was.
+    salary: float = 0
+    contribution_pct: float = 0
+    match_pct: float = 0
+    match_limit: float = 0
+
+
+class RaiseRequest(BaseModel):
+    income: Income
+    itemized: Dict[str, float] = Field(default_factory=dict)
+    increase: float = 0
+
+
+class ColRequest(BaseModel):
+    salary: float = 0
+    from_city: str = "National Average"
+    to_city: str = "National Average"
 
 
 class MonteCarloRequest(BaseModel):
@@ -217,6 +238,12 @@ def api_dashboard(req: DashboardRequest) -> Dict[str, Any]:
         "emergency_fund_months": ef_months,
         "emergency_fund_counted": ef_counted,
         "liquid_assets": liquid_total,
+        # Not a calculation the app performs — a disclosure that it does NOT.
+        # In the top bracket, itemized deductions are worth 2/37 less than the
+        # marginal rate implies, and this engine does not model that. Saying so
+        # is the only honest option; the alternative is being quietly wrong for
+        # the people it affects.
+        "top_bracket": top_bracket_limitation(th["taxable"], th["filing"]),
     }
 
 
@@ -257,8 +284,10 @@ def api_investment(req: InvestmentRequest) -> Dict[str, Any]:
     # series are only told apart by position. Naming them is the whole job of
     # this route; a client that got the tuple would be one index slip away from
     # plotting contributions as the portfolio value.
-    values, contributions = project_investment(
-        req.start, req.monthly, req.rate, req.years, req.contribution_growth)
+    values, contributions, match = project_investment_with_match(
+        req.start, req.monthly, req.rate, req.years, req.salary,
+        req.contribution_pct, req.match_pct, req.match_limit,
+        req.contribution_growth)
     return {
         "values": values,
         "contributions": contributions,
@@ -266,7 +295,20 @@ def api_investment(req: InvestmentRequest) -> Dict[str, Any]:
         "final_value": values[-1],
         "total_contributed": contributions[-1],
         "growth": values[-1] - contributions[-1],
+        "employer_match": match,
     }
+
+
+@app.post("/api/raise")
+def api_raise(req: RaiseRequest) -> Dict[str, Any]:
+    """What a raise is worth after tax, pre-tax deductions and marginal FICA."""
+    return raise_impact(req.income.model_dump(), req.increase, req.itemized)
+
+
+@app.post("/api/cost-of-living")
+def api_cost_of_living(req: ColRequest) -> Dict[str, Any]:
+    """Buying power between two metros. Null where either is unknown."""
+    return {"comparison": col_compare(req.salary, req.from_city, req.to_city)}
 
 
 @app.post("/api/monte-carlo")

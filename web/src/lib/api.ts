@@ -89,6 +89,8 @@ export interface Dashboard {
   /** null when income is zero — not 0, which would read as "no debt". */
   dti_pct: number | null;
   monthly_needs: number;
+  /** The OBBBA 2/37 limitation the engine does NOT model, disclosed. */
+  top_bracket: { applies: boolean; threshold: number; filing: string };
   /** null means COULD NOT BE MEASURED. It is not the same as 0.0. */
   emergency_fund_months: number | null;
   emergency_fund_counted: string[];
@@ -122,6 +124,17 @@ export interface CashFlow {
   balanced: boolean;
 }
 
+export interface EmployerMatch {
+  annual_match: number;
+  monthly_match: number;
+  annual_missed: number;
+  contribution_pct: number;
+  match_limit: number;
+  match_pct: number;
+  /** True only when raising the contribution would collect more match. */
+  leaving_money: boolean;
+}
+
 export interface Investment {
   values: number[];
   contributions: number[];
@@ -129,6 +142,36 @@ export interface Investment {
   final_value: number;
   total_contributed: number;
   growth: number;
+  employer_match: EmployerMatch;
+}
+
+export interface RaiseImpact {
+  base_salary: number;
+  new_salary: number;
+  increase: number;
+  gross_increase: number;
+  tax_increase: number;
+  /** Not a loss — a percentage-based 401(k) rises with the salary. */
+  pretax_increase: number;
+  take_home_increase: number;
+  monthly_take_home_increase: number;
+  marginal_fed: number;
+  marginal_state: number;
+  /** From marginal_fica_rate, not the average — above the wage base they differ by 5x. */
+  marginal_fica_pct: number;
+  tax_share_pct: number | null;
+  kept_share_pct: number | null;
+}
+
+export interface ColComparison {
+  from_city: string;
+  to_city: string;
+  from_index: number;
+  to_index: number;
+  salary: number;
+  equivalent_salary: number;
+  difference: number;
+  pct_difference: number;
 }
 
 export interface MonteCarlo {
@@ -224,7 +267,21 @@ export const api = {
     rate: number;
     years: number;
     contribution_growth?: number;
+    /** With a salary, the employer's match is projected too. */
+    salary?: number;
+    contribution_pct?: number;
+    match_pct?: number;
+    match_limit?: number;
   }) => request<Investment>("/investment", input),
+
+  raiseImpact: (input: {
+    income: Income;
+    itemized?: Record<string, number>;
+    increase: number;
+  }) => request<RaiseImpact>("/raise", input),
+
+  costOfLiving: (input: { salary: number; from_city: string; to_city: string }) =>
+    request<{ comparison: ColComparison | null }>("/cost-of-living", input),
 
   monteCarlo: (input: {
     current_age: number;

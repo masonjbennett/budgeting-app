@@ -22,10 +22,11 @@ export default function InvestmentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const inv = profile?.investment;
-  const key = JSON.stringify(inv ?? {});
+  const income = profile?.income;
+  const key = JSON.stringify([inv, income?.gross_salary, income?.contribution_401k]);
 
   useEffect(() => {
-    if (!inv) return;
+    if (!inv || !income) return;
     let live = true;
     Promise.all(
       SCENARIOS.map((s) =>
@@ -34,6 +35,13 @@ export default function InvestmentsPage() {
           monthly: inv.monthly_contribution,
           rate: s.rate,
           years: inv.time_horizon,
+          // The match inputs rendered on this page and the projection ignored
+          // them, which understates a matched 401(k) by the most reliable
+          // return in the model.
+          salary: income?.gross_salary ?? 0,
+          contribution_pct: income?.contribution_401k ?? 0,
+          match_pct: inv.employer_match_pct,
+          match_limit: inv.employer_match_limit,
         }),
       ),
     )
@@ -45,7 +53,7 @@ export default function InvestmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  if (!profile || !inv) return <div className="skeleton h-96" />;
+  if (!profile || !inv || !income) return <div className="skeleton h-96" />;
 
   const set = (p: Partial<typeof inv>) => update({ investment: { ...inv, ...p } });
 
@@ -120,6 +128,44 @@ export default function InvestmentsPage() {
 
       {runs && (
         <>
+          <Section title="Employer match">
+            {(() => {
+              const m = runs[0].employer_match;
+              return (
+                <div className={`card ${m.leaving_money ? "mark-caution" : "mark-accent"}`}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+                    <div>
+                      <p className="label">Employer adds</p>
+                      <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
+                        {fmt(m.annual_match)}/yr
+                      </p>
+                    </div>
+                    <p className="t-small max-w-[46ch] text-body">
+                      {m.leaving_money ? (
+                        <>
+                          You contribute {m.contribution_pct}% of salary and the match runs
+                          to {m.match_limit}%, so{" "}
+                          <strong className="font-num text-caution">
+                            {fmt(m.annual_missed)} a year
+                          </strong>{" "}
+                          is left on the table. That is an immediate {m.match_pct}% return
+                          on the difference, which no market assumption is needed to
+                          justify.
+                        </>
+                      ) : (
+                        <>
+                          You contribute enough to collect the whole match —{" "}
+                          {m.match_pct}% of the first {m.match_limit}% of salary. The
+                          projections below include it.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+          </Section>
+
           <Section title={`After ${inv.time_horizon} years`}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {SCENARIOS.map((s, i) => (
@@ -139,6 +185,12 @@ export default function InvestmentsPage() {
                   <p className="t-micro mt-1.5 text-muted">
                     {fmt(runs[i].total_contributed)} contributed ·{" "}
                     <span className="text-positive">{fmt(runs[i].growth)} growth</span>
+                    {runs[i].employer_match.annual_match > 0 && (
+                      <>
+                        {" "}
+                        · includes {fmt(runs[i].employer_match.monthly_match)}/mo of match
+                      </>
+                    )}
                   </p>
                 </div>
               ))}

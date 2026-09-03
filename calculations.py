@@ -999,3 +999,140 @@ def cash_flow(income, itemized=None, budget=None):
         "residual": residual,
         "balanced": abs(residual) < 0.01,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# THINGS THE ENGINE COULD ALREADY DO AND NO PAGE ASKED FOR
+# ═══════════════════════════════════════════════════════════════════════
+
+def employer_match(salary, contribution_pct, match_pct, match_limit):
+    """What the employer adds to a 401(k), and what a low contribution forfeits.
+
+    `contribution_pct` and `match_limit` are percentages OF SALARY;
+    `match_pct` is what the employer pays per dollar you do (50 = fifty cents).
+
+    The forfeited half is the point. It is the highest-value single sentence a
+    budgeting app can say — an immediate, riskless return that no market
+    assumption is needed to justify — and the web app rendered both inputs
+    while the projection ignored them entirely.
+    """
+    matched_pct = min(max(contribution_pct, 0.0), max(match_limit, 0.0))
+    per_dollar = max(match_pct, 0.0) / 100.0
+    matched = salary * matched_pct / 100.0 * per_dollar
+    shortfall_pct = max(0.0, match_limit - contribution_pct)
+    missed = salary * shortfall_pct / 100.0 * per_dollar
+    return {
+        "annual_match": matched,
+        "monthly_match": matched / MONTHS_PER_YEAR,
+        "annual_missed": missed,
+        "contribution_pct": contribution_pct,
+        "match_limit": match_limit,
+        "match_pct": match_pct,
+        # True only when raising the contribution would collect more match.
+        "leaving_money": missed > 0.005,
+    }
+
+
+def raise_impact(income, increase, itemized=None):
+    """What a raise is actually worth, after everything it moves.
+
+    Runs the WHOLE pay stub twice rather than applying a marginal rate to the
+    increment, because a raise moves more than tax: a 401(k) set as a PERCENT of
+    salary rises with it, so take-home grows by less than the after-tax raise
+    and the difference is saved rather than lost. Reporting one number without
+    that split is how a tool tells someone their raise vanished.
+
+    FICA on the increment comes from `marginal_fica_rate`, not the average.
+    Above the Social Security wage base the marginal rate falls from 7.65% to
+    1.45% — for exactly the earners who ask this question.
+    """
+    itemized = itemized or {}
+    before = compute_take_home(income, itemized)
+    after_income = dict(income)
+    after_income["gross_salary"] = income.get("gross_salary", 0) + increase
+    after = compute_take_home(after_income, itemized)
+
+    gross_increase = after["annual_gross"] - before["annual_gross"]
+    tax_increase = after["total_tax"] - before["total_tax"]
+    pretax_increase = after["pretax"] - before["pretax"]
+    take_home_increase = after["annual_take_home"] - before["annual_take_home"]
+
+    return {
+        "base_salary": income.get("gross_salary", 0),
+        "new_salary": after_income["gross_salary"],
+        "increase": increase,
+        "gross_increase": gross_increase,
+        "tax_increase": tax_increase,
+        # Not a loss: a percentage-based 401(k) rises with the salary.
+        "pretax_increase": pretax_increase,
+        "take_home_increase": take_home_increase,
+        "monthly_take_home_increase": take_home_increase / MONTHS_PER_YEAR,
+        "marginal_fed": after["marginal_fed"],
+        "marginal_state": after["marginal_state"],
+        "marginal_fica_pct": marginal_fica_rate(
+            before["annual_gross"], after["annual_gross"],
+            income.get("filing_status", "Single")) * 100,
+        # Share of the raise lost to tax, and the share that reaches the bank.
+        "tax_share_pct": (tax_increase / gross_increase * 100) if gross_increase else None,
+        "kept_share_pct": (take_home_increase / gross_increase * 100) if gross_increase else None,
+    }
+
+
+def col_compare(salary, from_city, to_city):
+    """The salary that buys the same life somewhere else.
+
+    Buying power ONLY. It says nothing about tax, and the two cities can differ
+    by tens of thousands on that alone — which is the whole reason the scenario
+    comparison exists. Returns None where either city is unknown rather than
+    falling back to the national average, because a silent default here is a
+    wrong answer that looks like a right one.
+    """
+    a = COL_INDEX.get(from_city)
+    b = COL_INDEX.get(to_city)
+    if a is None or b is None or a <= 0:
+        return None
+    equivalent = salary * b / a
+    return {
+        "from_city": from_city,
+        "to_city": to_city,
+        "from_index": a,
+        "to_index": b,
+        "salary": salary,
+        "equivalent_salary": equivalent,
+        "difference": equivalent - salary,
+        "pct_difference": (b - a) / a * 100,
+    }
+
+
+def top_bracket_limitation(taxable, filing="Single"):
+    """Whether the OBBBA 2/37 limitation on itemized deductions is in play.
+
+    In the top bracket, itemized deductions are worth 2/37 less than the
+    marginal rate suggests. This app does NOT model it, so the only honest
+    thing to do is say when it applies rather than quietly be wrong. The
+    threshold is a bracket boundary, which is why it is read from the same
+    table the tax is, and not typed again.
+    """
+    threshold = TOP_BRACKET_START.get(filing, TOP_BRACKET_START["Single"])
+    return {
+        "applies": taxable > threshold,
+        "threshold": threshold,
+        "filing": filing,
+    }
+
+
+def project_investment_with_match(start, monthly, rate, years, salary=0,
+                                  contribution_pct=0, match_pct=0,
+                                  match_limit=0, contribution_growth=0):
+    """A projection that spends the employer's money too.
+
+    The web app rendered the match inputs and then projected as though they
+    were zero, which understates a matched 401(k) by the most reliable return
+    in the whole model. The addition lives here rather than in the route
+    because the route is a pass-through by design; with no salary the match is
+    zero and this is `project_investment` exactly.
+    """
+    match = employer_match(salary, contribution_pct, match_pct, match_limit)
+    values, contributions = project_investment(
+        start, monthly + match["monthly_match"], rate, years, contribution_growth)
+    return values, contributions, match

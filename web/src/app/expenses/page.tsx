@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import BillsCalendar from "@/components/BillsCalendar";
 import { BarsChart } from "@/components/Chart";
 import { Empty, Field, NumberInput, Section } from "@/components/Field";
 import Footer from "@/components/Footer";
@@ -148,6 +149,10 @@ export default function ExpensesPage() {
             Add some budget categories first — an expense needs somewhere to go.
           </p>
         )}
+      </Section>
+
+      <Section title="Recurring bills">
+        <BillsCalendar templates={profile.recurring_templates ?? []} />
       </Section>
 
       {monthSeries.length > 1 && (

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 
 import { BarsChart } from "@/components/Chart";
+import ColPanel from "@/components/ColPanel";
+import RaisePanel from "@/components/RaisePanel";
 import { Field, NumberInput, Section } from "@/components/Field";
 import Footer from "@/components/Footer";
 import PageHeader from "@/components/PageHeader";
@@ -246,6 +248,17 @@ export default function IncomePage() {
             </p>
           </div>
         </div>
+      </Section>
+
+      <Section title="What a raise is worth">
+        <RaisePanel income={inc} itemized={profile.itemized} />
+      </Section>
+
+      <Section title="Cost of living">
+        <ColPanel
+          salary={inc.gross_salary}
+          cities={ref ? Object.keys(ref.col_index) : []}
+        />
       </Section>
 
       <Footer />
