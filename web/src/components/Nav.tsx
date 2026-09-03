@@ -46,6 +46,7 @@ const GROUPS: { label: string; items: Dest[] }[] = [
   {
     label: "Plan",
     items: [
+      { name: "Compare", href: "/compare", hint: "The same you, somewhere else" },
       { name: "Investments", href: "/investments", hint: "Compound projections" },
       { name: "FIRE", href: "/fire", hint: "Monte Carlo retirement model" },
       { name: "Taxes", href: "/tax", hint: "2026 federal and state" },

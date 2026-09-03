@@ -11,6 +11,7 @@ const COMMANDS = [
   { name: "Net Worth", href: "/net-worth", section: "Navigate" },
   { name: "Savings Goals", href: "/goals", section: "Navigate" },
   { name: "Debt Payoff", href: "/debt", section: "Navigate" },
+  { name: "Compare Scenarios", href: "/compare", section: "Navigate" },
   { name: "Investments", href: "/investments", section: "Navigate" },
   { name: "FIRE Calculator", href: "/fire", section: "Navigate" },
   { name: "Tax Estimator", href: "/tax", section: "Navigate" },

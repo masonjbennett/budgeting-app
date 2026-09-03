@@ -1136,3 +1136,88 @@ def project_investment_with_match(start, monthly, rate, years, salary=0,
     values, contributions = project_investment(
         start, monthly + match["monthly_match"], rate, years, contribution_growth)
     return values, contributions, match
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SCENARIOS — the same person, in a different situation
+# ═══════════════════════════════════════════════════════════════════════
+
+def compare_scenarios(scenarios):
+    """Several situations priced against each other, the first as the baseline.
+
+    This is the screen no competitor has, and the reason is not effort — it is
+    that comparing two jobs honestly needs a real tax engine for fifty states
+    and four filing statuses, plus a cost-of-living index, and a tracker built
+    on a bank connection has neither. Everything here is `compute_take_home`
+    run once per scenario; nothing new is modelled.
+
+    THE FIGURE THAT MATTERS IS `real_take_home` — annual take-home restated in
+    national-average dollars, so a salary in one city can be set beside a
+    salary in another. Take-home alone ranks the dearest city first, which is
+    the wrong answer to the question people are actually asking. It is a
+    deflation by the cost-of-living index and nothing more; it is labelled
+    everywhere it appears, because a number that quietly rebases itself is
+    worse than one that is merely wrong.
+
+    Each scenario: {"name", "income", "itemized" (optional), "city" (optional)}.
+    Returns rows in the order given, so the caller's baseline stays first.
+    """
+    if not scenarios:
+        return {"rows": [], "baseline": None, "best": None}
+
+    rows = []
+    for s in scenarios:
+        th = compute_take_home(s["income"], s.get("itemized") or {})
+        city = s.get("city") or "National Average"
+        index = COL_INDEX.get(city)
+        real = th["annual_take_home"] * 100.0 / index if index else None
+        rows.append({
+            "name": s.get("name") or "Scenario",
+            "city": city,
+            # None where the city is not in the index — never a silent default.
+            "col_index": index,
+            "state": s["income"].get("state"),
+            "filing": th["filing"],
+            "gross": th["annual_gross"],
+            "total_tax": th["total_tax"],
+            "effective_rate": th["effective_rate"],
+            "marginal_fed": th["marginal_fed"],
+            "marginal_state": th["marginal_state"],
+            "pretax": th["pretax"],
+            "annual_take_home": th["annual_take_home"],
+            "monthly_take_home": th["monthly_take_home"],
+            "real_take_home": real,
+        })
+
+    base = rows[0]
+    for r in rows:
+        r["vs_baseline"] = r["annual_take_home"] - base["annual_take_home"]
+        r["vs_baseline_real"] = (
+            r["real_take_home"] - base["real_take_home"]
+            if r["real_take_home"] is not None and base["real_take_home"] is not None
+            else None
+        )
+
+    # Best on the cost-of-living-adjusted figure, and only where EVERY scenario
+    # has one — ranking a set where some rows could not be adjusted would be
+    # comparing two different measures and calling one of them the winner.
+    comparable = [r for r in rows if r["real_take_home"] is not None]
+    usable = len(comparable) == len(rows) and len(rows) > 1
+    best = max(comparable, key=lambda r: r["real_take_home"])["name"] if usable else None
+
+    # The winner on RAW take-home as well, so the page can say whether the
+    # cost-of-living adjustment actually changed the answer. Without it the
+    # copy has to guess, and it guessed wrong: it claimed take-home "would rank
+    # these differently" on a pair where the same city won both ways.
+    best_take_home = (max(rows, key=lambda r: r["annual_take_home"])["name"]
+                      if len(rows) > 1 else None)
+
+    return {
+        "rows": rows,
+        "baseline": base["name"],
+        "best": best,
+        "best_take_home": best_take_home,
+        # True only where the adjustment moves the winner, not merely the gap.
+        "col_changes_answer": bool(usable and best != best_take_home),
+        "all_comparable": len(comparable) == len(rows),
+    }

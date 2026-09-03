@@ -28,6 +28,7 @@ from calculations import (
     COL_INDEX,
     cash_flow,
     col_compare,
+    compare_scenarios,
     FEDERAL_BRACKETS_2026,
     FILING_STATUSES,
     HSA_INDIVIDUAL_LIMIT,
@@ -121,6 +122,18 @@ class InvestmentRequest(BaseModel):
     contribution_pct: float = 0
     match_pct: float = 0
     match_limit: float = 0
+
+
+class Scenario(BaseModel):
+    name: str = "Scenario"
+    income: Income
+    itemized: Dict[str, float] = Field(default_factory=dict)
+    city: str = "National Average"
+
+
+class CompareRequest(BaseModel):
+    """Several situations, the FIRST of which is the baseline."""
+    scenarios: List[Scenario] = Field(default_factory=list)
 
 
 class RaiseRequest(BaseModel):
@@ -303,6 +316,12 @@ def api_investment(req: InvestmentRequest) -> Dict[str, Any]:
 def api_raise(req: RaiseRequest) -> Dict[str, Any]:
     """What a raise is worth after tax, pre-tax deductions and marginal FICA."""
     return raise_impact(req.income.model_dump(), req.increase, req.itemized)
+
+
+@app.post("/api/compare")
+def api_compare(req: CompareRequest) -> Dict[str, Any]:
+    """The same person in several situations, priced against each other."""
+    return compare_scenarios([s.model_dump() for s in req.scenarios])
 
 
 @app.post("/api/cost-of-living")

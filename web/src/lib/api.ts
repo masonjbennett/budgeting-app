@@ -163,6 +163,46 @@ export interface RaiseImpact {
   kept_share_pct: number | null;
 }
 
+export interface ScenarioInput {
+  name: string;
+  income: Income;
+  itemized?: Record<string, number>;
+  city: string;
+}
+
+export interface ScenarioRow {
+  name: string;
+  city: string;
+  /** null where the city is not in the index — never a silent default. */
+  col_index: number | null;
+  state: string;
+  filing: string;
+  gross: number;
+  total_tax: number;
+  effective_rate: number;
+  marginal_fed: number;
+  marginal_state: number;
+  pretax: number;
+  annual_take_home: number;
+  monthly_take_home: number;
+  /** Take-home restated in national-average dollars. The figure that matters. */
+  real_take_home: number | null;
+  vs_baseline: number;
+  vs_baseline_real: number | null;
+}
+
+export interface Comparison {
+  rows: ScenarioRow[];
+  baseline: string | null;
+  /** null unless EVERY row could be cost-of-living adjusted. */
+  best: string | null;
+  /** The winner on RAW take-home, so the page can say whether adjusting moved it. */
+  best_take_home: string | null;
+  /** True only where the adjustment changes the winner, not merely the gap. */
+  col_changes_answer: boolean;
+  all_comparable: boolean;
+}
+
 export interface ColComparison {
   from_city: string;
   to_city: string;
@@ -279,6 +319,9 @@ export const api = {
     itemized?: Record<string, number>;
     increase: number;
   }) => request<RaiseImpact>("/raise", input),
+
+  compare: (scenarios: ScenarioInput[]) =>
+    request<Comparison>("/compare", { scenarios }),
 
   costOfLiving: (input: { salary: number; from_city: string; to_city: string }) =>
     request<{ comparison: ColComparison | null }>("/cost-of-living", input),

@@ -59,6 +59,14 @@ export interface Snapshot {
   net_worth: number;
 }
 
+/** One "what if" — the income block plus a city, which is where every
+ *  dimension worth varying lives. */
+export interface Scenario {
+  name: string;
+  income: Income;
+  city: string;
+}
+
 export interface Profile {
   income: Income;
   budget: {
@@ -82,6 +90,9 @@ export interface Profile {
     employer_match_limit: number;
   };
   itemized: Record<string, number>;
+  /** Optional, so a profile exported before the Compare page still imports. */
+  scenarios?: Scenario[];
+  baseline_city?: string;
 }
 
 type Status = "loading" | "ready" | "error";

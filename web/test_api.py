@@ -440,6 +440,80 @@ check("and is not claimed where it does not",
       }).json()["top_bracket"]["applies"])
 
 
+# ── 6d. Scenario comparison ──────────────────────────────────────────
+print("\n--- scenarios ---")
+_NYC = {"name": "NYC now", "income": dict(INCOME, gross_salary=95_000,
+                                          state="New York", bonus_type="None"),
+        "itemized": {}, "city": "New York, NY"}
+_ATX = {"name": "Austin offer", "income": dict(INCOME, gross_salary=110_000,
+                                               state="Texas", bonus_type="None"),
+        "itemized": {}, "city": "Austin, TX"}
+cmp_ = client.post("/api/compare", json={"scenarios": [_NYC, _ATX]}).json()
+
+check("comparison matches the engine",
+      cmp_ == calc.compare_scenarios([_NYC, _ATX]))
+check("the first scenario is the baseline and rows keep their order",
+      cmp_["baseline"] == "NYC now"
+      and [r["name"] for r in cmp_["rows"]] == ["NYC now", "Austin offer"])
+check("each row is the engine's own take-home, recalculated per scenario",
+      all(abs(r["annual_take_home"]
+              - calc.compute_take_home(s["income"], {})["annual_take_home"]) < 1e-9
+          for r, s in zip(cmp_["rows"], [_NYC, _ATX])),
+      "a column was scaled from the baseline instead of computed")
+
+# THE POINT OF THE SCREEN. Take-home alone ranks the dearest city first, which
+# is the wrong answer to the question people are actually asking; deflating by
+# the cost-of-living index is what makes two cities comparable at all.
+_nyc, _atx = cmp_["rows"]
+check("no-income-tax Texas beats New York on take-home",
+      _atx["annual_take_home"] > _nyc["annual_take_home"])
+check("and beats it by MORE once cost of living is taken out",
+      _atx["real_take_home"] - _nyc["real_take_home"]
+      > _atx["annual_take_home"] - _nyc["annual_take_home"],
+      "the adjustment did not change the size of the gap")
+check("real take-home is the take-home deflated by the local index",
+      abs(_nyc["real_take_home"]
+          - _nyc["annual_take_home"] * 100.0 / calc.COL_INDEX["New York, NY"]) < 1e-9)
+check("the baseline compares against itself as zero",
+      _nyc["vs_baseline"] == 0 and _nyc["vs_baseline_real"] == 0)
+
+# A set where one row cannot be adjusted has no like-for-like ranking, and
+# naming a winner anyway would be comparing two different measures.
+_odd = client.post("/api/compare", json={
+    "scenarios": [_NYC, dict(_ATX, city="Atlantis")]}).json()
+check("an unindexed city yields no ranking rather than a wrong one",
+      _odd["best"] is None and _odd["all_comparable"] is False
+      and _odd["rows"][1]["real_take_home"] is None)
+check("its tax figures are still exact",
+      _odd["rows"][1]["annual_take_home"] == cmp_["rows"][1]["annual_take_home"])
+
+check("one scenario alone is not a comparison",
+      client.post("/api/compare", json={"scenarios": [_NYC]}).json()["best"] is None)
+
+# The page's verdict sentence is driven by this, and it has to be, because the
+# first version asserted "take-home alone would rank these differently" on a
+# pair where the same city won both ways. Here Austin wins on BOTH measures...
+check("where the same scenario wins both ways, the answer is not 'changed'",
+      cmp_["best"] == "Austin offer" and cmp_["best_take_home"] == "Austin offer"
+      and cmp_["col_changes_answer"] is False)
+# ...and here it does not: a bigger salary in a much dearer city pays more
+# take-home and is worth less once the cost of living is taken out.
+_flip = client.post("/api/compare", json={"scenarios": [
+    {"name": "Cheap", "income": dict(INCOME, gross_salary=100_000, state="Texas",
+                                     bonus_type="None"),
+     "itemized": {}, "city": "Austin, TX"},
+    {"name": "Dear", "income": dict(INCOME, gross_salary=125_000, state="New York",
+                                    bonus_type="None"),
+     "itemized": {}, "city": "New York, NY"},
+]}).json()
+check("where cost of living flips the winner, the answer says so",
+      _flip["best_take_home"] == "Dear" and _flip["best"] == "Cheap"
+      and _flip["col_changes_answer"] is True,
+      f"best={_flip['best']} raw={_flip['best_take_home']}")
+check("no scenarios is empty, not an error",
+      client.post("/api/compare", json={"scenarios": []}).json()["rows"] == [])
+
+
 # ── 7. Nothing here touches user data ────────────────────────────────
 print("\n--- the API stays a pure calculator ---")
 # Read the CODE, not the prose about the code. The first version of this check
