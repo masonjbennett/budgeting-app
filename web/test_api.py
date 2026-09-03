@@ -537,6 +537,120 @@ check("the purity check reads code, not the comments about it",
       "user_data" in _api_src and "user_data" not in _code,
       "stripping did not work, so the check proves nothing")
 
+# ── 8. The three routes added for the curve, the year and the import ─
+#
+# Each is asserted to be a PASS-THROUGH: the same call made directly against
+# calculations.py must give the same answer. That is the only property worth
+# checking here, because the moment a route's answer differs from the engine's
+# there is a second implementation, which is the thing this whole shape exists
+# to prevent.
+print("\n--- /api/fire ---")
+_BUDGET = {"needs": {"Rent": 1_900, "Groceries": 380},
+           "wants": {"Dining Out": 280},
+           "savings": {"Investing": 450}}
+_fire = client.post("/api/fire", json={
+    "income": INCOME, "itemized": {}, "budget": _BUDGET, "assets": ASSETS,
+    "stock_pct": 80, "inflation": 3.0}).json()
+_direct = calc.fire_projection(INCOME, {}, _BUDGET, ASSETS, 80, 3.0)
+check("the route is a pass-through to fire_projection",
+      _fire["fire_number"] == _direct["fire_number"]
+      and _fire["years_at_current"] == _direct["years_at_current"]
+      and len(_fire["curve"]) == len(_direct["curve"]))
+check("the withdrawal rate comes from the engine, not from the client",
+      _fire["swr"] == calc.SWR_DEFAULT,
+      "the page held a const SWR = 0.04 of its own until this route existed")
+check("the expected return is the simulation's, so both move with one slider",
+      abs(_fire["real_return"] - calc.expected_real_return(80, 3.0)) < 1e-9)
+_fire20 = client.post("/api/fire", json={
+    "income": INCOME, "itemized": {}, "budget": _BUDGET, "assets": ASSETS,
+    "stock_pct": 20, "inflation": 3.0}).json()
+check("moving the stock allocation moves the curve",
+      _fire20["real_return"] < _fire["real_return"]
+      and _fire20["years_at_current"] > _fire["years_at_current"])
+check("a rate that never reaches the target is null, not a large number",
+      all(p["years"] is None or p["years"] >= 0 for p in _fire["curve"]))
+check("no income means no curve rather than a curve of zeroes",
+      client.post("/api/fire", json={
+          "income": dict(INCOME, gross_salary=0, bonus_amount=0),
+          "budget": _BUDGET, "assets": {}}).json()["curve"] == [])
+
+print("\n--- /api/social-security states the benefit as capital ---")
+_ss = client.post("/api/social-security",
+                  json={"annual_salary": 95_000, "swr": 4.0}).json()
+check("the capital equivalent comes from the engine",
+      _ss["reduces_target_by"] == calc.capital_equivalent(_ss["annual"], 4.0))
+check("and a withdrawal rate of zero gives null rather than an infinity",
+      client.post("/api/social-security",
+                  json={"annual_salary": 95_000, "swr": 0}).json()
+      ["reduces_target_by"] is None)
+
+print("\n--- /api/year-to-date ---")
+_EXPENSES = [{"id": "a", "date": "2026-01-05", "amount": 1_900, "category": "Rent"},
+             {"id": "b", "date": "2026-02-05", "amount": 1_900, "category": "Rent"},
+             {"id": "c", "date": "2026-06-02", "amount": 40, "category": "Dining Out"}]
+_y = client.post("/api/year-to-date", json={
+    "income": INCOME, "itemized": {}, "expenses": _EXPENSES,
+    "budget": _BUDGET, "today": "2026-06-15"}).json()
+_th = calc.compute_take_home(INCOME, {})
+_ydirect = calc.year_to_date(_EXPENSES, _BUDGET, _th["monthly_take_home"], "2026-06-15")
+check("the route is a pass-through to year_to_date",
+      _y["spent"] == _ydirect["spent"] and _y["variance"] == _ydirect["variance"]
+      and _y["undocumented_months"] == _ydirect["undocumented_months"])
+check("take-home comes from compute_take_home, not from the caller",
+      _y["take_home_monthly"] == _th["monthly_take_home"])
+# The year boundary belongs to the reader. A server in UTC is already into
+# January while someone in Chicago is still finishing New Year's Eve.
+check("the CALLER's date decides the year, not the server's clock",
+      client.post("/api/year-to-date", json={
+          "income": INCOME, "expenses": _EXPENSES, "budget": _BUDGET,
+          "today": "2025-06-15"}).json()["year"] == 2025)
+check("and omitting it falls back to the server's, rather than failing",
+      client.post("/api/year-to-date", json={
+          "income": INCOME, "expenses": _EXPENSES, "budget": _BUDGET}
+      ).status_code == 200)
+# An expense log is user data and can hold anything. A row with an unreadable
+# date must reach the engine to be REPORTED as unreadable, not 422 the request
+# and take the other eleven months of the year down with it.
+check("an expense with an unreadable date does not fail the whole request",
+      client.post("/api/year-to-date", json={
+          "income": INCOME, "budget": _BUDGET, "today": "2026-06-15",
+          "expenses": [{"date": "not a date", "amount": 5, "category": "Rent"},
+                       {"date": "2026-01-05", "amount": 10, "category": "Rent"}],
+      }).json()["spent"] == 10)
+
+print("\n--- /api/import-preview ---")
+_GRID = [["Transaction Date", "Description", "Category", "Amount"],
+         ["08/14/2026", "TRADER JOES #452", "Groceries", "-52.30"],
+         ["08/15/2026", "PAYMENT THANK YOU", "Payment", "510.00"]]
+_CATS = ["Rent", "Groceries", "Dining Out"]
+_ip = client.post("/api/import-preview", json={
+    "grid": _GRID, "categories": _CATS, "existing": []}).json()
+check("the route is a pass-through to import_preview",
+      _ip == calc.import_preview(_GRID, existing=[], categories=_CATS))
+check("the header row is worked out rather than assumed",
+      _ip["has_header"] is True and len(_ip["rows"]) == 2)
+check("and the file's own evidence comes back with the answer",
+      _ip["date_order"]["proved"] is True and "reason" in _ip["sign"])
+check("an overridden mapping reaches the engine",
+      client.post("/api/import-preview", json={
+          "grid": _GRID, "categories": _CATS, "existing": [],
+          "mapping": {"date": 0, "amount": 3, "description": 1}}).json()
+      ["mapping_suggested"] is False)
+# 20,000 rows is about fifteen years of one card. A file past that is a
+# mistake, and refusing it is the right answer — a TRUNCATED import is the same
+# defect as a duplicated one, silently missing money instead of doubling it.
+check("an oversized file is refused rather than silently truncated",
+      client.post("/api/import-preview", json={
+          "grid": [["2026-01-01", "X", "-1.00"]] * 20_001,
+          "categories": _CATS, "existing": []}).status_code == 422)
+check("every line of the file comes back and the counts add up",
+      len(_ip["rows"]) == 2
+      and _ip["summary"]["importable"] + _ip["summary"]["skipped"] == 2
+      and _ip["summary"]["importable"] == 1)
+check("the preview does not echo the profile back to the caller",
+      "existing" not in _ip and "expenses" not in _ip)
+
+
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")
 print("=" * 66)

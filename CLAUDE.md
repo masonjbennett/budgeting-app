@@ -71,11 +71,18 @@ The file follows this order:
 
 ## Critical Rules
 - **Never add duplicate kwargs** when calling `fig.update_layout(**default_layout(), ...)`. The `default_layout()` already sets `legend`, `margin`, `hovermode`, `xaxis`, `yaxis`. To override, modify the dict before spreading: `layout = default_layout(); layout["margin"] = ...; fig.update_layout(**layout, ...)`
-- **Run all FOUR suites after every change** — `test_calc.py` (81),
-  `test_cloud.py` (42), `test_stress.py` (168) and `web/test_api.py` (86) = 377,
-  plus `web/test_api_mutations.py`, which reintroduces ELEVEN shipped bugs and
-  requires the API suite to fail on each. All four import the shipping code;
-  none redefines its subject.
+- **Run all FOUR suites after every change** — `test_calc.py` (203),
+  `test_cloud.py` (42), `test_stress.py` (168) and `web/test_api.py` (106) =
+  519, plus TWO mutation harnesses: `web/test_api_mutations.py` (11 shipped
+  bugs, each required to fail the API suite) and `test_calc_mutations.py` (22
+  engine defects, each required to fail `test_calc.py`). All four suites import
+  the shipping code; none redefines its subject.
+  **The two harnesses are separate on purpose.** The API one mutates
+  `web/api/index.py` only, because any edit to `web/api/calculations.py` also
+  trips the byte-for-byte sync check — so a mutation there reports itself
+  "caught" whatever the assertion aimed at it is worth. The engine one mutates
+  the ROOT `calculations.py`, where no such check exists, so a mutation is
+  caught only by an assertion that actually looks at the behaviour.
   **They are the floor, not the ceiling.** Every defect the September re-skin
   found was invisible to a green suite and visible on a rendered page — dead
   CSS rules, a chart with no paths, a gradient id containing a space. Anything
@@ -325,5 +332,95 @@ the repo — 158 over every route in both themes, 36 interaction, 35 print. The
 Python is the floor here, not the ceiling: every defect found during this work
 was invisible to a green suite and visible on a rendered page.
 
-**Still not done from the review:** CSV transaction import, savings-rate
-against years-to-FIRE, and a year-to-date summary.
+## The last three features (September 2026)
+
+CSV import, the savings-rate curve and the year-to-date summary — the three
+items the review left open. All three are RULES, so all three are in
+`calculations.py`; the pages draw what it returns and decide nothing.
+
+- **`/api/fire` and the savings-rate curve** (`/fire`). The page had held five
+  figures of its own arithmetic including a `const SWR = 0.04` that no test
+  could see. All five now come from `fire_projection`. The curve's expected
+  return is DERIVED from the Monte Carlo's own `MC_STOCK_MEAN`/`MC_BOND_MEAN`
+  and the page's stock and inflation controls, so the deterministic curve and
+  the stochastic simulation on one page describe ONE world — move the slider
+  and both follow. `years_to_target` is closed-form and checked against a
+  year-by-year loop, which is a genuinely different method and therefore an
+  oracle rather than a mirror.
+  - **The clamp hid a plan funded from nowhere.** `annual_savings` is clamped
+    at zero so a negative rate can still be plotted, and passing the CLAMPED
+    figure to `years_to_target` left someone overspending by $61,581/yr with a
+    portfolio quietly compounding to the target in 85 years. Passing the raw
+    figure makes the existing drawdown guard return None, which is the truth.
+  - The marker must sit ON the line, so the suite asserts the page's savings
+    rate and the curve's agree to 1e-6 — a dot floating beside the curve says
+    nothing about which of the two is wrong.
+
+- **`/api/year-to-date` and `/year`** (a new route, in the Overview group
+  beside the dashboard). Two things make it harder than a sum, and BOTH fail in
+  the flattering direction:
+  - **An expense log is not a bank statement — it has holes, and a hole looks
+    exactly like a frugal month.** Eight months of budget against one month of
+    records reads as **$36,007 under budget**. So the variance is measured only
+    over COMPLETE months that hold records, `complete_record` says whether that
+    is the whole year, and the page leads with the caveat naming the months and
+    the figure it would otherwise have reported.
+  - **A month in progress is not a short month.** Pro-rating the budget by day
+    to match reported the demo's rent — paid on the 1st, read on the 2nd — as
+    **$3,800 against $2,030 allowed, 30x over on a bill paid on time**.
+    Counting it as a whole month just moves the lie the other way. The current
+    month is out of the variance entirely and reported on its own.
+
+- **CSV import** (`/expenses` → Open importer). Splitting the file into cells
+  is TypeScript (`src/lib/csv.ts`) — it decides nothing and a mis-split is the
+  most visible possible failure. Everything else is in Python because every one
+  of these fails SILENTLY: a date order read backwards moves a year of spending
+  by a month; a sign convention read backwards imports the refunds and drops
+  the purchases; `1.234,56` read as US notation is a $1,234 charge landing as a
+  rounding error; importing the same file twice doubles the year.
+  - **Duplicates are COUNTED, not matched.** If the profile holds N expenses on
+    a date for an amount, the first N rows carrying it are flagged and the rest
+    are new. Matching instead refuses two real coffees bought on one day;
+    counting handles both that and the re-imported file. Flagged rows are
+    unticked, never dropped, and **an import only ever ADDS** — there is no
+    merge step, because a merge is where a note somebody typed is replaced by a
+    bank's description of the same charge.
+  - **Category matching is ONE rule: the longest piece of the description that
+    names a category wins**, scored across the person's own category names and
+    the merchant table on one list with one comparison. The bank's own category
+    column is the FALLBACK, not the winner — Chase files Netflix under
+    "Entertainment" and an Uber ride under "Travel", and against a profile
+    holding both Subscriptions and Entertainment, both Travel and
+    Transportation, letting the column win put both in the wrong one. It earns
+    its place on `SQ *A1B2C3XYZ`, which names nothing at all.
+  - **The keyword table matches WHOLE WORDS.** As plain substrings, "gym"
+    claimed GYMBOREE, "rent" claimed PARENTS MAGAZINE, "metro" claimed the
+    METROPOLITAN MUSEUM and "toll" claimed a TOLLHOUSE BAKERY.
+  - **`parse_amount` is permissive; DETECTION is not.** It strips non-digits,
+    so `STARBUCKS STORE 4` parses as 4.0 — and sniffing a headerless Amex
+    export by content, the description column tied with the real amount column
+    and won on being further left, importing store numbers as charges.
+    `looks_like_amount` is the strict test used for detection.
+
+**Three defects were found by LOOKING, all invisible to a green suite:**
+- **A zero-value bar is no element at all in Recharts.** Seven months with
+  nothing logged rendered as empty space, under a note telling the reader to
+  look for faint bars that had never existed. They are a shaded, labelled
+  `ReferenceArea` now — marking an absence rather than drawing a false height.
+- **`ReferenceLine` needs `ifOverflow="extendDomain"`.** Recharts sizes the Y
+  axis from the data alone, so a $4,892 budget above every bar fell outside the
+  domain and was silently dropped — the case of someone spending UNDER budget,
+  which is the one the rule exists to show.
+- **The first native checkbox in the app rendered in the user agent's blue**,
+  the only colour on the page the palette had never touched. `check:tokens`
+  cannot see it because there is no literal in the source to grep for;
+  `accent-color: var(--accent)` in `@layer base` fixes it.
+
+Counts: **519 assertions** across the four Python suites (203 + 42 + 168 + 106)
+and **33 mutations** across the two harnesses, plus browser checks that are NOT
+in the repo — **130** over every route in both themes and **58** driving the
+three features, each of the five sweep checks proved able to fail against an
+injected fault before being trusted.
+
+**`web/DEPLOY.md` is the click-by-click for the first deploy.** Still not
+deployed; the Streamlit app is still live and still the recruiter-safe link.

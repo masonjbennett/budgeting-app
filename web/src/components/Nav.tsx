@@ -25,7 +25,10 @@ type Dest = { name: string; href: string; hint: string };
 const GROUPS: { label: string; items: Dest[] }[] = [
   {
     label: "Overview",
-    items: [{ name: "Dashboard", href: "/", hint: "Where you stand this month" }],
+    items: [
+      { name: "Dashboard", href: "/", hint: "Where you stand this month" },
+      { name: "Year", href: "/year", hint: "The calendar year so far" },
+    ],
   },
   {
     label: "Manage",

@@ -26,7 +26,9 @@ TAX DATA is official IRS 2026 — Rev. Proc. 2025-32 as amended by the OBBBA.
 Do not change a number here without a source; see CLAUDE.md for the citations.
 """
 
+import math as _math
 import random as _random
+from datetime import date as _date
 
 # TAX DATA (2026 estimates)
 # ──────────────────────────────────────────────
@@ -1309,4 +1311,1162 @@ def cost_of_waiting(start, monthly, rate, years, delay_years=1):
         "contributions_missed": contributions_missed,
         # The part that is not simply the money you did not put in.
         "growth_missed": lost - contributions_missed,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SAVINGS RATE AND THE TIME TO FINANCIAL INDEPENDENCE
+#
+# The one chart that makes the case for saving more better than a paragraph
+# can, and the reason is that the relationship is not the one people expect.
+# Doubling a savings rate does not halve the time: the rate sets BOTH how fast
+# the portfolio fills AND how large it has to be, because the money not saved
+# is the money that has to be replaced forever. That second half is what makes
+# the curve steep at the low end and nearly flat at the high one, and it is
+# invisible in any single "years to retirement" figure.
+# ═══════════════════════════════════════════════════════════════════════
+
+SWR_DEFAULT = 4.0          # Trinity Study (1998) safe withdrawal rate, percent.
+
+# The savings rates the curve is drawn at. It stops short of both ends on
+# purpose: at 0% the answer is "never" and at 100% the person spends nothing,
+# so the FIRE number is zero and the answer is "already". Neither is a point on
+# a curve — they are the asymptotes it runs between, and plotting them would
+# squeeze the whole readable range into the middle third of the axis.
+FIRE_RATE_MIN = 5.0
+FIRE_RATE_MAX = 90.0
+FIRE_RATE_STEP = 2.5
+
+
+def expected_real_return(stock_pct, inflation):
+    """The Monte Carlo's own mean return, net of inflation, as a percentage.
+
+    Derived from MC_STOCK_MEAN and MC_BOND_MEAN rather than being a second
+    assumption typed somewhere else, so that the deterministic curve and the
+    stochastic simulation on the same page describe ONE world. Moving the stock
+    slider moves both, which is the honest behaviour — with separate return
+    assumptions the page would be quietly arguing with itself.
+
+    Real, not nominal, and by the exact Fisher relation rather than by
+    subtracting inflation: at these magnitudes the difference is a couple of
+    tenths of a percent, which is a couple of YEARS at the low end of the curve.
+    """
+    stock_alloc = stock_pct / 100.0
+    nominal = stock_alloc * MC_STOCK_MEAN + (1.0 - stock_alloc) * MC_BOND_MEAN
+    return ((1.0 + nominal) / (1.0 + inflation / 100.0) - 1.0) * 100.0
+
+
+def years_to_target(portfolio, annual_savings, target, real_return):
+    """Years for a portfolio to reach a target, saving a constant real amount.
+
+    Closed form rather than a loop, because the curve evaluates this ~35 times
+    per request and the answer is wanted as a real number: a curve quantised to
+    whole years has visible steps in it, and those steps are an artefact of the
+    method rather than anything about the money.
+
+        P(1+r)^n + S((1+r)^n - 1)/r = T
+        n = ln((T + S/r) / (P + S/r)) / ln(1+r)
+
+    Contributions arrive at the END of each year — an ordinary annuity, which
+    is the conservative reading of "saves X a year".
+
+    Returns None where the target is never reached. That is a real answer and
+    not an error, and None is never rendered as a number.
+    """
+    portfolio = float(portfolio)
+    target = float(target)
+    annual_savings = float(annual_savings)
+    r = real_return / 100.0
+
+    if target <= portfolio:
+        return 0.0                      # already there
+    if r <= 0:
+        # No growth to help; only the saving closes the gap, if there is any.
+        return None if annual_savings <= 0 else (target - portfolio) / annual_savings
+
+    base = portfolio + annual_savings / r
+    # A balance grows only while r*P + S > 0, which is exactly base > 0. At or
+    # below it the portfolio is flat or shrinking and no amount of time reaches
+    # the target. The log would be of a negative number, so this guard is what
+    # stops a drawdown returning a plausible-looking figure.
+    if base <= 0:
+        return None
+    return _math.log((target + annual_savings / r) / base) / _math.log(1.0 + r)
+
+
+def capital_equivalent(annual_income, swr=SWR_DEFAULT):
+    """The portfolio an income stream saves you from having to build.
+
+    A Social Security benefit of $30,000 a year at a 4% withdrawal rate is
+    $750,000 the portfolio does not have to cover, and that is the figure worth
+    printing beside a FIRE number — the monthly benefit on its own is not
+    comparable to anything else on the page.
+
+    It is one division, and it is here rather than in the front end for the
+    same reason the rest of this section is: the divisor is the safe withdrawal
+    rate, and a threshold with a copy in the display layer is a threshold that
+    changes in one place.
+    """
+    if swr <= 0:
+        return None
+    return annual_income / (swr / 100.0)
+
+
+def fire_curve_points(annual_take_home, portfolio, real_return, swr=SWR_DEFAULT,
+                      rates=None):
+    """Years to independence at each of a range of savings rates.
+
+    At a savings rate of s the person saves s of take-home and lives on the
+    rest, so BOTH sides of the problem move: annual savings is s x take-home
+    and the target is (1 - s) x take-home / swr. That coupling is the entire
+    shape of the curve, and it is why the answer is not proportional to s.
+    """
+    if annual_take_home <= 0 or swr <= 0:
+        return []
+    if rates is None:
+        rates = []
+        rate = FIRE_RATE_MIN
+        while rate <= FIRE_RATE_MAX + 1e-9:
+            rates.append(round(rate, 4))
+            rate += FIRE_RATE_STEP
+
+    points = []
+    for s in rates:
+        frac = s / 100.0
+        savings = annual_take_home * frac
+        spending = annual_take_home * (1.0 - frac)
+        target = spending / (swr / 100.0)
+        points.append({
+            "savings_rate": s,
+            "annual_savings": savings,
+            "annual_expenses": spending,
+            "fire_number": target,
+            "years": years_to_target(portfolio, savings, target, real_return),
+        })
+    return points
+
+
+def fire_projection(income, itemized=None, budget=None, assets=None,
+                    stock_pct=80.0, inflation=3.0, swr=SWR_DEFAULT):
+    """Everything the FIRE page states, from the profile it already holds.
+
+    One function rather than five figures worked out in the front end, because
+    every one of them is a rule: a ratio (the savings rate), a threshold
+    divided into (the safe withdrawal rate), a target, a progress percentage
+    and a solved-for duration. The page had all five in TypeScript, including a
+    `const SWR = 0.04` that no test could see and that would have drifted from
+    the Streamlit app the first time either of them changed.
+
+    ANNUAL EXPENSES ARE BUDGETED NEEDS AND WANTS — not the savings bucket, and
+    not what was actually spent. Money budgeted to savings is not an expense
+    the portfolio has to replace, so counting it would inflate the FIRE number
+    by exactly the amount being saved: the more you saved, the further away the
+    page would say you are. What was actually SPENT is a different and noisier
+    question, and the dashboard answers that one for the month; this is the
+    plan, and the page says which it is.
+    """
+    th = compute_take_home(income, itemized)
+    b = budget or {}
+    take_home = th["annual_take_home"]
+
+    annual_expenses = (sum((b.get("needs") or {}).values())
+                       + sum((b.get("wants") or {}).values())) * MONTHS_PER_YEAR
+    portfolio = sum((assets or {}).values())
+    real_return = expected_real_return(stock_pct, inflation)
+    fire_number = annual_expenses / (swr / 100.0) if swr > 0 else None
+
+    # Savings is clamped at zero and `overspending` is what carries the fact
+    # that it was. A negative savings rate is a different statement from a zero
+    # one, and plotting -14% on an axis that starts at 5% would put the marker
+    # off the chart with nothing on the page saying why.
+    raw_savings = take_home - annual_expenses
+    annual_savings = max(0.0, raw_savings)
+    savings_rate = (annual_savings / take_home * 100.0) if take_home > 0 else None
+
+    # The TIME uses the raw figure, not the clamped one, and the difference is
+    # the whole answer for someone whose budget does not balance. Clamped, a
+    # person spending $60,000/yr more than they earn has "zero savings" and a
+    # portfolio left quietly compounding, so the engine reported 85 years — a
+    # plan funded from nowhere. Passed the real number, years_to_target's
+    # existing drawdown guard returns None, which is the truth: at this budget
+    # the portfolio is being consumed and the target is never reached.
+    years = None
+    if fire_number is not None and take_home > 0:
+        years = years_to_target(portfolio, raw_savings, fire_number, real_return)
+
+    curve = fire_curve_points(take_home, portfolio, real_return, swr)
+
+    # What one more point of savings rate is worth, in years — the single most
+    # actionable number on the page. Only meaningful where both ends are
+    # reachable: at a savings rate that never arrives, "a year sooner" has no
+    # referent, so this is None rather than a difference against infinity.
+    next_point = None
+    if savings_rate is not None and years is not None and savings_rate + 1 <= 100:
+        nxt = fire_curve_points(take_home, portfolio, real_return, swr,
+                                rates=[savings_rate + 1])
+        if nxt and nxt[0]["years"] is not None:
+            next_point = {
+                "savings_rate": nxt[0]["savings_rate"],
+                "years": nxt[0]["years"],
+                "years_saved": years - nxt[0]["years"],
+            }
+
+    return {
+        "annual_take_home": take_home,
+        "monthly_take_home": th["monthly_take_home"],
+        "annual_expenses": annual_expenses,
+        "annual_savings": annual_savings,
+        "savings_rate": savings_rate,
+        # True where the budget spends more than the take-home covers, which is
+        # why the savings rate reads 0.0 rather than a negative number.
+        "overspending": raw_savings < 0,
+        "shortfall": max(0.0, -raw_savings),
+        "portfolio": portfolio,
+        "fire_number": fire_number,
+        "still_to_accumulate": (max(0.0, fire_number - portfolio)
+                                if fire_number is not None else None),
+        "progress_pct": ((portfolio / fire_number * 100.0)
+                         if fire_number else None),
+        "years_at_current": years,
+        "swr": swr,
+        "real_return": real_return,
+        "stock_pct": stock_pct,
+        "inflation": inflation,
+        "curve": curve,
+        "next_point": next_point,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# THE YEAR SO FAR
+#
+# The dashboard is entirely month-scoped, which flatters a good month and
+# hides a bad run. This is the same money over the calendar year.
+#
+# TWO THINGS MAKE IT HARDER THAN A SUM, and both of them fail in the
+# flattering direction, which is the dangerous one.
+#
+# 1. AN EXPENSE LOG IS NOT A BANK STATEMENT. It has holes, and a hole looks
+#    exactly like a frugal month. Eight months of budget against two months of
+#    records reads as "$33,242 under budget" — the most encouraging possible
+#    way to be wrong. So the variance is measured only over months that HAVE
+#    records, and `complete_record` says whether that is the whole year so far.
+#
+# 2. A MONTH IN PROGRESS IS NOT A SHORT MONTH. Rent is paid on the 1st, so on
+#    the 2nd the month holds a full month of rent and two days of everything
+#    else. Pro-rating the budget by day to match reported the demo's rent as
+#    $3,800 against $2,030 "allowed" — 30x over on a bill that was paid on
+#    time. Counting it as a whole month instead just moves the lie: everything
+#    reads under budget until about the 28th. So the current month is not in
+#    the variance at all. It is reported on its own, and the dashboard beside
+#    this already owns it.
+# ═══════════════════════════════════════════════════════════════════════
+
+MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _parse_iso(value):
+    """An ISO date, or None. Never raises — an expense log can hold anything."""
+    try:
+        return _date.fromisoformat(str(value)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def year_to_date(expenses, budget=None, monthly_take_home=0.0, today=None):
+    """Spending, saving and budget adherence over the calendar year so far.
+
+    `today` is the CLIENT's date, not the server's. The year and month
+    boundaries belong to the person reading the page: a server in UTC has
+    already rolled into January while someone in Chicago is still finishing New
+    Year's Eve, and the dashboard beside this reads the browser's clock. Falls
+    back to the server's date when it is not given.
+
+    Three totals, and they are deliberately different numbers:
+      `spent`             everything logged this year, the current month
+                          included — what "spent this year" means to a reader.
+      `spent_documented`  the same, restricted to COMPLETE months that hold at
+                          least one record. The only one a budget is compared
+                          against, because it is the only one with a matching
+                          number of months of plan behind it.
+      `current_month`     the month in progress, on its own.
+    """
+    ref = _parse_iso(today) or _date.today()
+    year = ref.year
+    b = budget or {}
+    buckets = (("needs", "Needs"), ("wants", "Wants"), ("savings", "Savings"))
+    cat_budget = {}
+    cat_bucket = {}
+    for key, label in buckets:
+        for name, amount in (b.get(key) or {}).items():
+            cat_budget[name] = float(amount)
+            cat_bucket[name] = label
+    budget_monthly = sum(cat_budget.values())
+
+    # ── What is on record ──
+    spent_by_month = {}
+    by_month_cat = {}
+    count = 0
+    future = 0
+    for e in expenses or []:
+        d = _parse_iso(e.get("date"))
+        if d is None or d.year != year:
+            continue
+        amount = float(e.get("amount") or 0)
+        cat = e.get("category") or "Uncategorised"
+        spent_by_month[d.month] = spent_by_month.get(d.month, 0.0) + amount
+        by_month_cat.setdefault(d.month, {})
+        by_month_cat[d.month][cat] = by_month_cat[d.month].get(cat, 0.0) + amount
+        count += 1
+        if d > ref:
+            future += 1
+
+    spent = sum(spent_by_month.values())
+
+    # ── The comparable basis: complete months that hold records ──
+    complete = [m for m in range(1, ref.month)]
+    documented = [m for m in complete if m in spent_by_month]
+    undocumented = [f"{year}-{m:02d}" for m in complete if m not in spent_by_month]
+    months_complete = len(complete)
+    documented_months = len(documented)
+    complete_record = months_complete > 0 and not undocumented
+
+    spent_documented = sum(spent_by_month[m] for m in documented)
+    spent_by_cat = {}
+    for m in documented:
+        for cat, amount in by_month_cat[m].items():
+            spent_by_cat[cat] = spent_by_cat.get(cat, 0.0) + amount
+
+    budget_documented = budget_monthly * documented_months
+    budget_to_date = budget_monthly * months_complete
+    variance = (budget_documented - spent_documented) if documented_months else None
+
+    # ── Pace and projection ──
+    # Only from complete documented months. One month is a number rather than a
+    # rate, but it is still the only rate available and extrapolating it is
+    # what a reader would do anyway — so it is returned WITH the count it came
+    # from, and the page says how thin the evidence is.
+    pace = spent_documented / documented_months if documented_months else None
+    projected = pace * MONTHS_PER_YEAR if pace is not None else None
+
+    # ── Earning and saving, on the same basis as the spending ──
+    # Take-home over the whole elapsed year is a fact and is returned as one,
+    # but it must not be the denominator: subtracting two months of spending
+    # from eight months of pay is not a savings rate, it is a missing record.
+    take_home_documented = monthly_take_home * documented_months
+    take_home_to_date = monthly_take_home * months_complete
+    saved = (take_home_documented - spent_documented) if documented_months else None
+    savings_rate = (saved / take_home_documented * 100.0
+                    if saved is not None and take_home_documented > 0 else None)
+
+    by_month = []
+    for m in range(1, ref.month + 1):
+        by_month.append({
+            "month": f"{year}-{m:02d}",
+            "label": MONTH_ABBR[m - 1],
+            "spent": spent_by_month.get(m, 0.0),
+            "budget": budget_monthly,
+            # The month in progress. Its bar is not short because spending was
+            # low; it is short because the month is.
+            "in_progress": m == ref.month,
+            # False means NOTHING WAS LOGGED, which is not the same as a month
+            # in which nothing was spent. The zero is not evidence.
+            "has_data": m in spent_by_month,
+        })
+
+    by_bucket = []
+    for _, label in buckets:
+        names = [n for n, lbl in cat_bucket.items() if lbl == label]
+        plan = sum(cat_budget[n] for n in names)
+        used = sum(spent_by_cat.get(n, 0.0) for n in names)
+        by_bucket.append({
+            "bucket": label,
+            "budget_monthly": plan,
+            "budget_to_date": plan * documented_months,
+            "spent": used,
+            "variance": plan * documented_months - used,
+        })
+    # Spending logged against a category the budget does not have. Its own row
+    # rather than folded into a total, because it is the part of the variance
+    # that no plan accounts for — and a category deleted from the budget after
+    # it was spent against lands here rather than vanishing.
+    unbudgeted = sum(v for k, v in spent_by_cat.items() if k not in cat_budget)
+    if unbudgeted > 0:
+        by_bucket.append({
+            "bucket": "Unbudgeted",
+            "budget_monthly": 0.0,
+            "budget_to_date": 0.0,
+            "spent": unbudgeted,
+            "variance": -unbudgeted,
+        })
+
+    by_category = []
+    for name in sorted(set(cat_budget) | set(spent_by_cat)):
+        plan = cat_budget.get(name, 0.0)
+        used = spent_by_cat.get(name, 0.0)
+        allowed = plan * documented_months
+        by_category.append({
+            "category": name,
+            "bucket": cat_bucket.get(name),
+            "budget_monthly": plan,
+            "budget_to_date": allowed,
+            "spent": used,
+            "variance": allowed - used,
+            # Only where there is a plan to be over. A category with no budget
+            # is not over its budget; it has none, which the bucket row says.
+            "over": bool(plan > 0 and used > allowed),
+            "pct_of_budget": (used / allowed * 100.0) if allowed > 0 else None,
+        })
+    by_category.sort(key=lambda r: -r["spent"])
+
+    return {
+        "year": year,
+        "today": ref.isoformat(),
+        "months_complete": months_complete,
+        "documented_months": documented_months,
+        "undocumented_months": undocumented,
+        "complete_record": complete_record,
+        "transactions": count,
+        # Logged with a date still to come. Counted in `spent` because they
+        # were entered deliberately, but named so the page can say so.
+        "future_dated": future,
+        "spent": spent,
+        "spent_documented": spent_documented,
+        "current_month": {
+            "month": f"{year}-{ref.month:02d}",
+            "label": MONTH_ABBR[ref.month - 1],
+            "spent": spent_by_month.get(ref.month, 0.0),
+            "has_data": ref.month in spent_by_month,
+        },
+        "budget_monthly": budget_monthly,
+        "budget_year": budget_monthly * MONTHS_PER_YEAR,
+        # `budget_documented` matches spent_documented month for month;
+        # `budget_to_date` covers every complete month whether or not it holds
+        # records. They are equal exactly when complete_record is true.
+        "budget_documented": budget_documented,
+        "budget_to_date": budget_to_date,
+        # None where no complete month holds a record — there is nothing to
+        # compare, which is not the same as being exactly on budget.
+        "variance": variance,
+        "pace": pace,
+        "projected_year_end": projected,
+        "projected_vs_budget": (budget_monthly * MONTHS_PER_YEAR - projected
+                                if projected is not None else None),
+        "take_home_monthly": monthly_take_home,
+        "take_home_documented": take_home_documented,
+        "take_home_to_date": take_home_to_date,
+        "saved": saved,
+        "savings_rate": savings_rate,
+        "by_month": by_month,
+        "by_bucket": by_bucket,
+        "by_category": by_category,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# READING A BANK'S CSV
+#
+# The cheap answer to having no bank connection, and the last thing keeping
+# this a hand-typed tool. Splitting a file into cells is text handling and the
+# front end does it. Everything below is a DECISION, and every one of them can
+# be wrong quietly:
+#
+#   * 03/04/2026 is the 3rd of April or the 4th of March, and the file rarely
+#     says which. Guessing wrong moves a whole year of spending by a month.
+#   * Chase writes a purchase as -52.30 and American Express writes the same
+#     purchase as 52.30. Guessing wrong imports a year of refunds and drops
+#     every actual expense.
+#   * 1.234,56 read as US notation is 1.23456 — a $1,234 charge that lands as
+#     a rounding error, with nothing on screen looking wrong.
+#   * Importing the same file twice doubles a year of spending.
+#
+# None of those raise. Each of them produces a number that looks like a
+# number, which is why they are here with the rest of the rules and not in the
+# display layer. Nothing is ever imported without being previewed first.
+# ═══════════════════════════════════════════════════════════════════════
+
+# Header names a bank might use, best first. Matched as substrings of the
+# lowercased header, so "Transaction Date" is found by "transaction date".
+IMPORT_HEADERS = {
+    "date": ("transaction date", "trans date", "trade date", "posting date",
+             "posted date", "post date", "date"),
+    "amount": ("transaction amount", "amount", "value"),
+    "debit": ("debit", "withdrawal", "money out", "paid out"),
+    "credit": ("credit", "deposit", "money in", "paid in"),
+    "description": ("original description", "description", "merchant name",
+                    "merchant", "payee", "name", "details", "particulars",
+                    "narrative", "memo", "reference"),
+    "category": ("category", "type"),
+}
+
+# Merchant words that identify a KIND of spending. Matched as WHOLE WORDS --
+# see `_word_at` -- which is why several appear in more than one form. Under
+# a plain substring test "gym" claimed GYMBOREE, "rent" claimed PARENTS
+# MAGAZINE, "metro" claimed the METROPOLITAN MUSEUM and "toll" claimed a
+# TOLLHOUSE BAKERY: the same false-positive class the category-name half was
+# already guarding against, on the half that had no guard. The value is a
+# canonical
+# category name, and it is used only when the person actually has a category
+# of that name — this never invents a budget line, and a profile with no
+# "Dining Out" simply gets no suggestion rather than a new category appearing
+# in their budget because a coffee shop was in the file.
+IMPORT_KEYWORDS = {
+    "grocer": "Groceries", "grocery": "Groceries", "groceries": "Groceries",
+    "supermarket": "Groceries", "trader joe": "Groceries", "trader joes": "Groceries",
+    "whole foods": "Groceries", "safeway": "Groceries", "kroger": "Groceries",
+    "aldi": "Groceries", "publix": "Groceries", "wegmans": "Groceries",
+    "costco": "Groceries", "sam's club": "Groceries", "food lion": "Groceries",
+    "sprouts": "Groceries", "heb": "Groceries", "meijer": "Groceries",
+
+    "restaurant": "Dining Out", "restaurants": "Dining Out",
+    "starbucks": "Dining Out", "mcdonald": "Dining Out", "mcdonalds": "Dining Out",
+    "chipotle": "Dining Out", "doordash": "Dining Out", "uber eats": "Dining Out",
+    "grubhub": "Dining Out", "seamless": "Dining Out", "postmates": "Dining Out",
+    "cafe": "Dining Out", "coffee": "Dining Out", "pizza": "Dining Out",
+    "panera": "Dining Out", "dunkin": "Dining Out", "chick-fil-a": "Dining Out",
+    "taqueria": "Dining Out", "sushi": "Dining Out", "brewing": "Dining Out",
+    "tavern": "Dining Out", "bistro": "Dining Out", "steakhouse": "Dining Out",
+
+    "uber": "Transportation", "lyft": "Transportation", "shell oil": "Transportation",
+    "chevron": "Transportation", "exxon": "Transportation", "bp": "Transportation",
+    "parking": "Transportation", "transit": "Transportation", "metro": "Transportation",
+    "mta": "Transportation", "toll": "Transportation", "gas station": "Transportation",
+    "auto repair": "Transportation", "jiffy lube": "Transportation",
+
+    "netflix": "Subscriptions", "spotify": "Subscriptions", "hulu": "Subscriptions",
+    "disney+": "Subscriptions", "icloud": "Subscriptions", "prime video": "Subscriptions",
+    "audible": "Subscriptions", "patreon": "Subscriptions", "substack": "Subscriptions",
+    "adobe": "Subscriptions", "dropbox": "Subscriptions", "youtube premium": "Subscriptions",
+
+    "amazon": "Shopping", "target": "Shopping", "walmart": "Shopping",
+    "best buy": "Shopping", "etsy": "Shopping", "ebay": "Shopping",
+    "nordstrom": "Shopping", "macy": "Shopping", "macys": "Shopping", "ikea": "Shopping",
+    "home depot": "Shopping", "lowe's": "Shopping", "nike": "Shopping",
+
+    "electric": "Utilities", "electricity": "Utilities", "utility": "Utilities",
+    "utilities": "Utilities", "water dept": "Utilities",
+    "comcast": "Utilities", "xfinity": "Utilities", "spectrum": "Utilities",
+    "con edison": "Utilities", "national grid": "Utilities", "internet": "Utilities",
+
+    "verizon": "Phone", "at&t": "Phone", "t-mobile": "Phone", "mint mobile": "Phone",
+
+    "insurance": "Insurance", "geico": "Insurance", "state farm": "Insurance",
+    "progressive insurance": "Insurance", "allstate": "Insurance",
+
+    "rent": "Rent", "landlord": "Rent", "property mgmt": "Rent",
+    "apartment": "Rent", "apartments": "Rent", "leasing": "Rent",
+
+    "gym": "Gym", "fitness": "Gym", "planet fitness": "Gym", "equinox": "Gym",
+    "crossfit": "Gym", "peloton": "Gym", "yoga": "Gym",
+
+    "airlines": "Travel", "airbnb": "Travel", "hotel": "Travel", "hotels": "Travel",
+    "marriott": "Travel", "hilton": "Travel", "expedia": "Travel",
+    "delta air": "Travel", "united air": "Travel", "southwest air": "Travel",
+
+    "cinema": "Entertainment", "amc": "Entertainment", "regal": "Entertainment",
+    "ticketmaster": "Entertainment", "steam games": "Entertainment",
+    "playstation": "Entertainment", "xbox": "Entertainment",
+    "theatre": "Entertainment", "theater": "Entertainment",
+}
+
+_MONTH_NAMES = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _digits_groups(text):
+    """The runs of digits in a string, in order. [] where there are none."""
+    groups = []
+    run = ""
+    for ch in str(text):
+        if ch.isdigit():
+            run += ch
+        elif run:
+            groups.append(run)
+            run = ""
+    if run:
+        groups.append(run)
+    return groups
+
+
+def parse_amount(text):
+    """A money string as a float, or None.
+
+    Handles $, thousands separators, a trailing or leading minus, and
+    accounting parentheses. THE DECIMAL SEPARATOR IS DECIDED, not assumed:
+    where both a dot and a comma appear the LATER one is the decimal mark, and
+    a lone comma followed by exactly two digits at the end is a decimal mark
+    too. Without that, a European export's 1.234,56 parses as 1.23456 — a
+    $1,234 charge arriving as a rounding error, which no total on the page
+    would look wrong for.
+    """
+    s = str(text).strip()
+    if not s:
+        return None
+    negative = s.startswith("(") and s.endswith(")")
+    if negative:
+        s = s[1:-1]
+    s = s.replace("−", "-").replace(" ", " ")   # unicode minus, nbsp
+    # Strip everything that is not a digit, separator or sign.
+    kept = "".join(ch for ch in s if ch.isdigit() or ch in ".,-+")
+    if kept.endswith("-"):                      # trailing-minus notation
+        negative = True
+        kept = kept[:-1]
+    if kept.startswith("-"):
+        negative = True
+    kept = kept.lstrip("+-")
+    if not any(ch.isdigit() for ch in kept):
+        return None
+
+    last_dot = kept.rfind(".")
+    last_comma = kept.rfind(",")
+    if last_dot >= 0 and last_comma >= 0:
+        # Both present: the later one is the decimal mark.
+        if last_comma > last_dot:
+            kept = kept.replace(".", "").replace(",", ".")
+        else:
+            kept = kept.replace(",", "")
+    elif last_comma >= 0:
+        tail = kept[last_comma + 1:]
+        if len(tail) == 2 and kept.count(",") == 1:
+            kept = kept.replace(",", ".")       # 1234,56
+        else:
+            kept = kept.replace(",", "")        # 1,234
+    elif last_dot >= 0 and kept.count(".") > 1:
+        kept = kept.replace(".", "")            # 1.234.567
+
+    try:
+        value = float(kept)
+    except ValueError:
+        return None
+    return -value if negative else value
+
+
+def looks_like_amount(text):
+    """Whether a cell is SHAPED like money, rather than merely containing digits.
+
+    `parse_amount` is deliberately permissive, because a cell the caller has
+    already identified as the amount may read "$1,234.56 CR" or "USD 52.30" and
+    all of that should still come back as a number. As a test of WHETHER a
+    column holds amounts it is useless: it strips non-digits, so
+    "STARBUCKS STORE 4" parses as 4.0 and every merchant string carrying a
+    store number scores as money.
+
+    That is not hypothetical. Sniffing a headerless Amex export by content, the
+    description column scored two out of two against the real amount column's
+    two out of two, won the tie by being further left, and the file imported
+    STARBUCKS STORE 4 as a $4.00 charge — a plausible-looking coffee, from a
+    column of shop names.
+
+    So detection uses this instead: after the currency furniture comes off,
+    what is left must be only digits and separators.
+    """
+    s = str(text).strip()
+    if not s:
+        return False
+    for junk in ("$", "£", "€", "¥", "(", ")", " ", " ",
+                 "+", "-", "−"):
+        s = s.replace(junk, "")
+    # A trailing DR/CR marker is bookkeeping, not text.
+    for marker in ("DR", "CR", "dr", "cr"):
+        if s.endswith(marker):
+            s = s[:-2]
+    s = s.strip()
+    return bool(s) and all(ch.isdigit() or ch in ".," for ch in s)
+
+
+def detect_date_order(values):
+    """Whether a column of dates is month-first, day-first or year-first.
+
+    THE FILE USUALLY DOES NOT SAY, and getting it wrong does not fail — it
+    moves spending between months for every date whose day is 12 or less,
+    which is most of them. So the answer comes with its evidence, and the
+    front end shows it: a column containing 13/04/2026 has proved itself
+    day-first, and a column of nothing but 03/04/2026 has proved nothing.
+
+    US bank exports are overwhelmingly month-first, so that is the fallback —
+    but `ambiguous` is what says the fallback was used.
+    """
+    first_over_12 = second_over_12 = 0
+    year_first = 0
+    seen = 0
+    for value in values:
+        groups = _digits_groups(value)
+        if len(groups) < 3:
+            continue
+        seen += 1
+        if len(groups[0]) == 4:
+            year_first += 1
+            continue
+        a, b = int(groups[0]), int(groups[1])
+        if a > 12:
+            first_over_12 += 1
+        if b > 12:
+            second_over_12 += 1
+
+    if seen == 0:
+        return {"order": "MDY", "ambiguous": True, "proved": False,
+                "reason": "no parseable dates in the column",
+                "day_first_evidence": 0, "month_first_evidence": 0}
+    if year_first > seen / 2:
+        return {"order": "YMD", "ambiguous": False, "proved": True,
+                "reason": "dates begin with a four-digit year",
+                "day_first_evidence": 0, "month_first_evidence": 0}
+    if first_over_12 and not second_over_12:
+        return {"order": "DMY", "ambiguous": False, "proved": True,
+                "reason": f"{first_over_12} date(s) have a first number above 12",
+                "day_first_evidence": first_over_12, "month_first_evidence": 0}
+    if second_over_12 and not first_over_12:
+        return {"order": "MDY", "ambiguous": False, "proved": True,
+                "reason": f"{second_over_12} date(s) have a second number above 12",
+                "day_first_evidence": 0, "month_first_evidence": second_over_12}
+    if first_over_12 and second_over_12:
+        # Both, which no consistent file can be. Something is wrong with the
+        # column; say so rather than picking the larger count.
+        return {"order": "MDY", "ambiguous": True, "proved": False,
+                "reason": "the column contains both day-first and month-first dates",
+                "day_first_evidence": first_over_12,
+                "month_first_evidence": second_over_12}
+    return {"order": "MDY", "ambiguous": True, "proved": False,
+            "reason": "every day of the month is 12 or less, so the file does not say",
+            "day_first_evidence": 0, "month_first_evidence": 0}
+
+
+def parse_date(text, order="MDY"):
+    """A date string as an ISO date, or None. `order` settles the ambiguity."""
+    s = str(text).strip()
+    if not s:
+        return None
+
+    # A month NAME removes the ambiguity by itself, whatever `order` says.
+    lowered = s.lower()
+    for name, month in _MONTH_NAMES.items():
+        if name in lowered:
+            nums = [int(g) for g in _digits_groups(s)]
+            year = next((n for n in nums if n >= 1000), None)
+            day = next((n for n in nums if 1 <= n <= 31 and n != year), None)
+            if year and day:
+                try:
+                    return _date(year, month, day).isoformat()
+                except ValueError:
+                    return None
+            return None
+
+    groups = _digits_groups(s)
+    if len(groups) < 3:
+        return None
+    a, b, c = groups[0], groups[1], groups[2]
+    if len(a) == 4:
+        year, month, day = int(a), int(b), int(c)
+    else:
+        year = int(c)
+        if len(c) == 2:
+            # A two-digit year. 70 is the pivot Python's own %y uses.
+            year += 2000 if year < 70 else 1900
+        if order == "DMY":
+            day, month = int(a), int(b)
+        else:
+            month, day = int(a), int(b)
+    try:
+        return _date(year, month, day).isoformat()
+    except ValueError:
+        return None
+
+
+def detect_sign(values):
+    """Whether spending in this file is written negative or positive.
+
+    Chase writes a $52.30 purchase as -52.30; American Express writes the same
+    purchase as 52.30. Read the wrong way round, a year of card statements
+    imports as a handful of refunds and drops every actual expense — and the
+    import looks like it worked, because rows did arrive.
+
+    Decided by the majority, because a card statement is mostly spending
+    whichever way it signs it. The counts come back so the front end can show
+    the split and let it be overridden; `ambiguous` marks a file balanced
+    enough that the majority is not much of an argument (a current account
+    with a salary in it, say).
+    """
+    negatives = positives = 0
+    for value in values:
+        amount = parse_amount(value)
+        if amount is None or amount == 0:
+            continue
+        if amount < 0:
+            negatives += 1
+        else:
+            positives += 1
+    total = negatives + positives
+    if total == 0:
+        return {"convention": "negative", "negatives": 0, "positives": 0,
+                "ambiguous": True, "reason": "no amounts could be read"}
+    convention = "negative" if negatives > positives else "positive"
+    minority = min(negatives, positives) / total
+    return {
+        "convention": convention,
+        "negatives": negatives,
+        "positives": positives,
+        "ambiguous": minority > 0.4,
+        "reason": (f"{negatives} negative and {positives} positive amounts"),
+    }
+
+
+def detect_header(grid):
+    """Whether the first row NAMES the columns or holds a transaction.
+
+    Getting this wrong loses exactly one row — the oldest transaction in the
+    file, silently, at the bottom of a preview nobody scrolls to — or adds a
+    row of column names as a $0 expense. So it is decided here rather than by
+    the front end, and by the one test that is hard to fool: a header contains
+    no date, and the rows under a header do.
+
+    A file with no readable dates anywhere reaches this as False, which is the
+    safe way round: nothing is dropped, and the preview reports every row as
+    having an unreadable date, which is what is actually wrong with it.
+    """
+    if len(grid) < 2:
+        return False
+    first = grid[0]
+    rest = grid[1:6]
+    first_has_date = any(parse_date(c) for c in first)
+    rest_has_date = any(parse_date(c) for row in rest for c in row)
+    return rest_has_date and not first_has_date
+
+
+def _header_column(headers, kind):
+    """The best column for a role, by header name. None where none matches."""
+    lowered = [str(h or "").strip().lower() for h in headers]
+    for needle in IMPORT_HEADERS[kind]:
+        for i, h in enumerate(lowered):
+            if needle in h:
+                return i
+    return None
+
+
+def sniff_columns(grid, has_header=True):
+    """Which column is the date, the amount and the description.
+
+    By header name where there is a header, and by CONTENT where there is not
+    — the column whose cells parse as dates is the date column, whichever
+    bank wrote it. A wrong guess is not dangerous here because the preview
+    shows what the guess produced before anything is committed; it is only
+    worth getting right so that the common files need no clicking.
+    """
+    if not grid:
+        return {"date": None, "amount": None, "debit": None, "credit": None,
+                "description": None, "category": None}
+
+    headers = grid[0] if has_header else []
+    body = grid[1:] if has_header else grid
+    width = max(len(r) for r in grid)
+
+    found = {}
+    for kind in ("date", "amount", "debit", "credit", "description", "category"):
+        found[kind] = _header_column(headers, kind) if has_header else None
+
+    # "Amount" and "Debit" can both match the same header ("Debit Amount");
+    # a debit/credit pair is only real when the two are different columns.
+    if found["debit"] is not None and found["debit"] == found["amount"]:
+        found["debit"] = None
+    if found["credit"] is not None and found["credit"] == found["amount"]:
+        found["credit"] = None
+    if found["debit"] is None or found["credit"] is None:
+        # One half of a pair is not a pair — Chase has a "Type" column reading
+        # "DEBIT" per row, which is not an amount.
+        if found["amount"] is not None:
+            found["debit"] = found["credit"] = None
+
+    sample = body[:40]
+
+    if found["date"] is None:
+        best, best_score = None, 0
+        for col in range(width):
+            score = sum(1 for r in sample
+                        if col < len(r) and parse_date(r[col]) is not None)
+            if score > best_score:
+                best, best_score = col, score
+        if best_score >= max(1, len(sample) // 2):
+            found["date"] = best
+
+    if found["amount"] is None and found["debit"] is None:
+        # `looks_like_amount`, not `parse_amount` — see its docstring. Where two
+        # genuinely money-shaped columns tie (a statement with both Amount and
+        # Balance) the leftmost wins, which is arbitrary; that only arises in a
+        # headerless file, and the preview shows which column was taken.
+        best, best_score = None, 0
+        for col in range(width):
+            if col == found["date"]:
+                continue
+            score = sum(1 for r in sample
+                        if col < len(r) and looks_like_amount(r[col]))
+            if score > best_score:
+                best, best_score = col, score
+        if best_score >= max(1, len(sample) // 2):
+            found["amount"] = best
+
+    if found["description"] is None:
+        # The wordiest column that is not the date or the amount. Length rather
+        # than "is not a number", because a reference column of digits is not a
+        # description either and this ranks it below the real one.
+        best, best_score = None, 0.0
+        taken = {found["date"], found["amount"], found["debit"], found["credit"]}
+        for col in range(width):
+            if col in taken:
+                continue
+            cells = [str(r[col]) for r in sample if col < len(r)]
+            letters = [len([c for c in cell if c.isalpha()]) for cell in cells]
+            score = sum(letters) / len(letters) if letters else 0.0
+            if score > best_score:
+                best, best_score = col, score
+        if best_score > 0:
+            found["description"] = best
+
+    return found
+
+
+def _word_at(text, needle):
+    """Whether `needle` appears in `text` as a WHOLE word.
+
+    The one place the boundary rule lives, because both halves of category
+    matching need it and a second copy is how the two come to disagree.
+    Without it, "Travel" claims TRAVELERS INSURANCE, "gym" claims GYMBOREE,
+    "rent" claims PARENTS MAGAZINE and "metro" claims the METROPOLITAN MUSEUM
+    -- every one a confident wrong category on a real merchant string.
+
+    A boundary is any non-alphanumeric character, so an apostrophe or a hash
+    still ends a word: "macy" matches MACY'S and "bp" matches BP#4471.
+    """
+    if not needle:
+        return False
+    i = text.find(needle)
+    while i != -1:
+        before = text[i - 1] if i else " "
+        j = i + len(needle)
+        after = text[j] if j < len(text) else " "
+        if not before.isalnum() and not after.isalnum():
+            return True
+        i = text.find(needle, i + 1)
+    return False
+
+
+def suggest_category(description, bank_category, categories):
+    """Which of the person's own budget categories a transaction belongs to.
+
+    ONE RULE: the longest piece of the description that names a category wins.
+    The obvious alternative is an ordered list of tests, and it needs hand
+    tuning forever -- "uber eats" has to beat "uber", and "subway" the sandwich
+    has to lose to "subway" the train exactly where the person has one category
+    and not the other. Scoring by the length of what matched settles both
+    without a special case: "uber eats" is nine characters and "uber" is four.
+
+    Both sources of a match -- the person's own category names and the merchant
+    table -- are scored on ONE list with ONE comparison. They used to have a
+    comparison each, and a mutation reversing the ordering rule therefore broke
+    only one of them while every assertion stayed green.
+
+    A bank's own category column is the FALLBACK, not the winner, and that was
+    measured rather than assumed. A bank's taxonomy is someone else's
+    vocabulary that happens to collide with this budget's: Chase files an Uber
+    ride under "Travel" and Netflix under "Entertainment", and against a
+    profile holding both "Travel" and "Transportation", both "Entertainment"
+    and "Subscriptions", letting the column win put both in the wrong one. It
+    earns its place on the rows where the description is a payment-processor
+    string -- "SQ *A1B2C3" names nothing at all, and there the bank's guess is
+    the only one there is. It is accepted only when it names a category the
+    person actually has; "Merchandise" and "Services" are what those columns
+    usually say and neither is a budget line.
+
+    Returns (category, source), with category None where nothing is known. None
+    is the honest answer; a default would put a year of spending in one bucket
+    and look like it had been classified.
+    """
+    by_lower = {}
+    for name in categories or []:
+        by_lower.setdefault(str(name).strip().lower(), name)
+
+    fallback = (None, None)
+    if bank_category:
+        exact = by_lower.get(str(bank_category).strip().lower())
+        if exact:
+            fallback = (exact, "bank category")
+
+    text = " " + str(description or "").lower() + " "
+    if not text.strip():
+        return fallback
+
+    # (length of the match, prefer the person's own vocabulary, name, source)
+    candidates = []
+    for lower, name in by_lower.items():
+        if _word_at(text, lower):
+            candidates.append((len(lower), 1, name, "category name"))
+    for keyword, canonical in IMPORT_KEYWORDS.items():
+        own = by_lower.get(canonical.lower())
+        if own is not None and _word_at(text, keyword):
+            candidates.append((len(keyword), 0, own, "merchant"))
+
+    if not candidates:
+        return fallback
+    # Longest first; a tie goes to the person's own category name; anything
+    # still tied is settled by name, so the answer is the same on every run.
+    candidates.sort(key=lambda c: (-c[0], -c[1], c[2], c[3]))
+    return candidates[0][2], candidates[0][3]
+
+
+def import_preview(grid, existing=None, categories=None, has_header=None,
+                   mapping=None, date_order=None, sign=None):
+    """Turn a split CSV into rows that can be reviewed, then committed.
+
+    NOTHING IS IMPORTED HERE. This returns what each row would become, what
+    was decided about it and why, and the front end shows every one of them
+    before a single expense is created.
+
+    DUPLICATES ARE COUNTED, NOT MATCHED. A date and an amount is the only key
+    two records from different sources share, and two real coffees on one day
+    are indistinguishable from one coffee imported twice. So for each key the
+    rule is: if the profile already holds N expenses on that date for that
+    amount, the first N rows in the file carrying it are duplicates and the
+    rest are new. Importing a file twice flags everything; importing a file
+    that genuinely contains a repeated charge flags only what is already held.
+
+    A flagged row is never dropped and never overwrites anything — it comes
+    back marked, unticked in the preview, and the person decides.
+    """
+    grid = grid or []
+    # None means "work it out" — a caller that has not asked the question yet.
+    # An explicit True or False is the person's own answer and is obeyed.
+    if has_header is None:
+        has_header = detect_header(grid)
+    body = grid[1:] if has_header else grid
+    headers = ([str(h) for h in grid[0]] if has_header and grid else [])
+
+    cols = dict(mapping) if mapping else sniff_columns(grid, has_header)
+    for key in ("date", "amount", "debit", "credit", "description", "category"):
+        cols.setdefault(key, None)
+    suggested = mapping is None
+
+    def cell(row, col):
+        if col is None or col >= len(row):
+            return ""
+        return str(row[col] or "").strip()
+
+    date_values = [cell(r, cols["date"]) for r in body] if cols["date"] is not None else []
+    date_info = detect_date_order(date_values)
+    if date_order:
+        date_info = dict(date_info, order=date_order, overridden=True)
+    order = date_info["order"]
+
+    using_pair = cols["debit"] is not None or cols["credit"] is not None
+    if using_pair:
+        # A debit column IS the spending column. There is no sign to work out.
+        sign_info = {"convention": "debit column", "negatives": 0, "positives": 0,
+                     "ambiguous": False,
+                     "reason": "the file has separate debit and credit columns"}
+    else:
+        amount_values = ([cell(r, cols["amount"]) for r in body]
+                         if cols["amount"] is not None else [])
+        sign_info = detect_sign(amount_values)
+        if sign:
+            sign_info = dict(sign_info, convention=sign, overridden=True)
+    spend_is_negative = sign_info["convention"] == "negative"
+
+    # Existing expenses, counted by (date, amount).
+    held = {}
+    for e in existing or []:
+        try:
+            key = (str(e.get("date"))[:10], round(float(e.get("amount") or 0), 2))
+        except (TypeError, ValueError):
+            continue
+        held.setdefault(key, []).append(e.get("id"))
+
+    seen = {}
+    rows = []
+    for i, raw in enumerate(body):
+        line = i + (2 if has_header else 1)          # 1-based, as a file reads
+        description = cell(raw, cols["description"])
+        bank_cat = cell(raw, cols["category"])
+        iso = parse_date(cell(raw, cols["date"]), order) if cols["date"] is not None else None
+
+        amount = None
+        if using_pair:
+            debit = parse_amount(cell(raw, cols["debit"])) if cols["debit"] is not None else None
+            amount = abs(debit) if debit else None
+        else:
+            value = parse_amount(cell(raw, cols["amount"])) if cols["amount"] is not None else None
+            if value is not None and value != 0:
+                is_spend = (value < 0) if spend_is_negative else (value > 0)
+                amount = abs(value) if is_spend else None
+
+        skip = None
+        if not any(cell(raw, c) for c in range(len(raw))):
+            skip = "blank line"
+        elif cols["date"] is None:
+            skip = "no date column chosen"
+        elif iso is None:
+            skip = "the date could not be read"
+        elif cols["amount"] is None and not using_pair:
+            skip = "no amount column chosen"
+        elif amount is None:
+            # Three different reasons, and they need different words: a row
+            # this app should not import is not the same as a row it could
+            # not read. "0 imported" with no explanation is how a sign
+            # convention read backwards looks from the outside.
+            source_cell = cell(raw, cols["debit"] if using_pair else cols["amount"])
+            parsed = parse_amount(source_cell)
+            if using_pair and parsed is None and cols["credit"] is not None                     and parse_amount(cell(raw, cols["credit"])) is not None:
+                # An empty debit cell beside a filled credit cell is a payment
+                # or a refund, not an unreadable row. Reporting it as
+                # unreadable would send someone looking for a fault in a file
+                # that is fine.
+                skip = "money in, not out"
+            elif parsed is None:
+                skip = "the amount could not be read"
+            elif parsed == 0:
+                skip = "the amount is zero"
+            else:
+                skip = "money in, not out"
+
+        category, source = (suggest_category(description, bank_cat, categories)
+                            if skip is None else (None, None))
+
+        duplicate_of = None
+        if skip is None:
+            key = (iso, round(amount, 2))
+            index = seen.get(key, 0)
+            seen[key] = index + 1
+            already = held.get(key, [])
+            if index < len(already):
+                duplicate_of = already[index]
+
+        rows.append({
+            "line": line,
+            "date": iso,
+            "amount": amount,
+            "description": description,
+            "category": category,
+            "category_source": source,
+            "duplicate_of": duplicate_of,
+            "skip": skip,
+            "raw": [str(c) for c in raw],
+        })
+
+    importable = [r for r in rows if r["skip"] is None]
+    return {
+        "columns": headers,
+        "has_header": has_header,
+        "mapping": cols,
+        "mapping_suggested": suggested,
+        "date_order": date_info,
+        "sign": sign_info,
+        "rows": rows,
+        "summary": {
+            "total": len(rows),
+            "importable": len(importable),
+            "duplicates": sum(1 for r in importable if r["duplicate_of"]),
+            "skipped": len(rows) - len(importable),
+            "uncategorised": sum(1 for r in importable if not r["category"]),
+            "amount": sum(r["amount"] for r in importable
+                          if not r["duplicate_of"]),
+        },
     }

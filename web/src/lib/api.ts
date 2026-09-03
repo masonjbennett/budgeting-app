@@ -13,6 +13,7 @@
  * so there is no base URL to configure and no CORS.
  */
 
+import type { Expense } from "@/context/FinanceContext";
 import type { Token } from "@/lib/tokens";
 
 export class ApiError extends Error {
@@ -266,6 +267,171 @@ export interface Reference {
   hsa_individual_limit: number;
 }
 
+export interface FireCurvePoint {
+  savings_rate: number;
+  annual_savings: number;
+  annual_expenses: number;
+  fire_number: number;
+  /** null where that savings rate never reaches the target. Not a large number. */
+  years: number | null;
+}
+
+export interface FireProjection {
+  annual_take_home: number;
+  monthly_take_home: number;
+  /** Budgeted needs and wants — not the savings bucket, and not what was spent. */
+  annual_expenses: number;
+  annual_savings: number;
+  /** null with no income. Clamped at zero; `overspending` carries the rest. */
+  savings_rate: number | null;
+  overspending: boolean;
+  shortfall: number;
+  portfolio: number;
+  fire_number: number | null;
+  still_to_accumulate: number | null;
+  progress_pct: number | null;
+  /** null where the current rate never gets there. */
+  years_at_current: number | null;
+  swr: number;
+  /** Derived from the Monte Carlo's own means, so one page holds one world. */
+  real_return: number;
+  stock_pct: number;
+  inflation: number;
+  curve: FireCurvePoint[];
+  /** What one more point of savings rate buys. null where either end is null. */
+  next_point: { savings_rate: number; years: number; years_saved: number } | null;
+}
+
+export interface YearMonth {
+  month: string;
+  label: string;
+  spent: number;
+  budget: number;
+  in_progress: boolean;
+  /** False means NOTHING WAS LOGGED — not a month in which nothing was spent. */
+  has_data: boolean;
+}
+
+export interface YearBucket {
+  bucket: string;
+  budget_monthly: number;
+  budget_to_date: number;
+  spent: number;
+  variance: number;
+}
+
+export interface YearCategory {
+  category: string;
+  bucket: string | null;
+  budget_monthly: number;
+  budget_to_date: number;
+  spent: number;
+  variance: number;
+  over: boolean;
+  pct_of_budget: number | null;
+}
+
+export interface YearToDate {
+  year: number;
+  today: string;
+  months_complete: number;
+  /** Complete months holding at least one record — the comparable basis. */
+  documented_months: number;
+  undocumented_months: string[];
+  complete_record: boolean;
+  transactions: number;
+  future_dated: number;
+  /** Everything logged this year, the month in progress included. */
+  spent: number;
+  /** The same, over documented complete months. What the budget is compared to. */
+  spent_documented: number;
+  current_month: { month: string; label: string; spent: number; has_data: boolean };
+  budget_monthly: number;
+  budget_year: number;
+  budget_documented: number;
+  budget_to_date: number;
+  /** null where no complete month holds a record — not "exactly on budget". */
+  variance: number | null;
+  pace: number | null;
+  projected_year_end: number | null;
+  projected_vs_budget: number | null;
+  take_home_monthly: number;
+  take_home_documented: number;
+  take_home_to_date: number;
+  saved: number | null;
+  savings_rate: number | null;
+  by_month: YearMonth[];
+  by_bucket: YearBucket[];
+  by_category: YearCategory[];
+}
+
+/** Which column holds what. null means "work it out", never "column zero". */
+export interface ImportMapping {
+  date: number | null;
+  amount: number | null;
+  debit: number | null;
+  credit: number | null;
+  description: number | null;
+  category: number | null;
+}
+
+export interface ImportRow {
+  /** 1-based line in the file, as an editor would number it. */
+  line: number;
+  date: string | null;
+  amount: number | null;
+  description: string;
+  category: string | null;
+  /** "merchant" | "category name" | "bank category", or null for no guess. */
+  category_source: string | null;
+  /** The id of an expense already held that this row matches. */
+  duplicate_of: string | null;
+  /** Non-null means the row cannot be imported, and says why in words. */
+  skip: string | null;
+  raw: string[];
+}
+
+export interface ImportPreview {
+  columns: string[];
+  /** What was used — the engine's own reading where none was supplied. */
+  has_header: boolean;
+  mapping: ImportMapping;
+  mapping_suggested: boolean;
+  date_order: {
+    order: "MDY" | "DMY" | "YMD";
+    /** True where the file's own dates do not settle it and a default was used. */
+    ambiguous: boolean;
+    proved: boolean;
+    reason: string;
+    day_first_evidence: number;
+    month_first_evidence: number;
+  };
+  sign: {
+    convention: string;
+    negatives: number;
+    positives: number;
+    ambiguous: boolean;
+    reason: string;
+  };
+  rows: ImportRow[];
+  summary: {
+    total: number;
+    importable: number;
+    duplicates: number;
+    skipped: number;
+    uncategorised: number;
+    amount: number;
+  };
+}
+
+export interface SocialSecurity {
+  monthly: number;
+  annual: number;
+  /** The benefit as capital — the only form comparable to a FIRE number.
+   *  null where the withdrawal rate is not positive. */
+  reduces_target_by: number | null;
+}
+
 export interface Income {
   gross_salary: number;
   state: string;
@@ -350,11 +516,8 @@ export const api = {
     n_sims: number;
   }) => request<MonteCarlo>("/monte-carlo", input),
 
-  socialSecurity: (annual_salary: number, claiming_age = 67) =>
-    request<{ monthly: number; annual: number }>("/social-security", {
-      annual_salary,
-      claiming_age,
-    }),
+  socialSecurity: (annual_salary: number, claiming_age = 67, swr?: number) =>
+    request<SocialSecurity>("/social-security", { annual_salary, claiming_age, swr }),
 
   rothVsTraditional: (input: {
     contribution: number;
@@ -366,4 +529,38 @@ export const api = {
 
   saltCap: (magi: number, filing: string) =>
     request<{ effective_cap: number }>("/salt-cap", { magi, filing }),
+
+  fire: (input: {
+    income: Income;
+    itemized?: Record<string, number>;
+    budget: Record<string, Record<string, number>>;
+    assets: Record<string, number>;
+    /** The same two controls the Monte Carlo uses, so both describe one world. */
+    stock_pct?: number;
+    inflation?: number;
+    swr?: number;
+  }) => request<FireProjection>("/fire", input),
+
+  yearToDate: (input: {
+    income: Income;
+    itemized?: Record<string, number>;
+    expenses: Expense[];
+    budget: Record<string, Record<string, number>>;
+    /** The BROWSER's date. The year boundary belongs to the reader, not to
+     *  the region the function runs in. */
+    today: string;
+  }) => request<YearToDate>("/year-to-date", input),
+
+  importPreview: (input: {
+    /** The file, split into cells. Splitting is text handling and happens in
+     *  the browser; every DECISION about what the cells mean is in Python. */
+    grid: string[][];
+    /** null asks the engine to decide; a boolean is the reader's own answer. */
+    has_header: boolean | null;
+    mapping?: ImportMapping | null;
+    date_order?: string | null;
+    sign?: string | null;
+    categories: string[];
+    existing: Expense[];
+  }) => request<ImportPreview>("/import-preview", input),
 };

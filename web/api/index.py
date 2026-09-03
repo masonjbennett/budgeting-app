@@ -26,6 +26,8 @@ from pydantic import BaseModel, Field
 from app_data import _generate_demo_data, get_default_state
 from calculations import (
     COL_INDEX,
+    MONTHS_PER_YEAR,
+    SWR_DEFAULT,
     cash_flow,
     col_compare,
     compare_scenarios,
@@ -38,9 +40,12 @@ from calculations import (
     STATE_TAX_DATA,
     calc_salt_cap,
     calc_social_security,
+    capital_equivalent,
     compute_take_home,
     emergency_fund_months,
+    fire_projection,
     histogram,
+    import_preview,
     liquid_assets,
     monthly_debt_service,
     project_investment_with_match,
@@ -49,6 +54,7 @@ from calculations import (
     run_monte_carlo,
     simulate_payoff,
     top_bracket_limitation,
+    year_to_date,
 )
 
 app = FastAPI(title="Budget Tracker API", version="5.0")
@@ -168,6 +174,8 @@ class MonteCarloRequest(BaseModel):
 class SocialSecurityRequest(BaseModel):
     annual_salary: float = 0
     claiming_age: int = 67
+    # So the benefit can be stated as capital the portfolio need not build.
+    swr: float = SWR_DEFAULT
 
 
 class RothRequest(BaseModel):
@@ -181,6 +189,79 @@ class RothRequest(BaseModel):
 class SaltRequest(BaseModel):
     magi: float = 0
     filing: str = "Single"
+
+
+class FireRequest(BaseModel):
+    """The profile the FIRE page already holds, plus its two assumptions.
+
+    `stock_pct` and `inflation` are the SAME two controls the Monte Carlo on
+    that page uses. They are here so the curve's expected return is derived
+    from them rather than being a third assumption typed into a third place.
+    """
+    income: Income
+    itemized: Dict[str, float] = Field(default_factory=dict)
+    budget: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    assets: Dict[str, float] = Field(default_factory=dict)
+    stock_pct: float = 80.0
+    inflation: float = 3.0
+    swr: float = SWR_DEFAULT
+
+
+class ExpenseIn(BaseModel):
+    """One logged expense, as the profile stores it.
+
+    Permissive on purpose: this crosses from a store the user controls, and a
+    row with a missing note or an unparseable date must reach the engine to be
+    REPORTED as unreadable rather than 422 the whole request. The engine's
+    date parsing already returns None rather than raising for exactly that.
+    """
+    id: str = ""
+    date: str = ""
+    amount: float = 0
+    category: str = ""
+    note: str = ""
+
+
+class YearToDateRequest(BaseModel):
+    income: Income
+    itemized: Dict[str, float] = Field(default_factory=dict)
+    expenses: List[ExpenseIn] = Field(default_factory=list, max_length=50_000)
+    budget: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    # The CLIENT's date. Omitted, the server's is used — which is right for a
+    # test and wrong for a reader in a timezone behind this function.
+    today: Optional[str] = None
+
+
+class ImportMapping(BaseModel):
+    """Which column holds what. Every field optional — a file need not have
+    one, and `null` here means "work it out", not "column zero"."""
+    date: Optional[int] = None
+    amount: Optional[int] = None
+    debit: Optional[int] = None
+    credit: Optional[int] = None
+    description: Optional[int] = None
+    category: Optional[int] = None
+
+
+class ImportRequest(BaseModel):
+    """A CSV already split into cells, and the profile to compare it against.
+
+    The grid is capped rather than streamed. 20,000 rows is about fifteen
+    years of one card's statements, and a file larger than that is a mistake
+    worth failing loudly on — a truncated import is the same defect as a
+    duplicated one, silently missing money instead of silently doubling it.
+    """
+    grid: List[List[str]] = Field(default_factory=list, max_length=20_000)
+    # None asks the engine to work it out; True or False is the person's own
+    # answer, made in the preview, and is obeyed.
+    has_header: Optional[bool] = None
+    mapping: Optional[ImportMapping] = None
+    # "MDY" | "DMY" | "YMD", and None to let the file's own evidence decide.
+    date_order: Optional[str] = None
+    # "negative" | "positive", and None to decide by majority.
+    sign: Optional[str] = None
+    categories: List[str] = Field(default_factory=list)
+    existing: List[ExpenseIn] = Field(default_factory=list, max_length=50_000)
 
 
 # ── Routes ───────────────────────────────────────────────────────────
@@ -359,7 +440,15 @@ def api_monte_carlo(req: MonteCarloRequest) -> Dict[str, Any]:
 @app.post("/api/social-security")
 def api_social_security(req: SocialSecurityRequest) -> Dict[str, Any]:
     monthly = calc_social_security(req.annual_salary, req.claiming_age)
-    return {"monthly": monthly, "annual": monthly * 12}
+    annual = monthly * MONTHS_PER_YEAR
+    return {
+        "monthly": monthly,
+        "annual": annual,
+        # The benefit as capital, which is the only form comparable to a FIRE
+        # number. The page used to divide by its own copy of the withdrawal
+        # rate to get this.
+        "reduces_target_by": capital_equivalent(annual, req.swr),
+    }
 
 
 @app.post("/api/roth-vs-traditional")
@@ -371,3 +460,68 @@ def api_roth(req: RothRequest) -> Dict[str, Any]:
 @app.post("/api/salt-cap")
 def api_salt_cap(req: SaltRequest) -> Dict[str, Any]:
     return {"effective_cap": calc_salt_cap(req.magi, req.filing)}
+
+
+@app.post("/api/fire")
+def api_fire(req: FireRequest) -> Dict[str, Any]:
+    """The FIRE number, the savings rate, and the curve between them.
+
+    A route rather than five lines of TypeScript because all five figures on
+    that page are rules — a ratio, a target, a progress percentage, a solved-
+    for duration, and a `const SWR = 0.04` that used to live in the front end
+    where no test could see it and where it would have drifted from the
+    Streamlit app the first time either changed.
+
+    The return assumption is DERIVED from the same constants the Monte Carlo
+    below it draws from, so the deterministic curve and the simulation on one
+    page describe one world rather than two.
+    """
+    return fire_projection(
+        req.income.model_dump(), req.itemized, req.budget, req.assets,
+        req.stock_pct, req.inflation, req.swr)
+
+
+@app.post("/api/year-to-date")
+def api_year_to_date(req: YearToDateRequest) -> Dict[str, Any]:
+    """The calendar year so far — spent, saved, and against the plan.
+
+    `today` comes from the CLIENT. The year boundary belongs to the person
+    reading the page, not to the region this function happens to run in: a
+    server in UTC is already into January while someone in Chicago is still
+    finishing New Year's Eve, and the dashboard beside this reads the browser's
+    clock for exactly the same reason.
+    """
+    th = compute_take_home(req.income.model_dump(), req.itemized)
+    return year_to_date(
+        [e.model_dump() for e in req.expenses],
+        req.budget,
+        th["monthly_take_home"],
+        req.today,
+    )
+
+
+@app.post("/api/import-preview")
+def api_import_preview(req: ImportRequest) -> Dict[str, Any]:
+    """What a bank's CSV would become, before any of it is committed.
+
+    NOTHING IS WRITTEN ANYWHERE BY THIS. It reads a grid of strings the client
+    split out of a file and returns, per row, the date it parsed to, the
+    amount, the category it suggests and whether the profile already holds a
+    matching expense — plus what it decided about the file as a whole and the
+    evidence for each decision.
+
+    The decisions are here rather than in the front end because every one of
+    them fails silently: a date order read backwards moves a year of spending
+    by a month, a sign convention read backwards imports the refunds and drops
+    the purchases, and importing the same file twice doubles the year. All
+    three produce numbers that look like numbers.
+    """
+    return import_preview(
+        req.grid,
+        existing=[e.model_dump() for e in req.existing],
+        categories=req.categories,
+        has_header=req.has_header,
+        mapping=req.mapping.model_dump() if req.mapping else None,
+        date_order=req.date_order,
+        sign=req.sign,
+    )

@@ -1,17 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import AnimatedNumber from "@/components/AnimatedNumber";
-import { FanChart, HistogramChart, PathsChart } from "@/components/Chart";
+import { FanChart, HistogramChart, PathsChart, SavingsCurveChart } from "@/components/Chart";
 import { Field, NumberInput, Section } from "@/components/Field";
 import Footer from "@/components/Footer";
 import PageHeader from "@/components/PageHeader";
 import StatusCard from "@/components/StatusCard";
-import { api, ApiError, type MonteCarlo } from "@/lib/api";
-import { abbr, fmt, pct, sum, useFinance } from "@/context/FinanceContext";
-
-const SWR = 0.04; // Trinity Study safe withdrawal rate — a stated assumption.
+import {
+  api,
+  ApiError,
+  type FireProjection,
+  type MonteCarlo,
+  type SocialSecurity,
+} from "@/lib/api";
+import { abbr, fmt, pct, useFinance } from "@/context/FinanceContext";
 
 /**
  * A figure large enough that its digits stop being readable.
@@ -36,8 +40,22 @@ function BigFigure({ label, value, note }: { label: string; value: number; note?
   );
 }
 
+/**
+ * A span of time, said the way a person says it.
+ *
+ * Formatting, not a rule: it decides nothing and changes no answer, which is
+ * the standing `fmt` and `abbr` already have. One function rather than two
+ * because "1.4 years" and "7 months" were being chosen in two places, and the
+ * second copy had no zero case.
+ */
+function duration(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  if (v < 1) return `${Math.round(v * 12)} months`;
+  return `${v.toFixed(1)} years`;
+}
+
 export default function FirePage() {
-  const { profile, dashboard } = useFinance();
+  const { profile } = useFinance();
 
   const [currentAge, setCurrentAge] = useState(30);
   const [retireAge, setRetireAge] = useState(55);
@@ -46,26 +64,57 @@ export default function FirePage() {
   const [inflation, setInflation] = useState(3.0);
   const [nSims, setNSims] = useState(1000);
 
+  // Every figure on this page is now the engine's. It used to hold five of its
+  // own — the savings rate, the FIRE number, annual savings, the progress
+  // percentage and a `const SWR = 0.04` — which is exactly the arithmetic that
+  // has drifted between this app's front ends twice before.
+  const [fire, setFire] = useState<FireProjection | null>(null);
+  const [fireError, setFireError] = useState<string | null>(null);
+
   const [result, setResult] = useState<MonteCarlo | null>(null);
-  const [ss, setSs] = useState<{ monthly: number; annual: number } | null>(null);
+  const [ss, setSs] = useState<SocialSecurity | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!profile || !dashboard) return <div className="skeleton h-96" />;
+  // The stock slider fires on every 5% step, so the projection is debounced.
+  // A sequence number rather than a cancel: a slow earlier response landing
+  // after a faster later one would replace the curve with the one for a
+  // setting that is no longer on screen — the same race the dashboard's
+  // recompute carries, and just as invisible when it happens.
+  const seq = useRef(0);
+  const load = useCallback(async () => {
+    if (!profile) return;
+    const mine = ++seq.current;
+    try {
+      const f = await api.fire({
+        income: profile.income,
+        itemized: profile.itemized,
+        budget: profile.budget,
+        assets: profile.assets,
+        stock_pct: stockPct,
+        inflation,
+      });
+      if (mine === seq.current) {
+        setFire(f);
+        setFireError(null);
+      }
+    } catch (e) {
+      if (mine === seq.current) {
+        setFire(null);
+        setFireError(e instanceof ApiError ? e.message : "Could not build the projection.");
+      }
+    }
+  }, [profile, stockPct, inflation]);
 
-  const th = dashboard.take_home;
+  useEffect(() => {
+    const t = setTimeout(load, 220);
+    return () => clearTimeout(t);
+  }, [load]);
 
-  // These come from the profile rather than being typed again, so the FIRE page
-  // models the person the rest of the app knows about. The abandoned scaffold's
-  // version held its own useState and ignored your income and assets entirely.
-  const annualExpenses = (sum(profile.budget.needs) + sum(profile.budget.wants)) * 12;
-  const annualSavings = Math.max(0, th.annual_take_home - annualExpenses);
-  const portfolio = sum(profile.assets);
-  const fireNumber = annualExpenses / SWR;
-  const savingsRate =
-    th.annual_take_home > 0 ? (annualSavings / th.annual_take_home) * 100 : null;
+  if (!profile) return <div className="skeleton h-96" />;
 
   const run = async () => {
+    if (!fire) return;
     setBusy(true);
     setError(null);
     try {
@@ -74,14 +123,14 @@ export default function FirePage() {
           current_age: currentAge,
           retire_age: retireAge,
           end_age: endAge,
-          portfolio,
-          annual_savings: annualSavings,
-          annual_expenses: annualExpenses,
+          portfolio: fire.portfolio,
+          annual_savings: fire.annual_savings,
+          annual_expenses: fire.annual_expenses,
           stock_pct: stockPct,
           inflation,
           n_sims: nSims,
         }),
-        api.socialSecurity(th.annual_gross, 67),
+        api.socialSecurity(fire.annual_take_home, 67, fire.swr),
       ]);
       setResult(mc);
       setSs(social);
@@ -92,38 +141,68 @@ export default function FirePage() {
   };
 
   const ordered = retireAge > currentAge && endAge > retireAge;
+  // A budget with nothing in it gives a FIRE number of zero, which is
+  // arithmetically right and useless as a headline. The page says so instead.
+  const noBudget = !!fire && fire.annual_expenses <= 0;
+  const rate = fire?.savings_rate ?? null;
 
   return (
     <div>
       <PageHeader
         title="FIRE"
-        description="How long your portfolio lasts, tested across thousands of randomised market paths rather than one assumed return."
+        description="What independence costs, how long it takes at your savings rate, and how the plan holds up across thousands of randomised market paths."
       />
 
+      {fireError && (
+        <div className="card mark-critical t-small mb-8 text-critical">{fireError}</div>
+      )}
+
       {/* The one hero on this page: the number the whole model is about. */}
-      <div className="animate-fade-in mb-9 border-b border-hair pb-6">
-        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
-          <div>
-            <p className="label">FIRE number</p>
-            <p className="mt-1.5">
-              <AnimatedNumber value={fireNumber} className="figure-hero" title={fmt(fireNumber)} />
-            </p>
-            <p className="t-small mt-2 text-muted">
-              <span className="font-num text-body">{fmt(annualExpenses)}</span>/yr of
-              budgeted spending at a {(SWR * 100).toFixed(0)}% withdrawal rate
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="label">Portfolio today</p>
-            <p className="font-num t-h3 mt-1 leading-none font-medium text-ink">
-              {fmt(portfolio)}
-            </p>
-            <p className="t-micro mt-1.5 text-muted">
-              {fireNumber > 0 ? `${pct((portfolio / fireNumber) * 100, 1)} of the way` : "—"}
-            </p>
+      {!fire ? (
+        <div className="skeleton mb-9 h-[9.5rem] w-full" />
+      ) : (
+        <div className="animate-fade-in mb-9 border-b border-hair pb-6">
+          <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+            <div>
+              <p className="label">FIRE number</p>
+              {noBudget ? (
+                <>
+                  <p className="figure-hero mt-1.5 text-muted">—</p>
+                  <p className="t-small mt-2 text-muted">
+                    Budget some needs and wants first — the target is what your
+                    spending costs, so with no spending there is nothing to fund.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-1.5">
+                    <AnimatedNumber
+                      value={fire.fire_number ?? 0}
+                      className="figure-hero"
+                      title={fmt(fire.fire_number)}
+                    />
+                  </p>
+                  <p className="t-small mt-2 text-muted">
+                    <span className="font-num text-body">{fmt(fire.annual_expenses)}</span>/yr
+                    of budgeted spending at a {fire.swr.toFixed(0)}% withdrawal rate
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="text-right">
+              <p className="label">Portfolio today</p>
+              <p className="font-num t-h3 mt-1 leading-none font-medium text-ink">
+                {fmt(fire.portfolio)}
+              </p>
+              <p className="t-micro mt-1.5 text-muted">
+                {fire.progress_pct === null
+                  ? "—"
+                  : `${pct(fire.progress_pct, 1)} of the way`}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -131,10 +210,10 @@ export default function FirePage() {
             <h3 className="label mb-4">From your profile</h3>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[
-                ["Annual take-home", fmt(th.annual_take_home)],
-                ["Annual expenses", fmt(annualExpenses)],
-                ["Annual savings", fmt(annualSavings)],
-                ["Portfolio today", fmt(portfolio)],
+                ["Annual take-home", fmt(fire?.annual_take_home)],
+                ["Annual expenses", fmt(fire?.annual_expenses)],
+                ["Annual savings", fmt(fire?.annual_savings)],
+                ["Portfolio today", fmt(fire?.portfolio)],
               ].map(([label, value]) => (
                 <div key={label}>
                   <p className="t-micro text-muted">{label}</p>
@@ -146,6 +225,12 @@ export default function FirePage() {
               Expenses are your budgeted needs and wants; savings is what your
               take-home leaves after them. Change them on Budget and Net Worth.
             </p>
+            {fire?.overspending && (
+              <p className="t-micro mt-2 text-critical">
+                Your budget spends {fmt(fire.shortfall)}/yr more than your take-home
+                covers, so annual savings reads zero rather than a negative number.
+              </p>
+            )}
           </div>
 
           <div className="card">
@@ -218,7 +303,7 @@ export default function FirePage() {
         </div>
 
         <div className="stagger space-y-3">
-          {savingsRate === null ? (
+          {rate === null ? (
             <StatusCard
               label="Savings rate"
               value="—"
@@ -229,27 +314,98 @@ export default function FirePage() {
           ) : (
             <StatusCard
               label="Savings rate (budgeted)"
-              value={pct(savingsRate, 0)}
-              status={savingsRate >= 50 ? "Excellent" : savingsRate >= 25 ? "Good" : "Low"}
-              tone={savingsRate >= 50 ? "positive" : savingsRate >= 25 ? "caution" : "critical"}
+              value={pct(rate, 0)}
+              status={rate >= 50 ? "Excellent" : rate >= 25 ? "Good" : "Low"}
+              tone={rate >= 50 ? "positive" : rate >= 25 ? "caution" : "critical"}
               description="Take-home less your BUDGETED needs and wants. The dashboard's figure uses what you actually spent this month, so the two differ."
             />
           )}
           <div className="card">
-            <p className="label">Still to accumulate</p>
+            <p className="label">At this rate</p>
             <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
-              {fmt(Math.max(0, fireNumber - portfolio))}
+              {fire && fire.years_at_current === null && !noBudget
+                ? "Never"
+                : fire && fire.years_at_current !== null && fire.years_at_current <= 0
+                  ? "Already there"
+                  : duration(fire?.years_at_current)}
             </p>
             <p className="t-micro mt-1.5 text-muted">
-              At {fmt(annualSavings)}/yr saved, before any market return.
+              {fire && fire.years_at_current === null && !noBudget
+                ? fire.overspending
+                  ? `The budget spends ${fmt(
+                      fire.shortfall,
+                    )}/yr more than take-home covers, so the portfolio is being drawn down rather than built.`
+                  : "Nothing is being saved, so the portfolio never reaches the target."
+                : `Saving ${fmt(fire?.annual_savings)}/yr at a ${
+                    fire ? fire.real_return.toFixed(1) : "—"
+                  }% real return.`}
+            </p>
+          </div>
+          <div className="card">
+            <p className="label">Still to accumulate</p>
+            <p className="font-num t-h3 mt-1.5 leading-none font-medium text-ink">
+              {fmt(fire?.still_to_accumulate)}
+            </p>
+            <p className="t-micro mt-1.5 text-muted">
+              Before any market return.
             </p>
           </div>
         </div>
       </div>
 
+      {/* ── The curve ──────────────────────────────────────────────────
+             The most persuasive thing on the page and the cheapest: it is
+             deterministic, so it is on screen before the simulation below has
+             been asked for. It moves with the two settings above because its
+             return comes from the same constants the Monte Carlo draws. ──── */}
+      {fire && !noBudget && fire.curve.length > 0 && (
+        <Section
+          title="Savings rate against years to independence"
+          action={
+            fire.next_point &&
+            fire.next_point.years_saved > 0 && (
+              <p className="t-micro text-muted">
+                one more point ·{" "}
+                <span className="font-num text-accent">
+                  {duration(fire.next_point.years_saved)} sooner
+                </span>
+              </p>
+            )
+          }
+        >
+          <SavingsCurveChart
+            points={fire.curve}
+            current={
+              rate !== null && fire.years_at_current !== null
+                ? { savings_rate: rate, years: fire.years_at_current }
+                : null
+            }
+            height={330}
+            note={
+              <>
+                Both sides of the problem move with the rate, which is why the
+                curve is steep at the left and nearly flat at the right: saving
+                more fills the portfolio faster AND lowers the target, because
+                the money you do not spend is money the portfolio never has to
+                replace. Drawn at a{" "}
+                <span className="font-num">{fire.real_return.toFixed(1)}%</span> real
+                return — the same {stockPct}/{100 - stockPct} stock and bond means
+                the simulation below uses, less {inflation}% inflation — and a{" "}
+                <span className="font-num">{fire.swr.toFixed(0)}%</span> withdrawal
+                rate. This is the AVERAGE path and it has no spread in it; the
+                Monte Carlo below is where the range lives.
+                {fire.curve.some((c) => c.years === null) && (
+                  <> The line stops where a rate never reaches the target at all.</>
+                )}
+              </>
+            }
+          />
+        </Section>
+      )}
+
       <button
         onClick={run}
-        disabled={busy || !ordered}
+        disabled={busy || !ordered || !fire}
         className="btn-primary mb-10 w-full py-3"
       >
         {busy ? `Running ${nSims.toLocaleString()} simulations…` : "Run Monte Carlo simulation"}
@@ -359,7 +515,7 @@ export default function FirePage() {
                   ["Annual", fmt(ss.annual), ""],
                   [
                     "Reduces FIRE number by",
-                    fmt(ss.annual / SWR),
+                    fmt(ss.reduces_target_by),
                     "Less the portfolio has to cover",
                   ],
                 ].map(([label, value, note]) => (

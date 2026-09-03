@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import BillsCalendar from "@/components/BillsCalendar";
+import ImportPanel from "@/components/ImportPanel";
 import { BarsChart } from "@/components/Chart";
 import { Empty, Field, NumberInput, Section } from "@/components/Field";
 import Footer from "@/components/Footer";
@@ -33,6 +34,9 @@ export default function ExpensesPage() {
     category: "",
     note: "",
   });
+  // Collapsed by default. The panel is the biggest thing on this page when it
+  // is open, and typing one expense is the common visit.
+  const [importing, setImporting] = useState(false);
   const [filterMonth, setFilterMonth] = useState<string>(monthKey(new Date()));
   const [filterCat, setFilterCat] = useState<string>("");
 
@@ -147,6 +151,26 @@ export default function ExpensesPage() {
         {categories.length === 0 && (
           <p className="t-micro mt-2 text-caution">
             Add some budget categories first — an expense needs somewhere to go.
+          </p>
+        )}
+      </Section>
+
+      <Section
+        title="Import from a bank CSV"
+        action={
+          <button className="btn-ghost" onClick={() => setImporting((v) => !v)}>
+            {importing ? "Hide" : "Open importer"}
+          </button>
+        }
+      >
+        {importing ? (
+          <ImportPanel categories={categories} />
+        ) : (
+          <p className="t-small text-muted">
+            Export a statement from your bank and read it in here. Every row is
+            shown with the date it parsed to, the amount, and the category it was
+            matched to, before any of it is added — and importing only ever adds,
+            so nothing you typed can be replaced by a bank&apos;s version of it.
           </p>
         )}
       </Section>

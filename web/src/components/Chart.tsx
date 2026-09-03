@@ -41,6 +41,8 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ReferenceArea,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -223,6 +225,9 @@ export function BarsChart({
   tones,
   height = 280,
   title,
+  reference,
+  bands,
+  action,
 }: {
   data: Record<string, number | string>[];
   xKey: string;
@@ -231,17 +236,69 @@ export function BarsChart({
   tones?: Token[];
   height?: number;
   title?: string;
+  /** A horizontal rule to read the bars against — a monthly budget, say.
+   *  Drawn behind them, dashed, so it cannot be mistaken for a series. */
+  reference?: { value: number; label: string };
+  /** Ranges of the category axis to shade, for stretches where there is no
+   *  data at all. A zero-height bar renders as NOTHING in Recharts, so a
+   *  month with no records is otherwise indistinguishable from the gap
+   *  between two bars — see the note in the JSX below. */
+  bands?: { from: string; to: string; label?: string }[];
+  action?: ReactNode;
 }) {
   const p = usePalette();
   const AXIS = axisProps(p);
   return (
-    <Card title={title} height={height}>
+    <Card title={title} height={height} action={action}>
       <BarChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
         <CartesianGrid stroke={p.hairSoft} vertical={false} />
         <XAxis dataKey={xKey} {...AXIS} tickLine={false} axisLine={{ stroke: p.hair }} />
         <YAxis {...AXIS} tickFormatter={money} tickLine={false} axisLine={false} width={58} />
         <Tooltip content={moneyTooltip} cursor={{ fill: p.hairSoft, fillOpacity: 0.5 }} />
+        {/* Shaded FIRST so the bars and the rule paint over it. A stretch with
+            no data is marked rather than drawn, because there is no honest
+            height to draw: Recharts renders a zero-value bar as no element at
+            all, so seven months with nothing logged were indistinguishable
+            from seven months that did not exist — under a note telling the
+            reader to look for faint bars that were never there. */}
+        {bands?.map((b, i) => (
+          <ReferenceArea
+            key={i}
+            x1={b.from}
+            x2={b.to}
+            fill={p.hairSoft}
+            fillOpacity={0.75}
+            stroke="none"
+            label={{
+              value: b.label,
+              position: "insideTop",
+              fill: p.muted,
+              fontSize: 10,
+              fontFamily: "var(--font-mono)",
+            }}
+          />
+        ))}
         <ReferenceLine y={0} stroke={p.hair} />
+        {reference && (
+          <ReferenceLine
+            y={reference.value}
+            stroke={p.muted}
+            strokeDasharray="4 3"
+            // WITHOUT THIS THE RULE IS INVISIBLE EXACTLY WHEN IT MATTERS.
+            // Recharts sizes the Y axis from the data alone, so a budget above
+            // every bar falls outside the domain and is silently dropped —
+            // which is the case of someone spending UNDER their budget, the
+            // one this line exists to show.
+            ifOverflow="extendDomain"
+            label={{
+              value: reference.label,
+              position: "insideTopRight",
+              fill: p.muted,
+              fontSize: 10,
+              fontFamily: "var(--font-mono)",
+            }}
+          />
+        )}
         <Bar dataKey={valueKey} radius={[2, 2, 0, 0]} maxBarSize={54} isAnimationActive={false}>
           {data.map((_, i) => (
             <Cell key={i} fill={p[tones?.[i] ?? SERIES[i % SERIES.length]]} />
@@ -561,6 +618,141 @@ export function HistogramChart({
         </BarChart>
       </Card>
       {note && <p className="t-micro mt-2 text-muted">{note}</p>}
+    </>
+  );
+}
+
+// ── Savings rate against years to independence ───────────────────────
+
+/**
+ * The curve, with the reader's own position marked on it.
+ *
+ * Three things here are not the house style elsewhere and each is deliberate.
+ *
+ * The Y axis is YEARS, so it does not take the shared money formatter — a
+ * duration rendered as "$23" is exactly the kind of thing a shared formatter
+ * does silently, and this is the one chart in the app whose values are not
+ * money.
+ *
+ * `connectNulls` is FALSE. A savings rate that never reaches the target comes
+ * back as null, and Recharts' default is to bridge the gap — drawing a
+ * confident line straight through the region where the answer is "never". The
+ * line stops instead, and the note under the chart says so in words.
+ *
+ * The marker is drawn in bronze, which is otherwise reserved for a caution.
+ * It is spent here because this is the one mark on the page that is about the
+ * reader rather than about the model, and teal would make it a third series.
+ */
+export function SavingsCurveChart({
+  points,
+  current,
+  height = 320,
+  title,
+  note,
+  action,
+}: {
+  points: { savings_rate: number; years: number | null; fire_number: number }[];
+  /** Where the reader is now. Omitted where it cannot be measured. */
+  current?: { savings_rate: number; years: number } | null;
+  height?: number;
+  title?: string;
+  note?: ReactNode;
+  action?: ReactNode;
+}) {
+  const p = usePalette();
+  const AXIS = axisProps(p);
+
+  /* Recharts calls this itself rather than mounting it, so it uses no hooks —
+     the palette is closed over from the render that drew the chart. */
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const tip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="rounded-sm border border-hair bg-card px-3 py-2">
+        <p className="label mb-1.5">Saving {d.savings_rate}% of take-home</p>
+        <p className="t-small text-ink">
+          <span className="font-num">
+            {d.years === null ? "never" : `${d.years.toFixed(1)} years`}
+          </span>
+          {d.years !== null && <span className="text-muted"> to independence</span>}
+        </p>
+        <p className="t-micro mt-1 text-muted">
+          Target <span className="font-num">{exact(d.fire_number)}</span>
+        </p>
+      </div>
+    );
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  return (
+    <>
+      <Card title={title} height={height} action={action}>
+        <LineChart data={points} margin={{ top: 14, right: 16, left: 4, bottom: 18 }}>
+          <CartesianGrid stroke={p.hairSoft} vertical={false} />
+          <XAxis
+            dataKey="savings_rate"
+            type="number"
+            domain={["dataMin", "dataMax"]}
+            {...AXIS}
+            tickFormatter={(v: number) => `${v}%`}
+            tickLine={false}
+            axisLine={{ stroke: p.hair }}
+            label={{
+              value: "Savings rate",
+              position: "insideBottom",
+              offset: -12,
+              fill: p.muted,
+              fontSize: 10,
+              fontFamily: "var(--font-mono)",
+            }}
+          />
+          <YAxis
+            {...AXIS}
+            tickFormatter={(v: number) => `${v}y`}
+            tickLine={false}
+            axisLine={false}
+            width={44}
+          />
+          <Tooltip content={tip} />
+          {current && (
+            <ReferenceLine
+              x={current.savings_rate}
+              stroke={p.caution}
+              strokeDasharray="3 3"
+              label={{
+                value: `you · ${current.years.toFixed(0)}y`,
+                position: "top",
+                fill: p.caution,
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+              }}
+            />
+          )}
+          <Line
+            isAnimationActive={false}
+            type="monotone"
+            dataKey="years"
+            name="Years"
+            stroke={p.accent}
+            strokeWidth={1.75}
+            dot={false}
+            activeDot={{ r: 3, strokeWidth: 0 }}
+            connectNulls={false}
+          />
+          {current && (
+            <ReferenceDot
+              x={current.savings_rate}
+              y={current.years}
+              r={4}
+              fill={p.caution}
+              stroke={p.card}
+              strokeWidth={1.5}
+            />
+          )}
+        </LineChart>
+      </Card>
+      {note && <p className="t-micro mt-2 leading-relaxed text-muted">{note}</p>}
     </>
   );
 }

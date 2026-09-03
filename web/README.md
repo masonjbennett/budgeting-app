@@ -13,15 +13,17 @@ budgeting-app/
   calculations.py       ← the maths. ONE copy. Read by both front ends.
   app_data.py           ← the starting and demo profiles. ONE copy.
   budget_app.py         ← Streamlit front end (deploys to Streamlit Cloud)
-  test_calc / test_cloud / test_stress    291 assertions
+  test_calc / test_cloud / test_stress    413 assertions
+  test_calc_mutations.py  22 engine defects, each required to fail test_calc
   web/                  ← THIS. Vercel Root Directory.
     api/index.py        one Vercel Function, fourteen routes, no arithmetic
     api/calculations.py GENERATED at build time. Gitignored. Never edit.
     api/app_data.py     GENERATED at build time. Gitignored. Never edit.
     scripts/sync-calculations.mjs
     src/                Next.js App Router, Tailwind 4, Recharts
-    test_api.py         86 assertions against the shipping routes
+    test_api.py         106 assertions against the shipping routes
     test_api_mutations.py   11 shipped bugs, each required to fail the suite
+    DEPLOY.md           the click-by-click for the first deploy
 ```
 
 ## Running it locally
@@ -60,17 +62,26 @@ scratchpad rather than the repo (they need a real Chrome and a running dev
 server, which CI here does not have) and are worth rebuilding rather than
 skipping:
 
-- **every route in both themes** — theme tokens resolve, every rendered text
-  node clears 3:1, charts have paths, every painted chart colour is a palette
-  token, no console errors;
+- **every route in both themes** — every `var(--x)` referenced in CSS has a
+  value, every rendered text node clears 3:1, charts have paths, every painted
+  chart colour is a palette token, no console errors. 130 assertions over 13
+  routes;
 - **the interactions** — the cascade-layer fix by computed value, the mobile
   drawer at 375px including focus and body-scroll, the theme toggle across a
   reload, a real Monte Carlo run;
 - **print emulation in both themes**, which is how a print rule usually ships
   dead.
 
-Break each on purpose and watch it fail before trusting it. Two of the print
-check's own first failures were the check's fault, not the code's.
+Break each on purpose and watch it fail before trusting it. **This is not
+ceremony — a check written from a description passes on a healthy page whether
+or not it is looking at anything.** Rebuilding the sweep in September, one of
+its five checks could not fail: it searched computed styles for a literal
+`var(`, and an undefined custom property does not survive into computed style
+at all — it resolves to `unset` and the element INHERITS a colour, which is
+exactly why that defect is invisible. It was replaced with one that reads the
+stylesheets, collects every `var(--x)` actually referenced, and asks the root
+whether it has a value. Two of the print check's own first failures were also
+the check's fault rather than the code's.
 
 ## The rules this codebase is built around
 
@@ -191,6 +202,26 @@ Both were really happening before the re-skin: a `card p-0` probe computed
 Same family as the `pl-7` that lost to `input[type="number"]`. If you add a
 rule here, put it in a layer.
 
+### 7. A rule that can only be tested in Python belongs in Python, and the
+### mutation harness for the engine is a SEPARATE file
+
+`web/test_api_mutations.py` cannot mutate `api/calculations.py`: any edit there
+also trips the byte-for-byte sync check, so the mutation reports itself caught
+whatever the assertion aimed at it is worth. Its own header says so.
+
+`../test_calc_mutations.py` therefore mutates the ROOT `calculations.py` and
+requires `test_calc.py` to fail. There is no sync check between those two, so a
+mutation is caught only by an assertion that looks at the behaviour. It found
+two assertions that were decoration on the day it was written:
+
+- *"TRAVELERS INSURANCE is not Travel"* passed with the word-boundary rule
+  REMOVED, because "insurance" is longer than "travel" and won anyway. The
+  cases that discriminate are ones with no longer match to rescue them —
+  GYMBOREE, PARENTS MAGAZINE, the METROPOLITAN MUSEUM, a TOLLHOUSE BAKERY.
+- *"the longest match wins"* passed with the ordering REVERSED, because
+  `suggest_category` had a comparison per source and the mutation only reversed
+  one of them. It now scores both on one list with one comparison.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944
@@ -253,7 +284,10 @@ p90 ceiling and prints how many paths run above it.
 
 ## Deploying
 
-Not yet deployed. Vercel project settings this needs:
+Not yet deployed. **`DEPLOY.md` is the click-by-click**, in order, with what to
+check after each step. What follows is the reasoning behind those settings.
+
+Vercel project settings this needs:
 
 1. **Root Directory** = `web/`, with **"Include source files outside of the Root
    Directory in the Build Step"** ON. Without it the sync script cannot see
