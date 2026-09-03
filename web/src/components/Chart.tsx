@@ -482,3 +482,85 @@ export function PathsChart({
     </>
   );
 }
+
+// ── Distribution ─────────────────────────────────────────────────────
+
+/**
+ * A histogram of ending balances.
+ *
+ * The fan chart answers "what is the range"; this answers "what is the shape",
+ * and they are not the same question. A run can have a comfortable median and
+ * a long tail of failures — the band chart hides that and this does not, which
+ * is why the failing bins are coloured separately rather than being one more
+ * bar of the same colour.
+ *
+ * The Y axis is a COUNT, not money, so it does not use the money formatter —
+ * the axis label says what it is counting.
+ */
+export function HistogramChart({
+  bins,
+  height = 280,
+  title,
+  failBelow = 0,
+  formatBin,
+  note,
+}: {
+  bins: { start: number; end: number; count: number }[];
+  height?: number;
+  title?: string;
+  /** Bins whose upper edge is at or below this are outcomes that ran out. */
+  failBelow?: number;
+  formatBin: (v: number) => string;
+  note?: ReactNode;
+}) {
+  const p = usePalette();
+  const AXIS = axisProps(p);
+  const data = bins.map((b) => {
+    // A bin is a failure only when its WHOLE range is at or below the line.
+    // The engine isolates the ran-out paths into a zero-width bin of their
+    // own precisely so this test can be true of them and of nothing else.
+    const failed = b.end <= failBelow;
+    return {
+      label: formatBin(b.start),
+      count: b.count,
+      failed,
+      range: b.start === b.end ? formatBin(b.start)
+        : `${formatBin(b.start)} – ${formatBin(b.end)}`,
+    };
+  });
+
+  return (
+    <>
+      <Card title={title} height={height}>
+        <BarChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+          <CartesianGrid stroke={p.hairSoft} vertical={false} />
+          <XAxis dataKey="label" {...AXIS} tickLine={false} axisLine={{ stroke: p.hair }} interval="preserveStartEnd" />
+          <YAxis {...AXIS} tickLine={false} axisLine={false} width={44} allowDecimals={false} />
+          <Tooltip
+            cursor={{ fill: p.hairSoft, fillOpacity: 0.5 }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const row = payload[0].payload as (typeof data)[number];
+              return (
+                <div className="rounded-sm border border-hair bg-card px-3 py-2">
+                  <p className="label mb-1">{row.range}</p>
+                  <p className="t-small text-ink">
+                    <span className="font-num">{row.count}</span> path
+                    {row.count === 1 ? "" : "s"}
+                    {row.failed && <span className="text-critical"> · ran out</span>}
+                  </p>
+                </div>
+              );
+            }}
+          />
+          <Bar dataKey="count" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+            {data.map((d, i) => (
+              <Cell key={i} fill={d.failed ? p.critical : p.accent} />
+            ))}
+          </Bar>
+        </BarChart>
+      </Card>
+      {note && <p className="t-micro mt-2 text-muted">{note}</p>}
+    </>
+  );
+}

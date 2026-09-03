@@ -143,6 +143,17 @@ export interface Investment {
   total_contributed: number;
   growth: number;
   employer_match: EmployerMatch;
+  /** null where a delay cannot be modelled — never a zero, which would read
+   *  as "waiting costs nothing". */
+  cost_of_waiting: {
+    delay_years: number;
+    start_now: number;
+    start_later: number;
+    cost: number;
+    contributions_missed: number;
+    /** The part that is not simply the money you did not put in. */
+    growth_missed: number;
+  } | null;
 }
 
 export interface RaiseImpact {
@@ -228,6 +239,7 @@ export interface MonteCarlo {
   p90_ending: number;
   retire_age: number;
   stock_pct: number;
+  ending_histogram: { start: number; end: number; count: number }[];
 }
 
 export interface RothComparison {

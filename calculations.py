@@ -1221,3 +1221,92 @@ def compare_scenarios(scenarios):
         "col_changes_answer": bool(usable and best != best_take_home),
         "all_comparable": len(comparable) == len(rows),
     }
+
+
+def histogram(values, bins=24, isolate=None):
+    """Bin a list of numbers for a distribution chart.
+
+    The fan chart shows the RANGE of a Monte Carlo; the shape is a different
+    question and the answer is often more useful — a run can have a comfortable
+    median and a long tail of failures, and a band chart hides that. The ending
+    balances were already in the payload and nothing drew them.
+
+    `isolate` GIVES ONE OUTCOME ITS OWN BIN, first, and it exists because
+    without it the failures are invisible in the very case they matter. A path
+    that runs out stays at zero, so every failure ends at EXACTLY the same
+    value; ordinary binning drops them into a bucket spanning $0 to several
+    million alongside the paths that merely did badly, and a bar that is part
+    catastrophe and part success cannot honestly be coloured either way.
+    Measured before this existed: at every retirement age tried, the failing
+    bars were either all of the chart or none of it, and never the mixture the
+    colour was for.
+
+    Returns [] for no values rather than a single degenerate bin, and puts
+    everything in one bin where every value is identical, which is a real
+    outcome (a plan that cannot fail) and not an error.
+    """
+    values = [v for v in values if v is not None]
+    if not values:
+        return []
+
+    isolated = []
+    if isolate is not None:
+        isolated = [v for v in values if v <= isolate]
+        values = [v for v in values if v > isolate]
+        if not values:
+            return [{"start": isolate, "end": isolate, "count": len(isolated)}]
+
+    lead = ([{"start": isolate, "end": isolate, "count": len(isolated)}]
+            if isolated else [])
+
+    lo, hi = min(values), max(values)
+    if hi <= lo:
+        return lead + [{"start": lo, "end": lo, "count": len(values)}]
+    width = (hi - lo) / bins
+    counts = [0] * bins
+    for v in values:
+        i = int((v - lo) / width)
+        counts[min(i, bins - 1)] += 1     # the maximum lands in the last bin
+    return lead + [{"start": lo + i * width, "end": lo + (i + 1) * width, "count": c}
+                   for i, c in enumerate(counts)]
+
+
+def cost_of_waiting(start, monthly, rate, years, delay_years=1):
+    """What a year of not starting costs, at the end.
+
+    The most persuasive single number an investing page can show, and it is
+    persuasive precisely because it is not a rate: a year's delay does not cost
+    a year's contributions, it costs a year of COMPOUNDING on everything, which
+    is a much larger and much less intuitive figure.
+
+    Both runs end at the same date. The delayed one contributes for fewer
+    years, so the difference is the delayed contributions AND the growth they
+    would have had — the split is returned, because the second part is the
+    whole point and a single number hides it.
+    """
+    if years <= 0 or delay_years <= 0 or delay_years >= years:
+        return None
+    now_values, now_contrib = project_investment(start, monthly, rate, years)
+    # Waiting means the starting balance still grows, untouched, in the gap.
+    idle_values, _ = project_investment(start, 0, rate, delay_years)
+    later_values, later_contrib = project_investment(
+        idle_values[-1], monthly, rate, years - delay_years)
+    lost = now_values[-1] - later_values[-1]
+    # Each run's contributions NET of the balance it began with. The delayed run
+    # starts from a balance that has already grown for `delay_years`, and
+    # project_investment counts that opening balance as contributed — so
+    # subtracting the original `start` from the difference leaves the idle
+    # growth mixed in, and a year of $500/mo came out as $853 missed instead of
+    # $6,000. Caught by reading the number, not by an assertion.
+    contributed_now = now_contrib[-1] - start
+    contributed_later = later_contrib[-1] - idle_values[-1]
+    contributions_missed = contributed_now - contributed_later
+    return {
+        "delay_years": delay_years,
+        "start_now": now_values[-1],
+        "start_later": later_values[-1],
+        "cost": lost,
+        "contributions_missed": contributions_missed,
+        # The part that is not simply the money you did not put in.
+        "growth_missed": lost - contributions_missed,
+    }

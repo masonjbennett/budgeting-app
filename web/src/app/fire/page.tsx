@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import AnimatedNumber from "@/components/AnimatedNumber";
-import { FanChart, PathsChart } from "@/components/Chart";
+import { FanChart, HistogramChart, PathsChart } from "@/components/Chart";
 import { Field, NumberInput, Section } from "@/components/Field";
 import Footer from "@/components/Footer";
 import PageHeader from "@/components/PageHeader";
@@ -330,6 +330,26 @@ export default function FirePage() {
               note="Drawn on the same axis as the chart above."
             />
           </div>
+
+          {result.ending_histogram.length > 0 && (
+            <div className="mb-8">
+              <HistogramChart
+                title="Where the paths end up"
+                bins={result.ending_histogram}
+                height={280}
+                formatBin={(v) => abbr(v)}
+                note={
+                  <>
+                    The two charts above show the RANGE; this shows the shape. Bars in
+                    claret are paths that ran out of money before age {endAge} —{" "}
+                    {(result.n_sims - result.success_count).toLocaleString()} of{" "}
+                    {result.n_sims.toLocaleString()}. A run can have a comfortable median
+                    and a long tail of failures, and a band chart hides that.
+                  </>
+                }
+              />
+            </div>
+          )}
 
           {ss && (
             <Section title="Social Security estimate">

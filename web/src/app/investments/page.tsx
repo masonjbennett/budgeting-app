@@ -197,6 +197,43 @@ export default function InvestmentsPage() {
             </div>
           </Section>
 
+          {runs[1].cost_of_waiting && (
+            <Section title="The cost of waiting a year">
+              {(() => {
+                const w = runs[1].cost_of_waiting!;
+                return (
+                  <div className="card mark-caution">
+                    <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+                      <div>
+                        <p className="label">Starting a year later costs</p>
+                        <p className="font-num t-h2 mt-1.5 leading-none font-medium text-caution">
+                          {fmt(w.cost)}
+                        </p>
+                      </div>
+                      <p className="t-small max-w-[52ch] text-body">
+                        Only{" "}
+                        <span className="font-num text-ink">
+                          {fmt(w.contributions_missed)}
+                        </span>{" "}
+                        of that is money you did not put in. The other{" "}
+                        <strong className="font-num text-ink">
+                          {fmt(w.growth_missed)}
+                        </strong>{" "}
+                        is compounding you do not get back, because both runs end on the
+                        same date — which is why a year&apos;s delay costs so much more
+                        than a year&apos;s contributions.
+                      </p>
+                    </div>
+                    <p className="t-micro mt-3 border-t border-hair-soft pt-2.5 text-muted">
+                      {fmt(w.start_now)} starting now against {fmt(w.start_later)} starting
+                      in a year, both at {SCENARIOS[1].rate}% over {inv.time_horizon} years.
+                    </p>
+                  </div>
+                );
+              })()}
+            </Section>
+          )}
+
           <Section title="Projected balance">
             <TrendChart
               data={chartData}

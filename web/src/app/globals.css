@@ -624,3 +624,99 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ═══ Print ══════════════════════════════════════════════════════════
+   A page anyone can hand to an adviser, a partner or a lender.
+
+   This is a whole feature for the cost of a stylesheet, and the only thing it
+   needs to get right is what to REMOVE: navigation goes (paper has none), the
+   theme toggle goes (paper has no theme), and every input renders as the value
+   it holds rather than as a control with a border and a focus ring.
+
+   The palette is forced to light regardless of the viewer's theme. A dark-mode
+   visitor printing this would otherwise get cream text on white, or a solid
+   ink page — the browser's "background graphics" setting decides which, and
+   neither is a document. Unlayered so it beats the theme blocks above.       */
+@media print {
+  :root,
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]) {
+    --paper: #ffffff;
+    --raise: #ffffff;
+    --card: #ffffff;
+    --hair: #b9ac96;
+    --hair-soft: #d8cdb8;
+    --ink: #1a1815;
+    --body-c: #33302c;
+    --muted: #55504a;
+    --faint: #77706a;
+    --accent: #0b5745;
+    --positive: #0b5745;
+    --critical: #7d0c32;
+    --caution: #8a5a15;
+    --info: #17497f;
+    --tint: 0.06;
+    color-scheme: light;
+  }
+
+  /* Navigation, the command palette and toasts are not part of a document. */
+  aside,
+  header[class*="fixed"],
+  [role="dialog"],
+  [aria-label="Colour theme"],
+  .no-print {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  body {
+    background: #ffffff;
+    font-size: 10.5pt;
+  }
+
+  /* A control on paper is just its value. */
+  input,
+  select,
+  textarea {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    -webkit-appearance: none;
+    appearance: none;
+    font-weight: 500;
+  }
+  button {
+    display: none !important;
+  }
+
+  /* Keep a card whole rather than letting a figure land on the next sheet
+     away from the label that says what it is. */
+  .card,
+  section,
+  table {
+    break-inside: avoid;
+  }
+  .card {
+    border: 1px solid var(--hair);
+    padding: 10px 12px;
+  }
+
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 8pt;
+    color: var(--muted);
+  }
+
+  /* Nothing may animate onto a sheet of paper — an element mid-fade prints
+     mid-fade, or blank. */
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+  }
+}

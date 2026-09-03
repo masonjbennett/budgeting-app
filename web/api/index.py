@@ -29,6 +29,7 @@ from calculations import (
     cash_flow,
     col_compare,
     compare_scenarios,
+    cost_of_waiting,
     FEDERAL_BRACKETS_2026,
     FILING_STATUSES,
     HSA_INDIVIDUAL_LIMIT,
@@ -39,6 +40,7 @@ from calculations import (
     calc_social_security,
     compute_take_home,
     emergency_fund_months,
+    histogram,
     liquid_assets,
     monthly_debt_service,
     project_investment_with_match,
@@ -116,6 +118,8 @@ class InvestmentRequest(BaseModel):
     rate: float = 7.0
     years: int = 30
     contribution_growth: float = 0
+    # A year's delay is the default question; the page lets it be changed.
+    delay_years: float = 1
     # Optional: with a salary the employer's match is projected too. Left at
     # zero this is the plain projection, which is what it always was.
     salary: float = 0
@@ -309,6 +313,10 @@ def api_investment(req: InvestmentRequest) -> Dict[str, Any]:
         "total_contributed": contributions[-1],
         "growth": values[-1] - contributions[-1],
         "employer_match": match,
+        # None where a delay cannot be modelled (no horizon, or a delay as long
+        # as the horizon) — never a zero, which would read as "costs nothing".
+        "cost_of_waiting": cost_of_waiting(
+            req.start, req.monthly, req.rate, req.years, req.delay_years),
     }
 
 
@@ -332,10 +340,20 @@ def api_cost_of_living(req: ColRequest) -> Dict[str, Any]:
 
 @app.post("/api/monte-carlo")
 def api_monte_carlo(req: MonteCarloRequest) -> Dict[str, Any]:
-    return run_monte_carlo(
+    out = run_monte_carlo(
         req.current_age, req.retire_age, req.end_age, req.portfolio,
         req.annual_savings, req.annual_expenses, req.stock_pct,
         req.inflation, req.n_sims, req.seed)
+    # Binned here rather than inside run_monte_carlo, so that function's
+    # contract — which test_calc compares against directly — does not move.
+    # The fan chart shows the RANGE; the shape is a different question, and a
+    # comfortable median with a long tail of failures looks fine on a band.
+    # `isolate=0` gives the paths that RAN OUT a bar of their own. Without it
+    # they share a bucket with the merely-poor survivors and the chart cannot
+    # honestly colour it either way — measured, the claret was all of the chart
+    # or none of it and never the mixture it exists for.
+    out["ending_histogram"] = histogram(out["ending"], isolate=0)
+    return out
 
 
 @app.post("/api/social-security")
