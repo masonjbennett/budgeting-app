@@ -445,8 +445,8 @@ of the OTHER front end — run it before pushing anything that touches
 the live recruiter link.
 
 Counts: **519 Python assertions** (203 + 42 + 168 + 106) and **33 mutations**
-across the two harnesses; **220 browser assertions** in `web/browser-checks/`
-— 130 sweep, 58 interact, 21 regression, 11 big-import — with each of the five
+across the two harnesses; **225 browser assertions** in `web/browser-checks/`
+— 130 sweep, 63 interact, 21 regression, 11 big-import — with each of the five
 sweep checks proved able to fail against an injected fault before being
 trusted. **Of the nine failures those turned up on their first runs, seven were
 the CHECK's fault**, which is written up in that directory's README.

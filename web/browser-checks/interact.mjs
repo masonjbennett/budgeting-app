@@ -218,6 +218,73 @@ console.log("\n--- /year ---");
 }
 
 // ═══════════════════════════════════════════════════════════════════
+console.log("\n--- the dashboard and /year must agree about this month ---");
+{
+  // The dashboard totals the current month in TypeScript (allowed: adding up
+  // figures a user typed). /year gets the same month from Python. Two surfaces
+  // stating one figure differently is the shape of defect this architecture
+  // exists to prevent, and neither page would look wrong on its own.
+  const dash = await open("/");
+  const onDash = await dash.evaluate(() => {
+    const label = [...document.querySelectorAll("p")]
+      .find((p) => /^Spent in \w{3}$/.test(p.textContent.trim()));
+    const card = label?.closest(".card");
+    return {
+      label: label?.textContent.trim() ?? null,
+      value: card?.querySelector("p.font-num")?.textContent?.trim() ?? null,
+    };
+  });
+  await dash.close();
+
+  const year = await open("/year");
+  const onYear = await year.evaluate(() => {
+    const label = [...document.querySelectorAll("p.label")]
+      .find((p) => / so far$/.test(p.textContent.trim()));
+    return {
+      label: label?.textContent.trim() ?? null,
+      value: label?.parentElement?.querySelector("p.font-num")?.textContent?.trim() ?? null,
+    };
+  });
+  await year.close();
+
+  check("both pages state this month's spending",
+        !!onDash.value && !!onYear.value,
+        `dashboard ${onDash.label}=${onDash.value} · year ${onYear.label}=${onYear.value}`);
+  check("and they agree to the dollar",
+        onDash.value === onYear.value,
+        `dashboard ${onDash.value} vs year ${onYear.value}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+console.log("\n--- the year, on a profile with nothing logged ---");
+{
+  // The empty starting profile has no expenses at all, so every figure the
+  // page leads with is unmeasurable. null is not zero: "no records yet" must
+  // not render as "exactly on budget".
+  const page = await open("/year");
+  const empty = await page.evaluate(async () => {
+    const p = await fetch("/api/state?demo=false").then((r) => r.json());
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${
+      String(d.getDate()).padStart(2, "0")}`;
+    return fetch("/api/year-to-date", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ income: p.income, itemized: p.itemized,
+                             expenses: p.expenses, budget: p.budget, today }),
+    }).then((r) => r.json());
+  });
+  check("with nothing logged the variance is null, not zero",
+        empty.variance === null && empty.pace === null && empty.saved === null,
+        JSON.stringify({ variance: empty.variance, pace: empty.pace, saved: empty.saved }));
+  check("the year's spending is a real zero, which is a different statement",
+        empty.spent === 0 && empty.transactions === 0);
+  check("and no month is documented, so nothing is graded against a plan",
+        empty.documented_months === 0);
+  await page.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════
 console.log("\n--- /year at 375px, and on paper ---");
 {
   const page = await open("/year", { width: 375 });
