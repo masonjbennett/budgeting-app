@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "functions": {
-    "api/**/*.py": {
+    "api/index.py": {
       "excludeFiles": "{node_modules/**,.next/**,**/test_*.py,**/*.test.py}",
       "maxDuration": 60
     }
