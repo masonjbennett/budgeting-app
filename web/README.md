@@ -303,20 +303,54 @@ Vercel project settings this needs:
    uses (`shxjjqcuuhqlvgpbujby`). Reuse it; do not create a new one.
 3. Domain `budget.masonjbennett.com`.
 
-### There is deliberately NO production rewrite for /api
+### The production rewrite for /api is REQUIRED, and this note used to say the opposite
 
-`vercel.json` configures the function (bundle excludes, `maxDuration`) and
-nothing else. Vercel routes `/api` requests to the Python function itself —
-its own Next.js + Python guide is explicit that the rewrite in that setup is for
-local development only, which is why ours lives in `next.config.ts` gated on
-`NODE_ENV === "development"`.
+`vercel.json` carries `{"source": "/api/(.*)", "destination": "/api"}`.
 
-A production `{"source": "/api/:path*", "destination": "/api"}` was in here and
-was removed before the first deploy. It is the pattern most FastAPI-on-Vercel
-posts show, and here it would have been **silently wrong**: the routes are
-declared as `/api/take-home`, so handing the function a rewritten path of `/api`
-matches nothing and every call 404s. Without the rewrite the deploy either works
-or fails loudly on the first request — which is the failure worth having.
+This section previously argued the rewrite should be left out, on the reasoning
+that the routes are declared as `/api/take-home` and handing the function a
+rewritten path of `/api` would match nothing. That was worked out on paper
+before anything had been deployed, and production does the opposite. Measured
+on the first real deploy:
+
+- `/api` reached the function and FastAPI itself returned a 404 — the runtime
+  log line reads `source: "serverless"`, `requestPath: "/api"`, no traceback.
+- `/api/health` never reached it at all. Next.js owned the path, served its own
+  404 page, and **no function was invoked**, so there was nothing in the runtime
+  log to look at.
+
+Vercel serves `api/index.py` at the EXACT path `/api` and nothing below it. The
+rewrite's destination only selects WHICH function handles the request; the
+function still receives the original URL, which is why the routes stay declared
+as `/api/...` and nothing else changes.
+
+The wider lesson is the one this file keeps repeating in other contexts: a
+paragraph explaining why something is unnecessary is not evidence, and this one
+survived because the thing it described had never been run.
+
+### The other three things the first deploy found
+
+None of them appeared as a red line in a build log.
+
+1. **The framework preset must be set.** It rendered BLANK on the import screen,
+   which looks like a loading skeleton and means "Other". The build then
+   succeeded completely — sync verified, tokens checked, TypeScript passed, all
+   sixteen pages generated, route table printed — and the deploy failed with
+   `No Output Directory named "public" found after the Build completed`, which
+   names a directory and never mentions the framework. Now pinned as
+   `"framework": "nextjs"` so a fresh import cannot repeat it.
+
+2. **`sys.path` does not include the entrypoint's own directory.** See rule 1;
+   `test_api.py` now loads `api/index.py` by path, in a subprocess, with that
+   directory removed.
+
+3. **"Include source files outside of the Root Directory" was not needed.**
+   Vercel included the parent anyway and the sync printed its verified line
+   without the toggle. Check for that line rather than assuming either way.
+
+**Use the CLI.** `vercel logs <url> --json` produced the `ModuleNotFoundError`
+in one command after a long stretch of reading dashboard screenshots and
+guessing. It is the first thing to reach for, not the last.
 
 ### Confirm on the FIRST deploy
 
