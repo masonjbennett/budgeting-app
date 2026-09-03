@@ -472,5 +472,19 @@ The outside-the-root-directory toggle turned out not to be needed. And the
 Vercel CLI (`vercel logs <url> --json`) is what ended two hours of guessing from
 screenshots; reach for it first next time.
 
-**`web/DEPLOY.md` is the click-by-click for the first deploy.** Still not
-deployed to the domain; the Streamlit app is still live and still the recruiter-safe link.
+## DEPLOYED — budget.masonjbennett.com is the primary (Sep 3 2026)
+
+Live, and the link on masonjbennett.com now points here: the project card, the
+recruiter-safe list and `llms.txt` all switched (dashboard commit 1bcee87).
+Verified against the real domain, not localhost — 130 sweep + 63 interaction
+assertions, every route 200 in under 0.6s, HSTS on, certificate issued.
+
+**The Streamlit app is a BACKUP now.** Mason is not developing it any further.
+It stays live and the keep-alive job still wakes it, and it is the fallback if
+this one breaks, so **`calculations.py` must keep working for both** — the
+stdlib-only rule and the one-copy-of-the-maths rule are unchanged, and
+`web/browser-checks/streamlit.mjs` should still be run before pushing anything
+that touches the engine. What HAS changed is that its front end no longer needs
+new features, so a capability can land in `web/` alone.
+
+`web/DEPLOY.md` is the click-by-click, now corrected by what actually happened.
