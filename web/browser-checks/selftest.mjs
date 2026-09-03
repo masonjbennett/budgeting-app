@@ -15,6 +15,9 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+// BASE is overridable so the same checks can run against a deployment:
+//   BASE=https://your-app.vercel.app node selftest.mjs
+const BASE = process.env.BASE ?? "http://localhost:3000";
 const src = readFileSync(join(HERE, "sweep.mjs"), "utf8");
 const PROBE_SRC = src.slice(src.indexOf("const PROBE = () =>") + "const PROBE = ".length,
                             src.indexOf("const browser = await puppeteer.launch"))
@@ -75,7 +78,7 @@ for (const [name, fault, fires] of FAULTS) {
   await page.evaluateOnNewDocument(() => {
     try { localStorage.setItem("mjb_budget_theme", "light"); } catch {}
   });
-  await page.goto("http://localhost:3000/year", { waitUntil: "networkidle0" });
+  await page.goto(`${BASE}/year`, { waitUntil: "networkidle0" });
   await page.waitForFunction(() => !document.querySelector(".skeleton"), { timeout: 30000 })
     .catch(() => {});
   await new Promise((r) => setTimeout(r, 600));

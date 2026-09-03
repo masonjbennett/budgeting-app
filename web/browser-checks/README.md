@@ -26,6 +26,14 @@ preview_start "budget-web"     # port 3000  (or: npm run dev)
 
 **Restart the API server after adding a route — uvicorn is not watching.**
 
+Every check takes an optional `BASE`, so the same assertions run against a
+deployment rather than localhost — which is how production was verified on the
+first deploy:
+
+```bash
+BASE=https://your-app.vercel.app npm run sweep
+```
+
 ```bash
 npm run selftest      # prove the sweep can fail, FIRST
 npm run sweep         # every route, both themes

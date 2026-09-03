@@ -31,7 +31,7 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 
-await page.goto("http://localhost:3000/expenses", { waitUntil: "networkidle0" });
+await page.goto(`${process.env.BASE ?? "http://localhost:3000"}/expenses`, { waitUntil: "networkidle0" });
 await page.waitForFunction(() => !document.querySelector(".skeleton"), { timeout: 30000 })
   .catch(() => {});
 await new Promise((r) => setTimeout(r, 700));

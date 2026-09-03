@@ -15,7 +15,9 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const BASE = "http://localhost:3000";
+// BASE is overridable so the same checks can be run against a
+// deployment: BASE=https://... node sweep.mjs
+const BASE = process.env.BASE ?? "http://localhost:3000";
 const CSV = join(HERE, "fixtures", "bank.csv");
 
 let pass = 0;
