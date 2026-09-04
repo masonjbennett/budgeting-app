@@ -835,3 +835,43 @@ console errors.
 Counts: selftest **7/7**, sweep **156**, interact 63, regression 21, mobile 35,
 big 11; Python unchanged at 521 + 33 mutations.
 
+**Then the same shape, generalised.** /fire's defect was a stored result
+outliving its inputs, so every other page was checked for it — and the audit
+is worth keeping because most of it came up CLEAN.
+
+- **Only /fire had the button pattern.** Every other page refetches from a
+  `useEffect`, so a stored result cannot outlive a control change.
+- **The six dependency keys are clean, and they were the real risk.** All six
+  effects use `}, [key])` with `key = JSON.stringify([...])`, which eslint
+  cannot see through — a value the effect reads but the key omits would go
+  stale silently, the same defect with its dependencies hidden inside a
+  string. All six cover what they read: `/investments` names only the two
+  income fields it actually sends (deliberately, so typing on the Income page
+  does not refetch it), `/compare` and `/year` key on the request payload
+  itself, and the importer's omission of `existing` cannot bite because
+  committing calls `reset()`. `/debt` derives `shown = debts.length ? result :
+  null`, so a result from a previous set of debts can never be shown against
+  an empty one.
+- **What DID come up: a failed REFETCH leaves the figures unexplained.**
+  `/debt` and `/investments` render `{error && <card>}` inline and never clear
+  the stored result, so the error sits directly above figures computed from
+  the previous inputs. Measured by aborting the route after a good load and
+  changing an input: on `/investments` the error appeared and all three
+  projections — **$635,236 / $938,688 / $1,420,880** — were still the old
+  ones. The figures are KEPT rather than dropped, because a network blip
+  emptying the page is worse than a labelled stale number; what was missing
+  was the label. `/compare` was already right (`rows.length > 1 && !error`),
+  and `/year` and the cash-flow panel replace their content outright.
+  `regression.mjs` 21 -> **27**, driving it by request interception. Proof it
+  can fail is empirical rather than injected: the same probe measured
+  `saysStale: false` before the fix and `true` after.
+
+**Two probe errors of mine in this round, both caught by reading the output
+rather than the headline.** The `/debt` run reported "error replaces content"
+because the figure that changed was the SLIDER'S OWN LABEL — client-side text,
+not a fetched number — while the payoff results were stale like everything
+else. And the `/year` row of that same table said "no error surfaced", which
+proves nothing: the change function fired a `resize` event, which triggers no
+refetch, so nothing was ever tested there. /year's clearing path is verified
+by reading, not by driving, and is recorded as such.
+

@@ -377,6 +377,25 @@ settings can still be compared, and a caution banner names exactly which
 inputs moved — "your settings changed" would leave the reader hunting for
 which one, and the point is that the numbers belong to the old value.
 
+**The same shape, two pages further on.** `/debt` and `/investments` never
+clear their stored result when a REFETCH fails, so the error card sat directly
+above figures computed from the previous inputs. Measured on `/investments` by
+failing the route after a good load and changing the monthly contribution: the
+error appeared and all three projections — $635,236 / $938,688 / $1,420,880 —
+were still the old ones. The figures are KEPT rather than dropped, because a
+network blip emptying the page is worse than a labelled stale number; what was
+missing was the label. `/compare` was already right (`rows.length > 1 &&
+!error`), and `/year` and the cash-flow panel replace their content outright.
+
+**The dependency keys were audited and are clean.** Six effects use
+`}, [key])` with `key = JSON.stringify([...])`, which eslint cannot see
+through — so a value the effect reads but the key omits would go stale
+silently, the same defect with its dependencies hidden in a string. All six
+cover what they read: `/investments` names only the two income fields it
+actually sends (deliberately, so typing on the Income page does not refetch),
+`/compare` and `/year` key on the request payload itself, and the importer's
+omission of `existing` cannot bite because committing calls `reset()`.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944

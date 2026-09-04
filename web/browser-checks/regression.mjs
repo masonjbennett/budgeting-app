@@ -229,6 +229,71 @@ console.log("\n--- a real Monte Carlo run ---");
   await page.close();
 }
 
+// ═══════════════════════════════════════════════════════════════════
+console.log("\n--- a failed refetch must not leave figures unexplained ---");
+{
+  /* `/debt` and `/investments` do NOT clear their stored result when a
+     refetch fails, so the error card sits directly above figures computed
+     from the previous inputs. Measured on /investments by failing the route
+     after a good load and changing the monthly contribution: the error
+     appeared and all three projections were still the old ones.
+
+     The figures are kept deliberately — a network blip emptying the page is
+     worse than a labelled stale number — so what this has to prove is that
+     the LABEL is there. Invisible in the source: the sentence is greppable,
+     the condition gating it is not. */
+  for (const [route, endpoint, change] of [
+    ["/debt", "/api/debt-payoff", () => {
+      const d = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+      const el = document.querySelector('input[type="range"]');
+      d.set.call(el, "700");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }],
+    ["/investments", "/api/investment", () => {
+      const d = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+      const el = [...document.querySelectorAll('input[type="number"]')][1];
+      d.set.call(el, "3210");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }],
+  ]) {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 1000 });
+    let failing = false;
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      if (failing && req.url().includes(endpoint)) return req.abort("failed");
+      req.continue();
+    });
+    await page.goto(BASE + route, { waitUntil: "networkidle0", timeout: 60000 });
+    await page.waitForFunction(() => !document.querySelector(".skeleton"), { timeout: 30000 })
+      .catch(() => {});
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const before = await page.evaluate(() =>
+      [...document.querySelectorAll(".font-num")].map((n) => n.textContent.trim())
+        .filter(Boolean).slice(0, 12).join("|"));
+    check(`${route}: it had figures that could go stale`, before.length > 0);
+
+    failing = true;
+    await page.evaluate(change);
+    await new Promise((r) => setTimeout(r, 2500));
+
+    const res = await page.evaluate(() => {
+      const card = [...document.querySelectorAll(".mark-critical")]
+        .find((d) => /could not|failed/i.test(d.textContent));
+      return {
+        errored: !!card,
+        saysStale: card ? /from before it failed/i.test(card.textContent) : false,
+      };
+    });
+    check(`${route}: a failed refetch surfaces an error`, res.errored);
+    check(`${route}: and says the figures under it are the previous ones`, res.saysStale);
+    await page.close();
+  }
+}
+
 await browser.close();
 console.log(`\nREGRESSION: ${pass} passed, ${fails.length} failed`);
 process.exit(fails.length ? 1 : 0);

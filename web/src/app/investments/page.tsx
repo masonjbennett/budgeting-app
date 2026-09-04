@@ -123,7 +123,24 @@ export default function InvestmentsPage() {
       </Section>
 
       {error && (
-        <div className="card mark-critical t-small mb-8 text-critical">{error}</div>
+        <div className="card mark-critical t-small mb-8 text-critical">
+          {error}
+        {runs && (
+          /* The stored result is NOT cleared on a failed refetch, so without
+             this the error card sits directly above figures computed from the
+             previous inputs with nothing saying so. Measured on /investments
+             by failing the route after a good load and changing the monthly
+             contribution: the error appeared and all three projections —
+             $635,236 / $938,688 / $1,420,880 — were still the old ones.
+             The figures are kept rather than dropped, because a network blip
+             emptying the page is worse than a labelled stale number; what was
+             missing was the label. */
+          <span className="mt-1.5 block text-muted">
+            The figures below are from before it failed — they are for the
+            previous settings, not the ones on screen.
+          </span>
+        )}
+        </div>
       )}
 
       {runs && (
