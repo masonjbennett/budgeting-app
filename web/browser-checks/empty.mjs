@@ -245,7 +245,49 @@ if (SELFTEST) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+console.log("\n--- Settings counts the same things the dashboard does ---");
+{
+  /* Found on the LIVE site immediately after clicking Start empty: the
+     dashboard read "$0 across 0 categories" while Settings read "Budget
+     categories 17" for the same profile. Settings counted ROWS and the
+     dashboard counts rows carrying an AMOUNT; both are readings of the same
+     words, and having two of them is the defect — on the screen whose job is
+     to say what data you have, at the moment somebody has asked for none.
+
+     The profile is already empty here: the section above clicked Start empty
+     on this same page, and the run shares one. The reload is deliberate: the
+     sections between here and there walk every route, so the page cannot be
+     assumed to be on the dashboard, and an emptied profile survives a reload
+     by design (lib/localProfile). */
+  await go("/");
+  const dashCount = await page.evaluate(() => {
+    const c = [...document.querySelectorAll(".card")].find(
+      (x) => /^Budgeted$/.test(x.querySelector(".label")?.textContent?.trim() ?? ""));
+    const t = c?.innerText ?? "";
+    const m = t.match(/across (\d+) categor/);
+    if (m) return Number(m[1]);
+    return /Set some category amounts/.test(t) ? 0 : null;
+  });
+
+  await go("/data");
+  const setCount = await page.evaluate(() => {
+    const label = [...document.querySelectorAll("*")].find(
+      (e) => e.children.length === 0 && /^Budget categories$/i.test(e.textContent.trim()));
+    const m = label?.closest("div")?.innerText.match(/(\d+)/);
+    return m ? Number(m[1]) : null;
+  });
+
+  check("the dashboard states a category count", dashCount !== null, String(dashCount));
+  check("Settings states one too", setCount !== null, String(setCount));
+  check("and the two agree, so the app has ONE meaning for a budget category",
+        dashCount === setCount, `dashboard ${dashCount} vs settings ${setCount}`);
+  check("an emptied profile has none on either screen",
+        dashCount === 0 && setCount === 0, `${dashCount} / ${setCount}`);
+}
+
 await ctx.close();
+
 await browser.close();
 console.log(`\nEMPTY: ${pass} passed, ${fails.length} failed`);
 if (fails.length) { for (const f of fails) console.log("  - " + f); process.exit(1); }

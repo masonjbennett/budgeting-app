@@ -21,7 +21,7 @@ const REQUIRED: (keyof Profile)[] = [
 ];
 
 export default function DataPage() {
-  const { profile, user, cloudConfigured, replaceProfile, resetToDemo, resetToEmpty } =
+  const { dashboard, profile, user, cloudConfigured, replaceProfile, resetToDemo, resetToEmpty } =
     useFinance();
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
@@ -64,11 +64,10 @@ export default function DataPage() {
 
   const stats: [string, string][] = [
     ["Expenses logged", String(profile.expenses.length)],
-    ["Budget categories", String(
-      Object.keys(profile.budget.needs).length +
-        Object.keys(profile.budget.wants).length +
-        Object.keys(profile.budget.savings).length,
-    )],
+    // From the engine, which is what the dashboard's adherence card is scored
+    // out of. Counting rows here instead read "17" on a profile the dashboard
+    // called "0 categories" — the empty one, where it matters most.
+    ["Budget categories", String(dashboard?.health.budgeted_categories ?? 0)],
     ["Debts", String(profile.debts.length)],
     ["Savings goals", String(profile.savings_goals.length)],
     ["Net-worth snapshots", String(profile.net_worth_snapshots.length)],

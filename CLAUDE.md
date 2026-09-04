@@ -1276,3 +1276,21 @@ precedent chose.
 Counts: **582 Python assertions** (244 + 42 + 168 + 128) and 44 mutations.
 Browser: selftest 7 · sweep 156 · interact 63 · compare 33 · health 56 ·
 **empty 22** · regression 27 · persistence 17 · demonote 14 · mobile 35.
+
+**And the live site found one more, minutes after the push.** Clicking "Start
+empty" on production left Settings reading **"Budget categories 17"** beside a
+dashboard reading **"$0 across 0 categories"** — the same profile, counted two
+ways. Settings counted ROWS (`Object.keys` over the three buckets) and the
+dashboard counts rows carrying an AMOUNT, and both are honest readings of the
+same two words; having two of them is the defect, on the screen whose whole job
+is to say what data you have, at the exact moment somebody has asked for none.
+It is visible only because `empty_profile` keeps the row NAMES as scaffolding
+to type into — which is the right call, and is what made the count matter.
+Settings reads `health.budgeted_categories` now, so there is one definition.
+`empty.mjs` 22 -> **23**, and the new assertion was proved able to fail by
+restoring the row count: *"dashboard 0 vs settings 17"*.
+
+The generalisation is the one this project keeps meeting from a different
+direction: **two screens agreeing today is not the same as there being one
+rule.** These two had agreed for as long as every profile carried amounts in
+every row, and disagreed the first time one did not.
