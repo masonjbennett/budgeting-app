@@ -309,6 +309,21 @@
   tbody tr:last-child td { border-bottom: none; }
   tbody tr:hover td { background: var(--raise); }
 
+  /* Tighter gutters below the tables' breakpoint.
+
+     14px each side is 28px per column, which on a four-column table is 112px
+     of a phone's 335px spent on whitespace. Dropping to 8px returns 48px —
+     enough that /expenses (354 -> 306) and /year's category table (369 ->
+     321) fit without hiding a fourth column, which was the alternative and
+     would have cost real information rather than margin.
+
+     Paired with the `sm:table-cell` columns in the pages: those decide WHAT
+     is on a phone, this decides how tightly it is set. Both use the same
+     640px breakpoint, so a table cannot end up half-adapted. */
+  @media (max-width: 639px) {
+    thead th, td { padding-left: 8px; padding-right: 8px; }
+  }
+
   hr { border: none; border-top: 1px solid var(--hair); margin: 0; }
 
   /* ── Focus ── */
@@ -510,6 +525,36 @@
     transition: border-color 0.14s ease, color 0.14s ease;
   }
   .btn-remove:hover { border-color: var(--critical); color: var(--critical); }
+
+  /* The same control inside a TABLE, where the hairline would be noise.
+
+     A dense transaction table puts one of these on every row, and thirteen
+     bordered boxes down the right edge read as a column of their own. So this
+     keeps the box and drops the chrome — identical hit area, nothing drawn
+     until hover.
+
+     THE BOX IS THE POINT. /debt and /expenses had a bare glyph in a table
+     cell with no sizing at all, which measured 11x21px: under the 24px WCAG
+     2.2 minimum, well under Apple's 44px, and the smallest control in the app
+     — for a DESTRUCTIVE action with no confirmation step, sitting beside a
+     row of numbers on a phone. Every other remove control in the app was
+     already 30x32 via .btn-remove; these two were the ones that never got it. */
+  .btn-remove-quiet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex: none;
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.14s ease;
+  }
+  .btn-remove-quiet:hover { color: var(--critical); }
 
   /* ── Segmented control ── */
   .tab-list {
@@ -727,5 +772,50 @@
     animation: none !important;
     transition: none !important;
     opacity: 1 !important;
+  }
+}
+
+/* ═══ Touch: form controls are 16px, and that is a functional floor ══════
+   MOBILE SAFARI ZOOMS THE VIEWPORT when you focus a text-entry control whose
+   computed font-size is under 16px, and it does NOT zoom back out when you
+   blur. Every text-entry control in this app was 14px, and the two filter
+   selects on /expenses were 11px — so on an iPhone, focusing any field on any
+   page left the reader zoomed in and pinching to get back out. Measured: 74
+   such controls across 10 routes.
+
+   This is invisible to every check here and always was. Headless Chrome does
+   not implement the zoom, so the page looks perfect while the defect is a
+   property of the number rather than of the rendering: the only way to see it
+   is to measure the computed font-size, which nothing did.
+
+   The alternative fix is `maximum-scale=1` on the viewport meta, which stops
+   the zoom by disabling pinch-zoom entirely. That is a WCAG 1.4.4 failure and
+   it takes the ability to magnify away from the people who need it most, to
+   spare everyone else an annoyance. The meta tag stays as it is.
+
+   `pointer: coarse` rather than a width, because the zoom is a property of
+   the DEVICE and not of the window: an iPad at 1024px zooms too, and a
+   narrowed desktop window does not. 16px is not on the 11/13/15/18 type
+   scale, deliberately — it is the threshold Safari checks, not a type choice,
+   and it applies only where that threshold exists.
+
+   IN `utilities` BECAUSE IT HAS TO WIN. `.t-micro` lives in `components`, and
+   a layered rule cannot be beaten by specificity from an earlier layer — the
+   same mechanism this file's header describes for unlayered CSS. A base-layer
+   rule here would have left the two 11px selects at 11px, silently, which is
+   the exact shape of the `pl-7` that lost to `input[type="number"]`. Verified
+   by computed value, not by reading the cascade. */
+@layer utilities {
+  @media (pointer: coarse) {
+    input[type="number"],
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="date"],
+    input[type="search"],
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
 }

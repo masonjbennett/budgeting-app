@@ -130,11 +130,31 @@ export function Section({
 }) {
   return (
     <section className="mb-10">
-      <div className="mb-4 flex items-center gap-3">
+      {/* The slug wraps, and the hairline keeps a minimum width.
+
+          This row is [bar] [title] [hairline] [action] and it used to be a
+          single unwrappable line. Both halves of it are sized by things the
+          page does not control: the title can carry a formatted total, and an
+          action holding a <select> is as wide as the widest CATEGORY NAME THE
+          USER TYPED. So no fixed layout is safe, and at 375px /expenses'
+          "Transactions · $3,091 across 13" ran 107px past the right edge of
+          the phone — the one page-level horizontal overflow in the app.
+
+          The minimum on the hairline is load-bearing rather than cosmetic. It
+          is what makes the row wrap BEFORE it overflows: `flex-1` has a basis
+          of 0, so the rule surrenders its width silently and the row reports
+          that it fits right up until it does not. Two more headers ("Import
+          from a bank CSV", and /fire's) were measured sitting at exactly the
+          available width with a rule of ZERO — a slug with no rule, one
+          character from overflowing. */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="h-[3px] w-6 shrink-0 bg-accent" aria-hidden="true" />
         <h2 className="label text-[11px] text-ink">{title}</h2>
-        <div className="rule flex-1" />
-        {action}
+        <div className="rule min-w-6 flex-1" />
+        {/* ml-auto is a no-op on one line — the hairline has already taken the
+            free space — and right-aligns the action when it wraps, which is
+            where it sits when it does not. */}
+        {action && <div className="ml-auto">{action}</div>}
       </div>
       {children}
     </section>

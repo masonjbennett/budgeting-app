@@ -75,7 +75,11 @@ cover:
   drawer at 375px including focus and body-scroll, the theme toggle across a
   reload, a real Monte Carlo run;
 - **print emulation in both themes**, which is how a print rule usually ships
-  dead.
+  dead;
+- **the phone as numbers** (`mobile.mjs`) — the focus-zoom threshold, the
+  section slug, every table fitting its scroller, the 24x24 tap floor. See rule
+  8: none of these can be caught by looking, and one of them cannot be caught
+  in a browser that is not Safari.
 
 Break each on purpose and watch it fail before trusting it. **This is not
 ceremony — a check written from a description passes on a healthy page whether
@@ -227,6 +231,49 @@ two assertions that were decoration on the day it was written:
   `suggest_category` had a comparison per source and the mutation only reversed
   one of them. It now scores both on one list with one comparison.
 
+### 8. The phone is a set of numbers, not a screenshot
+
+Three things were shipping on the live site in September 2026 that were
+invisible to a green suite AND to looking at the page:
+
+- **Every text-entry control was 14px** (the two `/expenses` filters, 11px).
+  Mobile Safari zooms the viewport on focus below 16px and does not zoom back
+  out, so adding an expense left you pinching. **Headless Chrome does not
+  implement that zoom**, so there was never anything to see — the defect exists
+  only in the computed font-size. `globals.css` now sets 16px under
+  `@media (pointer: coarse)`, in `@layer utilities` because `.t-micro` is in
+  `components` and a layer cannot be beaten by specificity from an earlier one.
+  A width query would have been wrong: the zoom is a property of the DEVICE, so
+  an iPad at 1024px zooms and a narrowed desktop window does not.
+
+  The alternative fix, `maximum-scale=1` on the viewport meta, stops the zoom by
+  disabling pinch-zoom outright. That is a WCAG 1.4.4 failure that takes
+  magnification away from the people who most need it in order to spare
+  everyone else an annoyance. The meta tag stays as it is.
+
+- **`Section`'s slug did not wrap**, so `/expenses` ran 107px past the right
+  edge of a phone — the one page-level horizontal overflow in the app, and the
+  existing overflow checks only ever covered `/` and `/year`. The hairline is
+  `flex-1` with a basis of 0, so it gives up its width silently: two more
+  headers were measured at exactly the available width with a rule of ZERO, one
+  character from overflowing and with nothing reporting it. The rule now has a
+  minimum, which is what makes the row wrap BEFORE it overflows.
+
+- **Four tables scrolled sideways and the hidden columns were the answer.** A
+  table inside `overflow-x-auto` does not overflow the page, so every
+  horizontal-overflow check passes on it, correctly — none of them can ask
+  whether the column carrying the number is on screen. `/expenses` hid AMOUNT;
+  `/year` hid Spent, Of budget and Variance, which is every figure it reports.
+  Secondary columns are now `hidden sm:table-cell` and the cell gutters drop
+  from 14px to 8px below 640px, which is worth 48px on a four-column table —
+  enough that nothing had to be hidden merely for margin. All of it returns at
+  640px, where the content area is ~600px and every table fits.
+
+`mobile.mjs` holds all of this plus the 24x24 tap-target floor, with a
+`--selftest` that injects each defect and requires the check to fire. **639 and
+640 are both measured**, because that pair is where a column could come back
+before the table fits — a gap invisible at any width anyone would think to try.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944
@@ -289,8 +336,12 @@ p90 ceiling and prints how many paths run above it.
 
 ## Deploying
 
-Not yet deployed. **`DEPLOY.md` is the click-by-click**, in order, with what to
-check after each step. What follows is the reasoning behind those settings.
+**Deployed — budget.masonjbennett.com is live and is the primary**, and the
+links on masonjbennett.com point here. This section used to open "Not yet
+deployed"; it is kept accurate rather than rewritten, because the rest of it is
+the reasoning behind the settings and the record of what the first deploy
+found. **`DEPLOY.md` is the click-by-click**, in order, with what to check
+after each step.
 
 Vercel project settings this needs:
 

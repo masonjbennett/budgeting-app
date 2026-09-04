@@ -39,12 +39,13 @@ npm run selftest      # prove the sweep can fail, FIRST
 npm run sweep         # every route, both themes
 npm run interact      # drive the newest features
 npm run regress       # things already fixed once, that must stay fixed
+npm run mobile        # the phone, measured (carries its own selftest)
 npm run big           # generate a year-sized statement and measure the importer
 npm run streamlit     # the OTHER front end still works (needs port 8502)
 ```
 
-`npm run all` is selftest → sweep → interact → regress, which is the set worth
-running after any change under `src/`.
+`npm run all` is selftest → sweep → interact → regress → mobile, which is the
+set worth running after any change under `src/`.
 
 ## What each one is for
 
@@ -56,6 +57,7 @@ running after any change under `src/`.
 | `regression.mjs` | Behaviour already fixed once, where the fix is invisible in the source: the cascade-layer fix by COMPUTED VALUE, the mobile drawer at 375px (focus return, scroll lock, close on Escape and on navigation), the theme toggle across a reload, and a real Monte Carlo run. **21 assertions.** |
 | `bigimport.mjs` | Measures the importer on a year-sized file. Reports DOM size, page height, and tick-to-paint. |
 | `bigcorrect.mjs` | Paging and filtering must not change WHAT gets imported — walks every page, then commits and counts what actually landed. **11 assertions.** |
+| `mobile.mjs` | The phone, as NUMBERS: every text-entry control is >= 16px on a coarse pointer (and still 14px on a mouse), no section slug overflows or loses its hairline, no table scrolls sideways at 375/414/639/640/1440, nothing is under 24x24. `--selftest` injects a fault for each and requires it to fire. **15 assertions.** |
 | `streamlit.mjs` | The Streamlit front end still renders every page against the shared engine. Run before pushing anything that touches `calculations.py`. |
 
 ## Three things that cost a cycle each
@@ -68,6 +70,20 @@ for that reason. When the pane and the DOM disagree, capture elsewhere.
 
 **Git Bash mangles a bare `/route` argument into a Windows path.**
 `export MSYS_NO_PATHCONV=1` before `node sweep.mjs --only=/year`.
+
+**A check that reports zero problems may have looked at nothing.** During the
+mobile work a probe printed "0 problems" across all 13 routes while every page
+was a 500 from a JSX parse error — it counted FAILURES and never counted
+subjects. `mobile.mjs` therefore asserts what a healthy run must FIND (~74
+controls, ~150 header renders, ~130 tap targets, ~25 table renders) before it
+asserts anything about them. Any new check here should do the same: the
+cheapest possible bug in a check is that its selector matches nothing.
+
+**A screenshot is not enough either, and that is newer.** Every earlier lesson
+here is "the suite was green and the page was wrong". The focus-zoom defect is
+one step past that: **headless Chrome does not implement Safari's zoom**, so the
+page renders perfectly and the defect exists only in the computed font-size.
+There was nothing to see. Some things can only be caught as a number.
 
 **A check that fails is guilty until proven innocent.** Of the nine failures
 these turned up on their first runs, seven were the check's fault: a nav button

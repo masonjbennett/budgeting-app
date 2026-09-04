@@ -488,3 +488,99 @@ that touches the engine. What HAS changed is that its front end no longer needs
 new features, so a capability can land in `web/` alone.
 
 `web/DEPLOY.md` is the click-by-click, now corrected by what actually happened.
+
+## Sep 3 2026 — the phone, measured (web/, committed NOT pushed)
+
+First session after the deploy. The handoff's item 1 was "whatever Mason hits on
+his phone"; he has not exercised it beyond logging in, so there were no reports
+and **measurement was the only evidence available**. Its item 3 — engine
+capabilities no page asks for — came up EMPTY and is worth not re-deriving:
+every `calculations.py` function with no caller in `api/index.py` is an internal
+helper called by another engine function, the routes pass engine returns through
+wholesale rather than dropping fields, and every schema field the API returns is
+read somewhere in `src/`. The API surface is fully consumed.
+
+**Four defects, all live, all invisible to a green suite — and three of them
+invisible to a screenshot as well.** `web/README.md` rule 8 has the detail.
+
+- **Every text-entry control was 14px**, and the two `/expenses` filters 11px —
+  74 of them across 10 routes. Mobile Safari zooms the viewport on focus below
+  16px and does not zoom back out on blur, so adding an expense left you
+  pinching. **This one cannot be seen at all**: headless Chrome does not
+  implement the zoom, so the page renders perfectly and the defect exists only
+  in the computed font-size. Every earlier lesson in this project is "green
+  suite, wrong page"; this is one step past it. Fixed under
+  `@media (pointer: coarse)` — a DEVICE query, not a width, because an iPad at
+  1024px zooms and a narrowed desktop window does not — and placed in
+  `@layer utilities`, because `.t-micro` is in `components` and a layer cannot
+  be beaten by specificity from an earlier one. Verified by computed value:
+  74/74 at 16px on touch, still 11px×2 + 14px×72 on a mouse.
+  **`maximum-scale=1` was rejected**: it stops the zoom by disabling pinch-zoom,
+  a WCAG 1.4.4 failure that takes magnification from the people who need it to
+  spare everyone else an annoyance.
+- **`Section`'s slug did not wrap** — `/expenses` ran 107px past the right edge
+  of a phone, the one page-level horizontal overflow in the app, and the
+  existing overflow checks only ever covered `/` and `/year`. The hairline is
+  `flex-1` with a basis of 0, so **it surrenders its width silently**: two more
+  headers measured at EXACTLY the available width with a rule of zero, one
+  character from overflowing, with nothing reporting it. A minimum on the rule
+  is what makes the row wrap before it overflows. Desktop is untouched — 0 of
+  152 header renders wrap at 768 or 1440.
+- **Four tables scrolled sideways and the hidden columns were the answer.** A
+  table inside `overflow-x-auto` does not overflow the PAGE, so every
+  horizontal-overflow check in this repo passes on it — correctly, and none of
+  them can ask whether the column carrying the number is on screen. `/expenses`
+  hid **Amount**; `/year` hid Spent, Of budget and Variance, i.e. every figure
+  it reports. On Mason's call, secondary columns are `hidden sm:table-cell` and
+  the cell gutters drop 14px → 8px below 640px, worth 48px on a four-column
+  table — enough that nothing had to be hidden merely for margin. **639 and 640
+  are both asserted**, because that pair is where a column could return before
+  the table fits.
+- **The delete buttons in the two tables were 11x21** — bare glyphs with no
+  sizing, the smallest controls in the app, for a destructive action with no
+  confirmation. Every other remove control was already 30x32 via `.btn-remove`.
+  `.btn-remove-quiet` is the same box with no chrome, because thirteen bordered
+  boxes down a transaction table read as a column of their own. 69 under-24
+  targets → 0.
+
+**Two mistakes of mine worth keeping, both about checks rather than code.**
+- **A probe reported "0 problems" over an app where all 13 routes were 500ing.**
+  A JSX comment inside an `action={...}` expression (`{/* */}` is only valid
+  where CHILDREN are expected) broke the parse, and the probe counted FAILURES
+  without ever counting SUBJECTS. `mobile.mjs` now asserts what a healthy run
+  must FIND — ~74 controls, ~150 header renders, ~130 tap targets — before it
+  asserts anything about them. The cheapest possible bug in a check is a
+  selector that matches nothing.
+- **The first section-header probe was right for an unwrappable row and wrong
+  the moment the row could wrap**: it summed the children's widths against one
+  line, so on two lines it exceeded by construction and reported three failures
+  on a page with no overflow at all. It measures the row's own right edge now.
+  Same family as the `display:none` `<th>` whose zero rect an earlier table
+  probe reported as "off screen at -20" — the check inventing the defect it
+  exists to find.
+
+**And one caught by LOOKING, in my own fix.** Capping the filter selects at
+`max-w-[48%]` truncated the value *inside* the control: the month filter read
+**"September 202"** — a clipped date that still reads as a date, which is the
+filings terminal's `'4,000,000` defect exactly. Unnecessary as well as wrong:
+at their natural widths the two selects are 215px and 200px against 335px, so
+wrapping already handles them and the cap now only bites when one select alone
+cannot fit a phone.
+
+`shortDate` builds from the date's PARTS, not `new Date(iso)` — a bare ISO date
+parses as UTC midnight and renders as the day before for every reader west of
+Greenwich, which on an expense list would put every row off by one and only
+mislead at a month boundary.
+
+**`web/browser-checks/mobile.mjs` is new and is in `npm run all`** — 15
+assertions, with a `--selftest` that injects each of the four defects and
+requires the check to fire. Counts after: **selftest 5/5 · sweep 130 · interact
+63 · regression 21 · mobile 15**, and the Python is unchanged at **521 + 33
+mutations** (nothing touched `calculations.py`, so the Streamlit backup is
+unaffected and `streamlit.mjs` was not required). `npm run build`,
+`check:tokens`, `eslint`, `tsc` all clean.
+
+**Not done:** `/year`'s "Of budget" and "Bucket", `/debt`'s "Minimum" and
+"Cleared" and `/expenses`' note are simply absent below 640px rather than
+reachable some other way — that was the deliberate trade against a card-list
+rendering, which stays available if the columns turn out to be missed.

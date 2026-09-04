@@ -10,8 +10,9 @@
     "interact": "node interact.mjs",
     "big": "node fixtures/make-big.mjs && node bigimport.mjs && node bigcorrect.mjs",
     "streamlit": "node streamlit.mjs",
-    "all": "node selftest.mjs && node sweep.mjs && node interact.mjs && node regression.mjs",
-    "regress": "node regression.mjs"
+    "all": "node selftest.mjs && node sweep.mjs && node interact.mjs && node regression.mjs && node mobile.mjs --selftest",
+    "regress": "node regression.mjs",
+    "mobile": "node mobile.mjs --selftest"
   },
   "dependencies": {
     "puppeteer-core": "^23.0.0"

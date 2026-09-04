@@ -139,11 +139,22 @@ export default function DebtPage() {
             <table>
               <thead>
                 <tr>
+                  {/* Minimum and Cleared are hidden on a phone.
+
+                      All six columns are 457px against the 335px a 375px
+                      phone actually offers, so the table scrolled sideways
+                      and Cleared sat entirely off screen with nothing saying
+                      so. Debt, Balance and Rate are what identify a debt and
+                      drive which one to attack; Cleared is restated by the
+                      strategy cards directly below this table, and Minimum is
+                      a cash-flow figure rather than a decision one. They come
+                      back at 640px, where the content area is ~600px and the
+                      whole table fits. */}
                   <th>Debt</th>
                   <th className="text-right">Balance</th>
                   <th className="text-right">Rate</th>
-                  <th className="text-right">Minimum</th>
-                  <th className="text-right">Cleared</th>
+                  <th className="hidden text-right sm:table-cell">Minimum</th>
+                  <th className="hidden text-right sm:table-cell">Cleared</th>
                   <th />
                 </tr>
               </thead>
@@ -153,8 +164,10 @@ export default function DebtPage() {
                     <td className="text-ink">{d.name}</td>
                     <td className="font-num text-right">{fmt(d.balance)}</td>
                     <td className="font-num text-right">{d.rate.toFixed(2)}%</td>
-                    <td className="font-num text-right">{fmt(d.min_payment)}</td>
-                    <td className="font-num text-right text-muted">
+                    <td className="font-num hidden text-right sm:table-cell">
+                      {fmt(d.min_payment)}
+                    </td>
+                    <td className="font-num hidden text-right text-muted sm:table-cell">
                       {shown?.avalanche.payoff_months?.[d.name]
                         ? months(shown.avalanche.payoff_months[d.name])
                         : "—"}
@@ -163,7 +176,7 @@ export default function DebtPage() {
                       <button
                         onClick={() => setDebts(debts.filter((_, j) => j !== i))}
                         aria-label={`Remove ${d.name}`}
-                        className="text-muted transition-colors hover:text-critical"
+                        className="btn-remove-quiet"
                       >
                         ✕
                       </button>

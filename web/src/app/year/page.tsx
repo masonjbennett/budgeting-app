@@ -309,8 +309,14 @@ export default function YearPage() {
               <table>
                 <thead>
                   <tr>
+                    {/* "Per month" is hidden on a phone. Five columns are
+                        414px against the 335px a 375px phone offers, so
+                        Variance — the column this page exists for — sat off
+                        screen. The monthly rate is the least load-bearing of
+                        the five: "Budgeted" is the year-to-date figure that
+                        Spent and Variance are actually measured against. */}
                     <th>Bucket</th>
-                    <th className="text-right">Per month</th>
+                    <th className="hidden text-right sm:table-cell">Per month</th>
                     <th className="text-right">Budgeted</th>
                     <th className="text-right">Spent</th>
                     <th className="text-right">Variance</th>
@@ -320,7 +326,7 @@ export default function YearPage() {
                   {ytd.by_bucket.map((b) => (
                     <tr key={b.bucket}>
                       <td className="text-ink">{b.bucket}</td>
-                      <td className="font-num text-right">
+                      <td className="font-num hidden text-right sm:table-cell">
                         {b.budget_monthly > 0 ? fmt(b.budget_monthly) : "—"}
                       </td>
                       <td className="font-num text-right">
@@ -391,11 +397,21 @@ export default function YearPage() {
             <table>
               <thead>
                 <tr>
+                  {/* On a phone this is Category · Budgeted · Spent ·
+                      Variance. Six columns are 539px against 335px, so
+                      Spent, Of budget AND Variance were all off screen —
+                      every number the table carries.
+
+                      The two that go are the two that are recoverable from
+                      what stays: "Of budget" is Spent over Budgeted, and
+                      "Bucket" is a grouping rather than a measurement.
+                      Budgeted stays because Variance is meaningless without
+                      the figure it is measured against. */}
                   <th>Category</th>
-                  <th>Bucket</th>
+                  <th className="hidden sm:table-cell">Bucket</th>
                   <th className="text-right">Budgeted</th>
                   <th className="text-right">Spent</th>
-                  <th className="text-right">Of budget</th>
+                  <th className="hidden text-right sm:table-cell">Of budget</th>
                   <th className="text-right">Variance</th>
                 </tr>
               </thead>
@@ -405,13 +421,13 @@ export default function YearPage() {
                   .map((c) => (
                     <tr key={c.category}>
                       <td className="text-ink">{c.category}</td>
-                      <td className="text-muted">{c.bucket ?? "—"}</td>
+                      <td className="hidden text-muted sm:table-cell">{c.bucket ?? "—"}</td>
                       <td className="font-num text-right">
                         {c.budget_monthly > 0 ? fmt(c.budget_to_date) : "not budgeted"}
                       </td>
                       <td className="font-num text-right text-ink">{fmt(c.spent)}</td>
                       <td
-                        className={`font-num text-right ${c.over ? "text-critical" : "text-muted"}`}
+                        className={`font-num hidden text-right sm:table-cell ${c.over ? "text-critical" : "text-muted"}`}
                       >
                         {c.pct_of_budget === null ? "—" : pct(c.pct_of_budget, 0)}
                       </td>
