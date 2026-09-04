@@ -87,6 +87,14 @@ The file follows this order:
   found was invisible to a green suite and visible on a rendered page — dead
   CSS rules, a chart with no paths, a gradient id containing a space. Anything
   touching `web/src` also needs a browser; see the block in `web/README.md`.
+- **`check_claims.py` keeps the SITE's copy honest.** The About block on /data
+  states how many assertions cover the engine, and it said **291** long enough
+  to be wrong by a hundred and twenty — a claim about how carefully the numbers
+  are checked, with nothing checking it. It now derives the figure by running
+  `test_calc.py` and `test_stress.py` and fails if the sentence disagrees, and
+  it also asserts the sentence's other half: that neither suite keeps its own
+  copy of the maths. Both halves were proved able to fail. Run it after any
+  change to those two suites, or to that paragraph.
 - **After adding a NEW name to `calculations.py`, REBOOT the deployed app.**
   Streamlit re-runs the script in a long-lived process, so `import calculations`
   can return the copy already in `sys.modules` — the one from before that name

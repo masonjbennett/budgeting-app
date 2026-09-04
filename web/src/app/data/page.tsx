@@ -220,12 +220,17 @@ export default function DataPage() {
             estimate for planning, not tax advice, and it does not model credits,
             AMT, or the 2/37 limitation on itemized deductions at the top bracket.
           </p>
+          {/* The figure is checked by `check_claims.py`, which runs both suites
+              and fails if this sentence disagrees with them. It said 291 for
+              long enough to be wrong by a hundred and twenty — a claim about
+              how carefully the numbers are checked, with nothing checking it. */}
           <p className="t-small mt-3 leading-relaxed text-body">
-            Every number on this site is calculated by one Python module, which the
-            Streamlit version of this app and this one both import. It is covered by
-            291 assertions, and none of them re-derive an expected answer with a second
-            copy of the algorithm — that is how three copies of this maths came to
-            disagree with each other in the first place.
+            Every number on this site is calculated by one Python module, which this
+            app and the Streamlit version both import. It is covered by 412
+            assertions, and every one of them runs that module rather than a copy of
+            it. The version before this had three copies of the maths that had drifted
+            apart, and one of them was in the test suite — which is how that suite
+            stayed green for five months without ever running the app.
           </p>
         </div>
       </Section>
