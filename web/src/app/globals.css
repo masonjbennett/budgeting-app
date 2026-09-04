@@ -338,7 +338,7 @@
      is on a phone, this decides how tightly it is set. Both use the same
      640px breakpoint, so a table cannot end up half-adapted. */
   @media (max-width: 639px) {
-    thead th, td { padding-left: 8px; padding-right: 8px; }
+    thead th, td { padding-left: 6px; padding-right: 6px; }
   }
 
   /* A table that becomes a stack of cards below the tables' breakpoint.

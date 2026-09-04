@@ -116,7 +116,23 @@ export default function GoalsPage() {
                     />
                   </div>
 
-                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+                  {/* Two columns between 640 and 1024, not four.
+
+                      The fourth cell holds a date input beside a fixed 30px
+                      remove button, and a date input has a min-content width
+                      Chrome will not go below — 149px, to draw mm/dd/yyyy and
+                      the picker icon. At four columns that cell is 127-137px
+                      from 640px to about 690px, so the row pushed the PAGE
+                      sideways by up to 34px. A grid item and a flex item both
+                      default to `min-width: auto`, which is why neither
+                      `flex-1` nor the grid track shrank to fit.
+
+                      `min-w-0` was the other candidate and is worse: it lets
+                      the cell shrink and the date input then clips its own
+                      segments, trading a page overflow for a control that
+                      cannot be read. Pre-existing — measured identical with
+                      globals.css stashed back to its committed state. */}
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <Field label="Name">
                       <input
                         type="text"

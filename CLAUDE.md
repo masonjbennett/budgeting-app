@@ -687,3 +687,48 @@ injected fault (the sixth puts the Sankey back on the phone). Counts: selftest
 5/5, sweep 130, interact 63, regression 21, mobile 33, big 11; Python unchanged
 at 521 + 33 mutations.
 
+## Sep 3 2026 — the widths nobody picks (web/)
+
+Two things came out of asking what a phone actually IS, rather than assuming
+375. One was a page-level overflow that had been shipping since the re-skin.
+
+- **`/goals` pushed the page sideways from 640px to about 690px, by up to
+  34px.** Its `sm:grid-cols-4` puts a date input beside a fixed 30px remove
+  button in a cell 127-137px wide, and **Chrome will not draw a date input
+  below 149px** — that is what mm/dd/yyyy plus the picker icon costs. A grid
+  item and a flex item both default to `min-width: auto`, so neither the track
+  nor the `flex-1` shrank. Now `sm:grid-cols-2 lg:grid-cols-4`.
+  **`min-w-0` is the tempting fix and is worse**: the cell shrinks, and the
+  date input then clips its own segments — trading a page overflow for a
+  control nobody can read.
+  **The band is 50px wide, which is the whole lesson.** Every check in this
+  repo ran at 375, 414, 768 or 1440, and a responsive bug does not live at the
+  widths people pick. `mobile.mjs` now tests page overflow at TEN widths:
+  320, 360, 375, 390, 414, 639, 640, 768, 1024, 1440. Confirmed pre-existing
+  by stashing globals.css back to its committed state and measuring the same
+  34px.
+- **320px, and where the floor honestly is.** Table gutters 8px -> 6px below
+  640 was worth 8px on a four-column table and closed a 3px miss on `/year` at
+  360. From **360px up every table fits**. At 320 — iPhone 5 / SE 1st gen,
+  2016 hardware — two tables fall back to their own scroller with no page
+  overflow. The check COUNTS those and prints the count rather than failing,
+  so the day it gets worse is visible; deforming the layout for a ten-year-old
+  device would cost the readable one.
+
+**And a finding of my own that was a false positive, caught by looking.**
+A chart sweep flagged `2026-09-01` as text painted outside its SVG on two
+routes, and the SVG really is `overflow: hidden` — so it read as a clipped
+date, the truncation defect this project keeps meeting. **Cropped at 6x device
+scale it reads `2026-09-01` in full**: the 2px overhang is the glyph's trailing
+side bearing, inside the advance width and carrying no ink. Nothing was
+changed. A bounding rect is not ink, and the rule that a failing check is
+guilty until proven innocent held for the third time this session.
+Getting that crop took two wrong pictures first — `getBoundingClientRect` is
+VIEWPORT-relative and puppeteer's screenshot `clip` is PAGE-relative, so
+without `window.scrollY` the crop lands wherever that offset points. A clean
+picture of the wrong part of the page is the visual form of measuring nothing.
+
+`mobile.mjs` 33 -> **35 assertions**, seven proved able to fail. Counts:
+selftest 5/5, sweep 130, interact 63, regression 21, mobile 35, big 11; Python
+unchanged at 521 + 33 mutations.
+

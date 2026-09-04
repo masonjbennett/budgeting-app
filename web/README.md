@@ -317,6 +317,28 @@ invisible to a green suite AND to looking at the page:
   sense the Sankey's ribbon heights are layout, and no proportion is ever
   printed as a figure — rule 2 still holds.
 
+- **`/goals` pushed the page sideways between 640px and 690px**, and had done
+  since the re-skin. Its `sm:grid-cols-4` puts a date input beside a fixed
+  30px remove button in a cell 127-137px wide, and Chrome will not draw a date
+  input below **149px** — it needs that to fit mm/dd/yyyy and the picker icon.
+  A grid item and a flex item both default to `min-width: auto`, which is why
+  neither the track nor the `flex-1` shrank. `min-w-0` is the tempting fix and
+  is worse: the cell then shrinks and the date input clips its own segments,
+  trading a page overflow for a control nobody can read. It is
+  `sm:grid-cols-2 lg:grid-cols-4` now.
+
+  **The band is 50px wide, which is why nothing found it.** Every check in
+  this repo ran at 375, 414, 768 or 1440. `mobile.mjs` now tests page overflow
+  at **ten** widths — 320, 360, 375, 390, 414, 639, 640, 768, 1024, 1440 —
+  because a responsive bug does not live at the widths people pick.
+
+- **320px is reported, not asserted.** Table gutters went 8px to 6px below
+  640px, which was worth 8px and closed a 3px miss on `/year` at 360. From
+  360px up every table fits. At 320 — the iPhone 5 and SE 1st gen, 2016
+  hardware — two tables still fall back to their own scroller, with no page
+  overflow. The check counts those and prints the count rather than failing,
+  so the day it gets worse is visible.
+
 `mobile.mjs` holds all of this plus the 24x24 tap-target floor, with a
 `--selftest` that injects each defect and requires the check to fire. **639 and
 640 are both measured**, because that pair is where a column could come back

@@ -57,7 +57,7 @@ set worth running after any change under `src/`.
 | `regression.mjs` | Behaviour already fixed once, where the fix is invisible in the source: the cascade-layer fix by COMPUTED VALUE, the mobile drawer at 375px (focus return, scroll lock, close on Escape and on navigation), the theme toggle across a reload, and a real Monte Carlo run. **21 assertions.** |
 | `bigimport.mjs` | Measures the importer on a year-sized file. Reports DOM size, page height, and tick-to-paint. |
 | `bigcorrect.mjs` | Paging and filtering must not change WHAT gets imported — walks every page, then commits and counts what actually landed. **11 assertions.** |
-| `mobile.mjs` | The phone, as NUMBERS: every text-entry control is >= 16px on a coarse pointer (and still 14px on a mouse), no section slug overflows or loses its hairline, no table scrolls sideways at 375/414/639/640/1440, nothing is under 24x24, and **the importer — which is behind a button, so a route sweep never opens it** — stacks into cards with every field labelled. It also checks the surfaces that exist ONLY on a phone — the importer's cards and the cash-flow list that replaces the Sankey — **in both themes**, which `sweep.mjs` cannot: it does both themes at desktop width only. `--selftest` injects a fault for each of the six and requires it to fire. **33 assertions.** |
+| `mobile.mjs` | The phone, as NUMBERS: every text-entry control is >= 16px on a coarse pointer (and still 14px on a mouse), no section slug overflows or loses its hairline, no page scrolls sideways at any of TEN widths (320/360/375/390/414/639/640/768/1024/1440 — a responsive bug does not live at the widths people pick, and `/goals` overflowed in a 50px band nothing sampled), no table scrolls sideways from 360px up, nothing is under 24x24, and **the importer — which is behind a button, so a route sweep never opens it** — stacks into cards with every field labelled. It also checks the surfaces that exist ONLY on a phone — the importer's cards and the cash-flow list that replaces the Sankey — **in both themes**, which `sweep.mjs` cannot: it does both themes at desktop width only. `--selftest` injects a fault for each of the six and requires it to fire. **33 assertions.** |
 | `streamlit.mjs` | The Streamlit front end still renders every page against the shared engine. Run before pushing anything that touches `calculations.py`. |
 
 ## Three things that cost a cycle each
@@ -75,6 +75,14 @@ for that reason. When the pane and the DOM disagree, capture elsewhere.
 below 640px — the importer's cards, the cash-flow list — had never been
 contrast-checked in either theme until `mobile.mjs` grew a pass at 375px. A
 new mobile-only surface is a new set of colours nobody has measured.
+
+**A bounding rect is not ink.** `charts.mjs` flagged a `2026-09-01` axis
+label as painted outside its SVG on two routes, and the SVG really is
+`overflow: hidden`, so it looked like a clipped date — the truncation defect
+this project keeps meeting. Cropped at 6x device scale it reads `2026-09-01`
+in full: the 2px overhang is the glyph's trailing side bearing, which is
+inside the advance width and carries no ink. Measure the pixels before
+believing the rectangle.
 
 **A route sweep does not see what is behind a button.** The first version of
 `mobile.mjs` walked all 13 routes and reported clean, while the importer — the

@@ -238,14 +238,36 @@ console.log("\n--- no table scrolls sideways, so no figure is off screen ---");
 {
   let tables = 0;
   const bad = [];
-  // 639 and 640 straddle the breakpoint where the hidden columns come back.
-  for (const width of [375, 414, 639, 640, 1440]) {
+  const pageOver = [];
+  let narrowScrolled = 0;
+
+  // The widths a phone or a window actually is. 320 is the iPhone 5 / SE
+  // 1st gen; 360 the common Android; 375 the current small iPhone; 390 the
+  // 14/15; 414 the Plus. 639/640 straddle the breakpoint where the hidden
+  // columns come back, and 768/1024 are the tablet and the rail.
+  //
+  // EVERY WIDTH GETS THE PAGE-OVERFLOW TEST, and that is the point of the
+  // list rather than a nicety: /goals pushed the page sideways by up to 34px
+  // between 640 and 690 — its `sm:grid-cols-4` puts a date input, whose
+  // min-content Chrome will not take below 149px, in a 127px cell beside a
+  // fixed button. It had been shipping since the re-skin, invisible because
+  // every check ran at 375, 414, 768 or 1440 and the band is 50px wide.
+  for (const width of [320, 360, 375, 390, 414, 639, 640, 768, 1024, 1440]) {
     const p = await pageAt(width);
     for (const route of ROUTES) {
       await go(p, route);
+      const pg = await p.evaluate(() => {
+        const de = document.documentElement;
+        return de.scrollWidth - de.clientWidth;
+      });
+      if (pg > 1) pageOver.push(`${route}@${width} +${pg}px`);
       for (const t of await p.evaluate(TABLES)) {
         tables++;
         if (t.hidden > 1) {
+          // 320px is 2016 hardware and the tables fall back to their own
+          // scroller there rather than breaking the page. That is reported,
+          // not asserted away, so the day it gets worse is visible.
+          if (width <= 320) { narrowScrolled++; continue; }
           const off = t.cols.filter((c) => !c.vis).map((c) => c.name);
           bad.push(`${route}@${width} ${t.hidden}px hidden — ${off.join(", ") || "?"}`);
         }
@@ -253,9 +275,12 @@ console.log("\n--- no table scrolls sideways, so no figure is off screen ---");
     }
     await p.close();
   }
-  check("the run found the tables at all", tables >= EXPECT_TABLES * 5, `${tables} renders`);
-  check("every table fits its scroller at 375/414/639/640/1440",
+  check("the run found the tables at all", tables >= EXPECT_TABLES * 8, `${tables} renders`);
+  check("no page scrolls sideways, at any of the ten widths",
+        pageOver.length === 0, pageOver.slice(0, 3).join(" | "));
+  check("every table fits its scroller from 360px up",
         bad.length === 0, bad.slice(0, 3).join(" | "));
+  console.log(`         (at 320px, ${narrowScrolled} table renders fall back to their own scroller)`);
 }
 
 /* ── 5. tap targets ──────────────────────────────────────────────────── */
@@ -494,6 +519,19 @@ if (SELFTEST) {
     return sc.scrollWidth - sc.clientWidth;
   });
   check("[can fail] a table wider than its scroller is seen", wide > 1, `${wide}px hidden`);
+
+  // 4b. and the page-overflow half of the same check, which is what /goals
+  // needed and what the width list exists for.
+  const pushed = await p.evaluate(() => {
+    const d = document.createElement("div");
+    d.style.cssText = "width:120vw;height:4px";
+    document.body.appendChild(d);
+    const de = document.documentElement;
+    const over = de.scrollWidth - de.clientWidth;
+    d.remove();
+    return over;
+  });
+  check("[can fail] a page that scrolls sideways is seen", pushed > 1, `${pushed}px`);
 
   // 5. shrink a remove control back to a bare glyph.
   const tiny = await p.evaluate(() => {
