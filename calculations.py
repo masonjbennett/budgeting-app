@@ -1783,6 +1783,39 @@ def year_to_date(expenses, budget=None, monthly_take_home=0.0, today=None):
 
 
 
+def _is_month_key(value):
+    """A "YYYY-MM" that names a real month.
+
+    Spelled out rather than a regex because this module imports three names
+    from the standard library and no more: a front end that wants the maths
+    imports this file, and every import is one more thing that has to be
+    available wherever it lands.
+    """
+    k = str(value)
+    return (len(k) == 7 and k[4] == "-" and k[:4].isdigit()
+            and k[5:].isdigit() and 1 <= int(k[5:]) <= 12)
+
+# Two years of strip is already more than anyone scans. A longer history is not
+# hidden — `year_to_date` covers the calendar year and the export carries
+# everything; this is a bound on one control.
+MONTH_STRIP_MAX = 24
+
+
+def _months_through(expenses, here):
+    """Every month from the earliest record to `here`, inclusive."""
+    keys = [str(e.get("date") or "")[:7] for e in (expenses or [])]
+    keys = [k for k in keys if _is_month_key(k) and k <= here]
+    start = min(keys) if keys else here
+    out = []
+    y, m = int(start[:4]), int(start[5:7])
+    while "%04d-%02d" % (y, m) <= here:
+        out.append("%04d-%02d" % (y, m))
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return out[-MONTH_STRIP_MAX:]
+
+
 def _days_in_month(year, month):
     """Length of a month, from the date type already imported.
 
@@ -1842,7 +1875,7 @@ def emergency_fund_verdict(months):
 
 
 def health_report(monthly_take_home, expenses, budget=None, dti_pct=None,
-                  emergency_fund=None, today=None):
+                  emergency_fund=None, today=None, month=None):
     """The dashboard's four verdicts, and the month they are measured over.
 
     TWO THINGS LIVED IN THE DISPLAY LAYER AND BOTH BELONG HERE.
@@ -1879,11 +1912,20 @@ def health_report(monthly_take_home, expenses, budget=None, dti_pct=None,
     1st as thirty times over budget on the 2nd.
 
     `today` is the CLIENT's date, for the reason given on `year_to_date`.
+    `month` ("2026-08") is the one being LOOKED AT, which is not the same
+    question: a past month is complete however early in today it is, and that
+    is the only way the verdict above is ever reachable — pinned to the current
+    month it could appear on the last day and never again. A month later than
+    today's is not offered by `months_available` and carries no records anyway.
     """
     ref = _parse_iso(today) or _date.today()
-    key = "%04d-%02d" % (ref.year, ref.month)
-    days_in_month = _days_in_month(ref.year, ref.month)
-    complete = ref.day >= days_in_month
+    here = "%04d-%02d" % (ref.year, ref.month)
+    key = str(month) if (month and _is_month_key(month)) else here
+    year_n, month_n = int(key[:4]), int(key[5:7])
+    days_in_month = _days_in_month(year_n, month_n)
+    # The whole of a past month has elapsed; only the current one is partway.
+    day = ref.day if key == here else days_in_month
+    complete = key < here or (key == here and ref.day >= days_in_month)
 
     mine = [e for e in (expenses or []) if str(e.get("date") or "").startswith(key)]
     spent = sum(float(e.get("amount") or 0) for e in mine)
@@ -1913,9 +1955,12 @@ def health_report(monthly_take_home, expenses, budget=None, dti_pct=None,
 
     # Why no verdict is being given. None means one IS.
     if not mine:
-        withheld = "nothing logged this month yet"
+        # Wording follows the month rather than the calendar: "yet" is a claim
+        # about a month still running and is simply false about August.
+        withheld = ("no records for this month" if complete
+                    else "nothing logged this month yet")
     elif not complete:
-        withheld = "%d of %d days into the month" % (ref.day, days_in_month)
+        withheld = "%d of %d days into the month" % (day, days_in_month)
     else:
         withheld = None
 
@@ -1942,9 +1987,15 @@ def health_report(monthly_take_home, expenses, budget=None, dti_pct=None,
 
     return {
         "month": key,
-        "day": ref.day,
+        "day": day,
         "days_in_month": days_in_month,
         "month_complete": complete,
+        # Which months the strip may offer: a CONTIGUOUS run from the earliest
+        # record to the month the reader is in. Contiguous rather than "months
+        # that hold records", because a gap in the strip reads as a gap in the
+        # app rather than a month nobody logged — and a month with nothing in
+        # it has an honest answer of its own. Never a future month.
+        "months_available": _months_through(expenses, here),
         "transactions": len(mine),
         "spent": spent,
         "net_savings": net_savings,

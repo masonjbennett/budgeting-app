@@ -18,7 +18,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { useFinance } from "@/context/FinanceContext";
+import { fmt, useFinance } from "@/context/FinanceContext";
 
 type Dest = { name: string; href: string; hint: string };
 
@@ -317,7 +317,80 @@ function Destinations({ onNavigate }: { onNavigate?: () => void }) {
           </ul>
         </div>
       ))}
+      {/* Inside Destinations so the rail and the drawer cannot drift: there is
+          one list of things in the sidebar, rendered twice by layout. */}
+      <Balances onNavigate={onNavigate} />
     </nav>
+  );
+}
+
+/** One line of the balances block. Declared here rather than inside
+ *  `Balances`, because a component created during render is a new component
+ *  every time and React remounts it. */
+function BalanceRow({
+  name,
+  value,
+  quiet,
+}: {
+  name: string;
+  value: number;
+  quiet?: boolean;
+}) {
+  return (
+    <li className="flex items-baseline justify-between gap-2 px-2.5 py-[3px]">
+      <span className={`truncate text-[12.5px] ${quiet ? "text-muted" : "text-body"}`}>
+        {name}
+      </span>
+      <span className="font-num shrink-0 text-[12.5px] text-body">{fmt(value)}</span>
+    </li>
+  );
+}
+
+/* ── Balances ───────────────────────────────────────────────────────── */
+
+/**
+ * What is in the accounts, beside the links to them.
+ *
+ * Rows are the ones carrying a figure. A profile ships with placeholder rows at
+ * zero — "Property", "Car Loan" — and listing those puts six lines of nothing
+ * in the one place that should be scannable; they are still on Net Worth, which
+ * is where a row is edited. Where NOTHING has a figure the block does not
+ * render at all rather than showing a column of $0, because a sidebar of zeros
+ * is worse than a sidebar without a sidebar block.
+ */
+function Balances({ onNavigate }: { onNavigate?: () => void }) {
+  const { profile } = useFinance();
+  if (!profile) return null;
+
+  const total = (m: Record<string, number>) =>
+    Object.values(m).reduce((n, v) => n + v, 0);
+  const assets = total(profile.assets);
+  const debts = total(profile.liabilities);
+  // Nothing entered is not a balance of zero. A column of $0 in the one place
+  // that should be scannable is worse than no block at all, and the empty
+  // profile this app can start from would render exactly that.
+  if (assets === 0 && debts === 0) return null;
+
+  return (
+    <div>
+      <p className="label mb-1.5 px-2.5">Balances</p>
+      <ul className="flex list-none flex-col p-0">
+        <BalanceRow name="Assets" value={assets} />
+        <BalanceRow name="Liabilities" value={-debts} quiet />
+      </ul>
+      {/* The total is the link, because Net Worth is where every row behind
+          these two figures is read and edited. */}
+      <Link
+        href="/net-worth"
+        onClick={onNavigate}
+        className="mt-1 flex items-baseline justify-between gap-2 border-t border-hair px-2.5 pt-1.5 no-underline"
+      >
+        <span className="label">Net worth</span>
+        <span className="font-num text-[12.5px] font-medium text-ink">
+          {fmt(assets - debts)}
+        </span>
+      </Link>
+    </div>
   );
 }
 

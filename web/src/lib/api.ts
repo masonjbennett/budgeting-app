@@ -99,6 +99,10 @@ export type Tone = "positive" | "caution" | "critical" | "info";
  */
 export interface Health {
   month: string;
+  /** A CONTIGUOUS run from the earliest record to the reader's own month, so a
+   *  month nobody logged is reachable and answers for itself. Never a future
+   *  month, and capped at two years. */
+  months_available: string[];
   day: number;
   days_in_month: number;
   month_complete: boolean;
@@ -511,6 +515,7 @@ export const api = {
     expenses?: Expense[];
     budget?: Record<string, Record<string, number>>;
     today?: string;
+    month?: string;
     income: Income;
     itemized?: Record<string, number>;
     debts: Debt[];

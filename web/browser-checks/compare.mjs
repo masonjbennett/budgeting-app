@@ -58,8 +58,14 @@ const browser = await puppeteer.launch({
 async function open({ width = 1440, theme = "light", route = "/compare" } = {}) {
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
-  const closePage = page.close.bind(page);
-  page.close = async () => { await closePage().catch(() => {}); await ctx.close().catch(() => {}); };
+  /* Close the CONTEXT only, which disposes its pages. Closing the page and
+     then the context tears the same frames down twice, and with a lifecycle
+     watcher still live the second raises "detached Frame" from a CDP event
+     handler — uncatchable at the call site, and fatal to `npm run all`. */
+  page.close = async () => {
+    await new Promise((r) => setTimeout(r, 80));
+    await ctx.close().catch(() => {});
+  };
   await page.setViewport({ width, height: 1200 });
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));

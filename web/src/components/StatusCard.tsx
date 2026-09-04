@@ -15,6 +15,10 @@ interface StatusCardProps {
   status: string;
   tone: Tone;
   description?: string;
+  /** The span this figure covers, under the label — "Sep 1-4", "as of today".
+   *  A row of cards at one type size reads as one kind of number, and these
+   *  are not: some are balances, some are four days of records. */
+  period?: string;
 }
 
 const TONE: Record<Tone, { text: string; badge: string }> = {
@@ -24,11 +28,14 @@ const TONE: Record<Tone, { text: string; badge: string }> = {
   info: { text: "text-info", badge: "badge-info" },
 };
 
-export default function StatusCard({ label, value, status, tone, description }: StatusCardProps) {
+export default function StatusCard({
+  label, value, status, tone, description, period,
+}: StatusCardProps) {
   const c = TONE[tone];
   return (
     <div className="card flex flex-col">
       <p className="label">{label}</p>
+      {period && <p className="t-micro mt-1 text-muted">{period}</p>}
       <p className={`font-num t-h3 mt-1.5 leading-none font-medium ${c.text}`}>{value}</p>
       <p className="mt-2.5">
         <span className={`badge ${c.badge}`}>{status}</span>

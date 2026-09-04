@@ -549,6 +549,59 @@ The route had never been given the data — that is *why* the two figures were i
 TypeScript — so `DashboardRequest` gained `expenses`, `budget` and the client's
 `today`, the same three `year_to_date` already took, for the same timezone reason.
 
+### 12. Four patterns taken from other budgeting apps, and what each cost
+
+Researched by driving the real thing rather than reading about it. **Actual
+Budget** has a no-account demo, so its app UI could be inspected directly;
+Monarch and Copilot are scroll-animation marketing sites and gave IA and copy
+only. Lunch Money is worth knowing about for a different reason: cream paper,
+dark green primary, a solo developer — **its palette is nearly this one**, which
+is evidence that the paper/ink direction is competitive in this category rather
+than a quirk.
+
+**Every figure names the span it covers.** Actual puts the range under every
+widget title. Ours had four cards in one row at one type size under a single
+"This month" heading, covering three different things: take-home is a monthly
+RATE, spent is however many days of records exist, and budgeted is a PLAN for a
+month that has not happened. They now read "a month, after tax" / "Sep 1–4" /
+"Sep 1–4" / "a month, planned", with "as of today" on the two balances. The
+engine supplies the facts (`day`, `days_in_month`, `month_complete`); turning
+them into a caption is formatting, the same class as `fmt`.
+
+**A month strip, because the withheld verdict has to be reachable.** Rule 11
+withholds the grade until a month is complete — and pinned to `new Date()` that
+grade could appear on the last day of a month and never again. `health_report`
+now takes `month` separately from `today`, so "complete" means "the month being
+viewed has ended". Clicking a past month moves the figures, the spans, the
+donut and the verdict together; the monthly PLAN does not move, because it is
+not a month's records. `months_available` is CONTIGUOUS from the earliest
+record — a gap in the strip would read as a gap in the app, and a month nobody
+logged has an honest answer of its own ("no records for this month", not
+"…yet", which is a claim about a month with time left in it). Capped at 24.
+Two things about the control were found by looking: `justify-end` inside
+`overflow-x-auto` puts the overflow at the START of the scroller where Chrome
+will not scroll to it — at 24 months that would have hidden the oldest outright
+— and "AUG 26" reads as the 26th of August, so the year carries an apostrophe.
+The visible capitals are a CSS transform, so the button's text is `Aug’26` with
+no separator; it carries an `aria-label`.
+
+**A card that is its own arithmetic.** Actual's "To Budget" card is a ruled
+ledger that sums to its own headline. Net savings is the one figure on the row
+that is a RESULT rather than a reading, so it shows `take-home − spent` over a
+rule. The total is passed in from the engine and never summed in the component:
+a client-side sum that happened to disagree would be exactly the second
+implementation this rebuild exists to remove. `health.mjs` asserts the rows
+shown do produce the total.
+
+**Balances in the sidebar, cut down after measuring.** Actual lists every
+account because there an account IS a destination. Ours navigates by screen, so
+the per-account version bought orientation and cost the thing orientation is
+for: measured on the demo it made the rail's scroll content **896px against a
+784px viewport**, putting the Net worth total — the one line worth having —
+below the fold on any laptop. Three totals instead; per-account figures are one
+click away on Net Worth, which is where a row is edited anyway. A profile with
+nothing entered renders **no block at all** rather than a column of `$0`.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944

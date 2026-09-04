@@ -1148,3 +1148,131 @@ Counts: **552 Python assertions** (221 + 42 + 168 + 121) and **40 mutations**
 to fail `test_calc.py`. Browser: selftest 7 · sweep 156 · interact 63 ·
 compare 33 · **health 27** · regression 27 · persistence 17 · demonote 14 ·
 mobile 35 · big 11 · streamlit 17.
+
+
+## Sep 4 2026 — four patterns from other budgeting apps (web/)
+
+On Mason's instruction to look at what already exists before proposing visual
+work. **Actual Budget has a no-account demo, so its real app UI was driven**
+rather than read about; Monarch and Copilot are scroll-animation marketing
+sites and yielded IA and copy only. One thing worth keeping from the survey:
+**Lunch Money's palette is nearly this app's** — cream paper, dark green
+primary, solo developer — which says the paper/ink direction is competitive
+here rather than eccentric. And an anti-pattern: Actual paints "Avg Per
+Transaction" in RED, colour as decoration rather than meaning, which this
+codebase already has the better rule for.
+
+All four shipped, in Mason's order of importance. `web/README.md` rule 12.
+
+1. **Every figure names its span.** Four cards in one row, one type size, one
+   "This month" heading — covering a monthly RATE, four days of records, and a
+   PLAN for a month that has not happened.
+2. **A month strip**, which is what makes rule 11's withheld verdict reachable
+   at all: pinned to `new Date()`, the grade could appear on the last day of a
+   month and never again. `health_report` takes `month` apart from `today`;
+   clicking August moves the figures, the spans, the donut and the verdict
+   together, and the monthly plan correctly does not move.
+3. **A ledger card** for net savings — the one figure on that row that is a
+   result rather than a reading. The total comes from the engine and is never
+   summed in the component.
+4. **Balances in the sidebar**, cut to three totals after measuring: the
+   per-account version made the rail 896px against a 784px viewport and put
+   the net-worth line below the fold on any laptop.
+
+**Three things found by LOOKING, none of which a suite would have caught.**
+`justify-end` inside `overflow-x-auto` puts the overflow at the START of the
+scroller, where Chrome will not let you reach it — at 24 months that would have
+hidden the oldest months outright. "AUG 26" reads as the 26th of August. And
+the strip's visible capitals are a CSS transform, so the button's text content
+is `Aug’26` with no separator — which is what a screen reader gets, and is why
+it carries an `aria-label`.
+
+**And the heredoc trap cost three more cycles.** Writing `\\u2013` and
+`\\u0000` through `bash <<'PY'` mangles the backslash before Python sees it: one
+patch silently matched nothing, another wrote `_re.compile` into a module that
+does not import `re`. **The rule in the handoff is right and I broke it four
+times in one session: write the script with the Write tool and run it.** A
+related one worth keeping: an inline `str.replace` with no assertion reports
+success having changed nothing, which is how the `_re` line got in.
+
+**A stale mutation reports as a surviving one.** Task 2 rewrote the line a
+health-report mutation was anchored on, so the harness printed `[SETUP FAIL]
+pattern not found` and counted it survived — correct behaviour, and worth
+knowing that "SURVIVED" in the summary can mean "the anchor moved" rather than
+"the assertion is weak". Re-anchored, and the fix asserts the new anchor exists
+in `calculations.py`.
+
+**Four probe errors, all mine, all the same family.** The strip's month buttons
+were matched with `/^[A-Z]{3}$/` against a `textContent` of `"Sep"` — the
+capitals are CSS — so the click never landed and the dashboard "did not
+respond". A sidebar probe measured the off-canvas DRAWER, which is zero-size at
+desktop width, and reported every height as 0. And two task-1 assertions were
+invalidated by tasks 3 and 4 rather than by any defect: the Net savings card
+became a LedgerCard whose figure is a `span.font-num` not a `p.font-num`, and
+the sidebar gained a second element whose label reads "Net worth". **Selecting
+an element by its content alone found a second element with the same content
+for the third time this session.**
+
+Counts: **569 Python assertions** (234 + 42 + 168 + 125) and **44 mutations**
+(33 + 11). Browser: selftest 7 · sweep 156 · interact 63 · compare 33 ·
+**health 56** · regression 27 · persistence 17 · demonote 14 · mobile 35.
+
+
+## Sep 4 2026 — "Start empty" had never started empty (web/)
+
+Mason's report, with a screenshot: after Start empty the dashboard still read
+take-home **$5,682**, net savings **$5,682**, budgeted **$4,430**, emergency
+fund **4.9 months** and net worth **$20,000**.
+
+Not a bug in the reset. `/api/state?demo=false` served `get_default_state()`,
+which is a **starter template** — a $100,000 salary, 17 budget rows totalling
+$4,430 and $20,000 across six asset rows. It has served that since the rebuild
+and "Start empty" has never meant empty.
+
+`app_data.empty_profile()` now does. Two things about how it is built:
+
+- **Derived from `get_default_state`, not written out again.** The SHAPE is the
+  property both front ends and the import path depend on, and a second literal
+  profile is a second thing to keep in step — `test_api.py` has asserted the
+  key sets match since the first deploy.
+- **Zeroed GENERICALLY, by walking every numeric leaf.** A money field added to
+  the default later is zeroed here without anybody remembering to; a hand-edited
+  copy would quietly ship the new field's default as a simulated figure. Strings
+  survive, because a state and a filing status are selections rather than
+  figures.
+
+Two values are deliberately NOT zero and the reason is the same one behind
+`null` vs `0.0` everywhere else in this app: the projection's expected RETURN
+and HORIZON are assumptions, not money, and 0% over 0 years is a broken
+projection rather than a blank one.
+
+**The row NAMES are kept**, which is the one judgement call here. A budget with
+no categories is not a fresh start, it is a blank page that asks somebody to
+invent "Groceries"; the names are a template and the report was about figures
+that read as somebody's money. Easy to change if that is not what was wanted.
+
+**What the empty app then does is the half worth checking.** This is charts and
+derived figures, so "no data" is where a page has least to say and most ways to
+say it wrongly. All thirteen routes render, 8 charts draw and none is empty, and
+the dashboard says `—` where a figure cannot be MEASURED rather than `0.0%`:
+no savings rate, no debt-to-income, no emergency-fund coverage, "No budget set"
+on adherence, and the sidebar's balances block absent rather than a column of
+`$0`. `web/browser-checks/empty.mjs`, 22 assertions, three proved able to fail.
+
+**Two probe errors, both mine.** `<nextjs-portal>` is in the DOM on every page
+in dev — it hosts the dev-tools indicator — so treating it as an error overlay
+reported all thirteen routes broken with a silent console. And the empty-chart
+selftest stripped marks from a chart on a page that, under an empty profile, has
+none: it returned -1, the probe finding nothing rather than the detector
+failing. It builds its own element now.
+
+**One real regression of mine, caught by `sweep.mjs`:** the month strip's year
+suffix was `text-faint`, which measures **2.58:1** on paper against this app's
+own 3:1 rule. That is the same defect removed from the mobile breadcrumb in
+September at 2.57:1, which had left the app with no `text-faint` TEXT at all —
+and I put it straight back on a new element. `text-muted` now, which is what the
+precedent chose.
+
+Counts: **582 Python assertions** (244 + 42 + 168 + 128) and 44 mutations.
+Browser: selftest 7 · sweep 156 · interact 63 · compare 33 · health 56 ·
+**empty 22** · regression 27 · persistence 17 · demonote 14 · mobile 35.

@@ -54,9 +54,12 @@ async function open(route, { width = 1440, theme = "light" } = {}) {
      them is not much, but the run died once with a CDP ProtocolError mid-open
      and an undisposed context is the only new thing here — cheap to close,
      and not worth leaving as a suspect. */
-  const closePage = page.close.bind(page);
+  /* Close the CONTEXT only, which disposes its pages. Closing the page and
+     then the context tears the same frames down twice, and with a lifecycle
+     watcher still live the second raises "detached Frame" from a CDP event
+     handler — uncatchable at the call site, and fatal to `npm run all`. */
   page.close = async () => {
-    await closePage().catch(() => {});
+    await new Promise((r) => setTimeout(r, 80));
     await ctx.close().catch(() => {});
   };
   await page.setViewport({ width, height: 1100 });
@@ -253,8 +256,11 @@ console.log("\n--- the dashboard and /year must agree about this month ---");
   // exists to prevent, and neither page would look wrong on its own.
   const dash = await open("/");
   const onDash = await dash.evaluate(() => {
+    // "Spent", or "Spent in Sep" as it read before the card grew a period
+    // line of its own — matching both means this does not break again the next
+    // time the wording moves.
     const label = [...document.querySelectorAll("p")]
-      .find((p) => /^Spent in \w{3}$/.test(p.textContent.trim()));
+      .find((p) => /^Spent( in \w{3})?$/.test(p.textContent.trim()));
     const card = label?.closest(".card");
     return {
       label: label?.textContent.trim() ?? null,

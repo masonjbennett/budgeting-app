@@ -100,6 +100,18 @@ check("the demo profile is app_data's, key for key",
       set(demo) == set(app_data._generate_demo_data()))
 check("the empty profile is app_data's, key for key",
       set(empty) == set(app_data.get_default_state()))
+# ...and it is EMPTY. It served the starting template until September 2026, so
+# "Start empty" left a $100,000 salary and $20,000 of assets on the dashboard.
+check("the empty state carries no figures at all",
+      empty["income"]["gross_salary"] == 0
+      and sum(empty["assets"].values()) == 0
+      and sum(empty["liabilities"].values()) == 0
+      and sum(sum(b.values()) for b in empty["budget"].values()) == 0,
+      f'salary {empty["income"]["gross_salary"]}, assets {sum(empty["assets"].values())}')
+check("but keeps the rows to type into",
+      len(empty["budget"]["needs"]) > 0 and len(empty["assets"]) > 0)
+check("and the demo still does carry figures, or it shows nothing",
+      client.get("/api/state").json()["income"]["gross_salary"] > 0)
 # The property test_calc.py asserts on the same profile: with ONE debt the two
 # payoff strategies are identical by definition and the debt page's comparison
 # is dead. The abandoned scaffold's hand-written TypeScript copy had one.
@@ -649,6 +661,24 @@ check("an unreadable expense row does not 422 the whole dashboard",
 check("no budget at all is its own answer, not a division by zero",
       client.post("/api/dashboard", json=dict(_HBODY, budget={})).json()
             ["health"]["adherence_pct"] is None)
+
+# The month being LOOKED AT is not today, and a past one is complete — which is
+# the only way the withheld verdict above is ever reachable.
+_HPAST = dict(_HBODY, expenses=[
+    {"id": "0", "date": "2026-07-03", "amount": 900, "category": "Rent", "note": ""},
+    {"id": "1", "date": "2026-09-01", "amount": 1800, "category": "Rent", "note": ""},
+])
+_jul = client.post("/api/dashboard", json=dict(_HPAST, month="2026-07")).json()["health"]
+check("the route shows a month other than the reader's own",
+      _jul["month"] == "2026-07" and _jul["spent"] == 900)
+check("and a finished month carries the verdict this one cannot",
+      _jul["month_complete"] is True and _jul["verdict_withheld"] is None
+      and _jul["savings_tone"] in ("positive", "caution", "critical"))
+check("the strip is contiguous, so a month with no records is still reachable",
+      _jul["months_available"] == ["2026-07", "2026-08", "2026-09"])
+check("a malformed month is answered with this month, not a 422",
+      client.post("/api/dashboard", json=dict(_HPAST, month="not-a-month"))
+            .json()["health"]["month"] == "2026-09")
 
 
 # ── 7. Nothing here touches user data ────────────────────────────────

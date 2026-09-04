@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 
 import AnimatedNumber from "@/components/AnimatedNumber";
 import { DonutChart, TrendChart } from "@/components/Chart";
@@ -30,6 +31,61 @@ function Skeleton() {
   );
 }
 
+/**
+ * A figure with the subtraction that produced it, over a rule.
+ *
+ * Every number here is one the engine already returned; the component adds a
+ * relationship, not a calculation. The total is NOT summed from the rows —
+ * it is passed in — because a client-side sum that happened to disagree with
+ * the engine would be a second implementation of the thing this app spent a
+ * whole rebuild removing. `check` asserts they agree instead.
+ */
+function LedgerCard({
+  label,
+  period,
+  rows,
+  total,
+  totalLabel,
+  tone = "default",
+  note,
+}: {
+  label: string;
+  period?: string;
+  rows: { label: string; value: string }[];
+  total: string;
+  totalLabel: string;
+  tone?: "default" | "positive" | "critical";
+  note?: React.ReactNode;
+}) {
+  const toneClass =
+    tone === "positive" ? "text-positive" : tone === "critical" ? "text-critical" : "text-ink";
+  return (
+    <div className="card flex flex-col">
+      <p className="label">{label}</p>
+      {period && <p className="t-micro mt-1 text-muted">{period}</p>}
+      <div className="mt-2.5 space-y-1">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-baseline justify-between gap-3">
+            <span className="t-micro text-muted">{r.label}</span>
+            <span className="font-num t-small whitespace-nowrap text-body">{r.value}</span>
+          </div>
+        ))}
+      </div>
+      {/* The rule is the point: it says these figures are being added up, which
+          is what a row of separate cards cannot say. */}
+      <div className="mt-1.5 border-t border-hair pt-1.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="t-micro text-muted">{totalLabel}</span>
+          <span className={`font-num t-lead whitespace-nowrap font-medium ${toneClass}`}>
+            {total}
+          </span>
+        </div>
+      </div>
+      {note && <p className="t-micro mt-2 text-muted">{note}</p>}
+    </div>
+  );
+}
+
 /** A supporting figure. Demoted on purpose — one hero per screen. */
 function Metric({
   label,
@@ -38,6 +94,7 @@ function Metric({
   note,
   tone = "default",
   spark,
+  period,
 }: {
   label: string;
   value: string;
@@ -46,6 +103,13 @@ function Metric({
   note?: React.ReactNode;
   tone?: "default" | "positive" | "critical";
   spark?: number[];
+  /** THE SPAN THIS FIGURE COVERS. Four cards sat in one row at one type size
+   *  under a single "This month" header while covering three different
+   *  things: take-home is a monthly RATE, spent is however many days of
+   *  records exist so far, and budgeted is a plan for a month that has not
+   *  happened. Naming each is Actual Budget's pattern — every widget on their
+   *  reports dashboard carries its range as a subtitle. */
+  period?: string;
 }) {
   const toneClass =
     tone === "positive" ? "text-positive" : tone === "critical" ? "text-critical" : "text-ink";
@@ -63,6 +127,7 @@ function Metric({
           <Sparkline data={spark} tone="faint" className="mt-0.5 shrink-0" />
         )}
       </div>
+      {period && <p className="t-micro mt-1 text-muted">{period}</p>}
       <p className={`font-num t-h3 mt-1.5 leading-none font-medium ${toneClass}`} title={exact}>
         {value}
       </p>
@@ -71,6 +136,93 @@ function Metric({
   );
 }
 
+/**
+ * The months this profile can be shown, as a row.
+ *
+ * Actual Budget's pattern. Ours was pinned to `new Date()`, so there was no way
+ * to look at August — which matters here more than it does for them, because
+ * the verdict this dashboard withholds for a month in progress is exactly the
+ * one a COMPLETE month can carry. Pinned to today, that grade would appear on
+ * the last day of a month and never again.
+ *
+ * The engine decides which months exist. The row renders them and nothing else;
+ * a month with no records in it is offered deliberately and answers for itself.
+ */
+function MonthStrip({
+  months,
+  current,
+  selected,
+  onSelect,
+}: {
+  months: string[];
+  /** The reader's own month — the one "Today" returns to. */
+  current: string;
+  selected: string;
+  onSelect: (m: string | null) => void;
+}) {
+  const row = useRef<HTMLDivElement | null>(null);
+
+  /* Put the selection on screen. The row scrolls rather than wraps — two years
+     of months wrapped over three lines reads as a paragraph — and the first
+     version used `justify-end` to keep the newest in view, which is a trap:
+     content overflowing a flex container justified to the end overflows at the
+     START, where Chrome will not scroll to it. Scrolling the selection into
+     view keeps the newest visible at rest AND makes a chosen past month
+     reachable when the strip is long. */
+  useEffect(() => {
+    const el = row.current;
+    const sel = el?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!el || !sel) return;
+    // scrollLeft, not scrollIntoView: the latter scrolls the PAGE as well and
+    // would jump the reader away from the figures they just changed.
+    el.scrollLeft = Math.max(0, sel.offsetLeft - (el.clientWidth - sel.clientWidth) / 2);
+  }, [selected, months.length]);
+
+  if (months.length < 2) return null;
+  return (
+    <div className="mb-8 flex items-center gap-3 border-b border-hair pb-2">
+      <div ref={row} className="flex flex-1 gap-0.5 overflow-x-auto">
+        {months.map((m) => {
+          const [y, mm] = [m.slice(0, 4), Number(m.slice(5, 7))];
+          const isSel = m === selected;
+          return (
+            <button
+              key={m}
+              onClick={() => onSelect(m === current ? null : m)}
+              aria-current={isSel ? "true" : undefined}
+              // The visible gap before the year is a margin, so the text reads
+              // "Aug’26" to anything that listens rather than looks.
+              aria-label={`${MONTH_NAMES[mm - 1]} ${y}`}
+              title={`${MONTH_NAMES[mm - 1]} ${y}`}
+              className={`t-micro shrink-0 border-b-2 px-2.5 py-1.5 font-mono tracking-wider uppercase transition-colors ${
+                isSel
+                  ? "border-accent text-ink"
+                  : "border-transparent text-muted hover:text-body"
+              }`}
+            >
+              {MONTH_NAMES[mm - 1]}
+              {/* Where the strip starts, and wherever it turns over. With an
+                  apostrophe, because "AUG 26" reads as the 26th of August —
+                  a year that looks like a day is worse than no year at all. */}
+              {mm === 1 || m === months[0] ? (
+                <span className="ml-1 text-muted">{YEAR_MARK + y.slice(2)}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      {selected !== current && (
+        <button onClick={() => onSelect(null)} className="btn-ghost t-micro shrink-0">
+          Today
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** U+2019, so the year reads as a year: AUG ’26. */
+const YEAR_MARK = "’";
+
 const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -78,7 +230,7 @@ const MONTH_NAMES = [
 
 export default function Dashboard() {
   const { profile, dashboard, status, error, showingUntouchedDemo,
-          dismissDemoNote, resetToEmpty } = useFinance();
+          dismissDemoNote, resetToEmpty, setMonth } = useFinance();
 
   if (status === "error") {
     return (
@@ -104,9 +256,24 @@ export default function Dashboard() {
      the month is complete. The comment is true now. */
   const h = dashboard.health;
 
-  // Adding up what the user typed, which is the one thing this layer may do.
+  /* THE MONTH ON SCREEN, not the clock. Everything below followed
+     `new Date()`, so the donut, the transaction count and the month-over-month
+     comparison would all have gone on describing September while the cards
+     above them described August. */
+  const curKey = h.month;
+  const monthIndex = Number(curKey.slice(5, 7)) - 1;
   const now = new Date();
-  const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  /* How much of the month the records cover, in words. The engine supplies the
+     FACTS — which day of how many, and whether the month is over; turning them
+     into a caption is formatting, the same class as `fmt` and `pct`. A
+     complete month is named rather than spanned, because "Sep 1-30" invites
+     the reader to check the arithmetic on a range that is just "September". */
+  const monthName = MONTH_NAMES[monthIndex];
+  const soFar = h.month_complete ? monthName : `${monthName} 1\u2013${h.day}`;
+
+  // Adding up what the user typed, which is the one thing this layer may do.
   const monthExpenses = profile.expenses.filter((e) => e.date.startsWith(curKey));
   const spent = h.spent;
   const netSavings = h.net_savings;
@@ -123,7 +290,7 @@ export default function Dashboard() {
   // Month-over-month, from the expenses actually recorded. Where there is no
   // previous month there is no comparison — the scaffold printed a hardcoded
   // "+$1,700 from last month" here, beside a real balance.
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prev = new Date(Number(curKey.slice(0, 4)), monthIndex - 1, 1);
   const prevKey = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
   const prevExpenses = profile.expenses.filter((e) => e.date.startsWith(prevKey));
   const prevSpent = prevExpenses.reduce((s, e) => s + e.amount, 0);
@@ -212,7 +379,7 @@ export default function Dashboard() {
             above the label it was meant to sit beside. */}
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div>
-            <p className="label">Net worth</p>
+            <p className="label">Net worth · as of today</p>
             <p className="mt-1.5">
               <AnimatedNumber
                 value={netWorth}
@@ -239,7 +406,7 @@ export default function Dashboard() {
               <Sparkline data={snapshotTrend} width={104} height={34} tone="accent" />
             )}
             <p className="t-micro text-right text-muted">
-              {MONTH_NAMES[now.getMonth()]} {now.getFullYear()}
+              {MONTH_NAMES[monthIndex]} {curKey.slice(0, 4)}
               <br />
               Calculated server-side
             </p>
@@ -247,11 +414,21 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ── This month ─────────────────────────────────────────────── */}
-      <p className="label mb-3">This month</p>
+      <MonthStrip
+        months={h.months_available}
+        current={thisMonthKey}
+        selected={curKey}
+        onSelect={setMonth}
+      />
+
+      {/* ── The month on screen ────────────────────────────────────── */}
+      <p className="label mb-3">
+        {curKey === thisMonthKey ? "This month" : `${monthName} ${curKey.slice(0, 4)}`}
+      </p>
       <div className="stagger mb-11 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric
           label="Take-home"
+          period="a month, after tax"
           value={fmt(monthly)}
           note={
             <>
@@ -260,7 +437,10 @@ export default function Dashboard() {
           }
         />
         <Metric
-          label={`Spent in ${MONTH_NAMES[now.getMonth()]}`}
+          // The period line carries the month, so the label need not: "Spent in
+          // Sep" above "Sep 1-4" says it twice and reads as a stutter.
+          label="Spent"
+          period={soFar}
           value={fmt(spent)}
           spark={monthTotals}
           note={
@@ -281,14 +461,24 @@ export default function Dashboard() {
             )
           }
         />
-        <Metric
+        {/* The one figure on this row that is a RESULT rather than a reading,
+            so it shows its working. The other three are read straight off the
+            profile or the pay calculation. */}
+        <LedgerCard
           label="Net savings"
-          value={fmt(netSavings)}
+          period={soFar}
+          rows={[
+            { label: "Take-home", value: fmt(monthly) },
+            { label: "less spent", value: `\u2212${fmt(spent)}` },
+          ]}
+          total={fmt(netSavings)}
+          totalLabel="left over"
           tone={netSavings >= 0 ? "positive" : "critical"}
           note={savingsRate === null ? "no income entered" : `${pct(savingsRate, 0)} of take-home`}
         />
         <Metric
           label="Budgeted"
+          period="a month, planned"
           value={fmt(budgetTotal)}
           note={
             budgeted.length === 0 ? (
@@ -325,7 +515,7 @@ export default function Dashboard() {
               sublabel={
                 h.verdict_withheld
                   ? `Saved so far · ${h.verdict_withheld}`
-                  : `Saved in ${MONTH_NAMES[now.getMonth()]}`
+                  : `Saved in ${MONTH_NAMES[monthIndex]}`
               }
             />
           )}
@@ -334,6 +524,7 @@ export default function Dashboard() {
         {dti === null ? (
           <StatusCard
             label="Debt-to-income"
+            period="as of today"
             value="—"
             status="Needs income"
             tone="info"
@@ -342,6 +533,7 @@ export default function Dashboard() {
         ) : (
           <StatusCard
             label="Debt-to-income"
+            period="as of today"
             value={pct(dti)}
             status={h.dti_status}
             tone={h.dti_tone ?? "info"}
@@ -356,6 +548,7 @@ export default function Dashboard() {
         {ef === null ? (
           <StatusCard
             label="Emergency fund"
+            period="as of today"
             value="—"
             status="Not measurable"
             tone="info"
@@ -368,6 +561,7 @@ export default function Dashboard() {
         ) : (
           <StatusCard
             label="Emergency fund"
+            period="as of today"
             value={`${ef.toFixed(1)} mo`}
             status={h.emergency_fund_status}
             tone={h.emergency_fund_tone ?? "info"}
@@ -380,6 +574,7 @@ export default function Dashboard() {
         {h.budgeted_categories === 0 ? (
           <StatusCard
             label="Budget adherence"
+            period={soFar}
             value="—"
             status="No budget set"
             tone="info"
@@ -388,6 +583,7 @@ export default function Dashboard() {
         ) : (
           <StatusCard
             label="Budget adherence"
+            period={soFar}
             value={
               h.verdict_withheld
                 ? `${h.on_track}/${h.budgeted_categories} so far`
@@ -413,7 +609,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Spending ───────────────────────────────────────────────── */}
-      <p className="label mb-3">Spending · {MONTH_NAMES[now.getMonth()]}</p>
+      <p className="label mb-3">Spending · {soFar}</p>
       {categories.length === 0 ? (
         <div className="card mb-11 py-9 text-center">
           <p className="t-small text-muted">Nothing logged this month yet.</p>

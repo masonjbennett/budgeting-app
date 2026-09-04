@@ -72,6 +72,43 @@ def get_default_state():
     }
 
 
+def _zeroed(value):
+    """Every number in a nested structure, set to zero; every list emptied.
+
+    Generic rather than a second literal profile, and that is the point: a
+    money field added to `get_default_state` later is zeroed here without
+    anybody remembering to, whereas a hand-written copy would quietly ship the
+    new field's default as a "simulated value". Strings survive, because a
+    state and a filing status are selections rather than figures.
+    """
+    if isinstance(value, dict):
+        return {k: _zeroed(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return []
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    return 0
+
+
+def empty_profile():
+    """The profile behind "Start empty" — the same shape, with no figures.
+
+    Derived from `get_default_state` so the two cannot drift apart in SHAPE,
+    which is the property both front ends and the import path depend on.
+
+    Two things are deliberately not zero, because zero is not "unset" for
+    either and a zero would make the page they drive nonsense rather than
+    empty: the expected RETURN and the HORIZON on the investment projection.
+    They are assumptions, not money — a 0% return over 0 years is not a blank
+    projection, it is a broken one.
+    """
+    base = get_default_state()
+    out = _zeroed(base)
+    for k in ("annual_return", "time_horizon"):
+        out["investment"][k] = base["investment"][k]
+    return out
+
+
 def _generate_demo_data():
     """Generate demo data with dates relative to today so it's always fresh."""
     today = date.today()

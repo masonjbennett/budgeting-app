@@ -1063,8 +1063,13 @@ check("a budgeted category at zero is not a category",
 # is: an expense log has holes and a hole looks exactly like a frugal month.
 _empty = calc.health_report(5932.0, [], _HBUD, today="2026-09-30")
 check("a complete month with nothing logged is still not graded",
-      _empty["verdict_withheld"] == "nothing logged this month yet"
+      _empty["verdict_withheld"] == "no records for this month"
       and _empty["savings_tone"] == "info")
+# and the month still running says the opposite thing, because "yet" is a claim
+# about a month that has time left in it
+check("an EMPTY month in progress says 'yet' and a finished one does not",
+      calc.health_report(5932.0, [], _HBUD, today="2026-09-04")["verdict_withheld"]
+      == "nothing logged this month yet")
 check("and its rate would have been a flattering 100%",
       _empty["savings_rate"] == 100.0)
 
@@ -1105,6 +1110,113 @@ check("emergency-fund coverage of None is not coverage of zero",
 check("February knows about leap years",
       calc._days_in_month(2028, 2) == 29 and calc._days_in_month(2027, 2) == 28
       and calc._days_in_month(2026, 12) == 31)
+
+print("\n--- health_report: looking at a month other than this one ---")
+# The verdict withheld above is only ever REACHABLE through this: pinned to the
+# current month, a grade could appear on the last day and never again.
+_HPAST = [{"date": "2026-07-03", "amount": 900.0, "category": "Rent"}] + _HEXP
+_jul = calc.health_report(5932.0, _HPAST, _HBUD, today="2026-09-04", month="2026-07")
+_aug = calc.health_report(5932.0, _HPAST, _HBUD, today="2026-09-04", month="2026-08")
+
+check("a past month is complete however early in today it is",
+      _jul["month"] == "2026-07" and _jul["month_complete"] is True
+      and _jul["day"] == 31)
+check("and therefore carries the verdict the current one cannot",
+      _jul["verdict_withheld"] is None and _jul["savings_status"] == "Strong")
+check("a past month with no records says so, and does not say 'yet'",
+      _aug["verdict_withheld"] == "no records for this month")
+check("the current month is still measured against today",
+      calc.health_report(5932.0, _HPAST, _HBUD, today="2026-09-04",
+                         month="2026-09")["day"] == 4)
+check("a malformed month falls back to the reader's own, rather than raising",
+      [calc.health_report(1000.0, [], today="2026-09-04", month=m)["month"]
+       for m in ("nonsense", "2026-13", "2026-00", "", None, "26-09")]
+      == ["2026-09"] * 6)
+
+# The strip is contiguous, so a month nobody logged is reachable and answers
+# for itself; a gap in it would read as a gap in the app.
+check("the strip runs from the earliest record to the reader's month",
+      _jul["months_available"] == ["2026-07", "2026-08", "2026-09"])
+check("including the month that holds no records at all",
+      "2026-08" in _jul["months_available"])
+check("with no records at all it is just this month",
+      calc.health_report(1000.0, [], today="2026-09-04")["months_available"]
+      == ["2026-09"])
+check("a record dated in the future does not extend it",
+      calc.health_report(1000.0, [{"date": "2027-03-02", "amount": 5.0}],
+                         today="2026-09-04")["months_available"] == ["2026-09"])
+check("and it is bounded, so a decade of history is not a decade of buttons",
+      len(calc.health_report(1000.0, [{"date": "2001-01-05", "amount": 5.0}],
+                             today="2026-09-04")["months_available"])
+      == calc.MONTH_STRIP_MAX)
+check("the bound keeps the RECENT end, which is the reachable one",
+      calc.health_report(1000.0, [{"date": "2001-01-05", "amount": 5.0}],
+                         today="2026-09-04")["months_available"][-1] == "2026-09")
+check("a year boundary is crossed without skipping a month",
+      calc.health_report(1000.0, [{"date": "2025-11-05", "amount": 5.0}],
+                         today="2026-02-04")["months_available"]
+      == ["2025-11", "2025-12", "2026-01", "2026-02"])
+
+print("\n--- Start empty starts empty ---")
+# It served `get_default_state()` until September 2026, which is a STARTER
+# TEMPLATE: a $100,000 salary, 17 budget rows totalling $4,430 and $20,000 of
+# assets. The dashboard read take-home $5,682 and net worth $20,000 to someone
+# who had just asked for no figures at all.
+_empty_p = app_data.empty_profile()
+_default_p = app_data.get_default_state()
+
+
+def _numbers(node, path=""):
+    """Every numeric leaf in the profile, with the path that reaches it."""
+    if isinstance(node, dict):
+        out = []
+        for k, v in node.items():
+            out += _numbers(v, f"{path}.{k}" if path else k)
+        return out
+    if isinstance(node, list):
+        return [(path, x) for x in node if isinstance(x, (int, float))]
+    if isinstance(node, bool) or not isinstance(node, (int, float)):
+        return []
+    return [(path, node)]
+
+
+_KEEP = {"investment.annual_return", "investment.time_horizon"}
+_nonzero = [(k, v) for k, v in _numbers(_empty_p) if v != 0 and k not in _KEEP]
+
+check("the empty profile has the same SHAPE as the default",
+      set(_empty_p) == set(_default_p)
+      and set(_empty_p["budget"]) == set(_default_p["budget"])
+      and set(_empty_p["income"]) == set(_default_p["income"]))
+check("and every figure in it is zero",
+      _nonzero == [], f"{len(_nonzero)} left: {_nonzero[:4]}")
+check("the row NAMES survive, because a blank page is not a fresh start",
+      set(_empty_p["budget"]["needs"]) == set(_default_p["budget"]["needs"])
+      and set(_empty_p["assets"]) == set(_default_p["assets"]))
+check("every list is empty",
+      _empty_p["expenses"] == [] and _empty_p["debts"] == []
+      and _empty_p["savings_goals"] == [] and _empty_p["net_worth_snapshots"] == [])
+# Zero is not "unset" for these two, and a 0% return over 0 years is a broken
+# projection rather than a blank one.
+check("the projection's assumptions are kept, because zero is not unset there",
+      _empty_p["investment"]["annual_return"] == _default_p["investment"]["annual_return"]
+      and _empty_p["investment"]["time_horizon"] == _default_p["investment"]["time_horizon"])
+check("a selection is not a figure, so the state and filing status survive",
+      _empty_p["income"]["state"] == _default_p["income"]["state"]
+      and _empty_p["income"]["filing_status"] == _default_p["income"]["filing_status"])
+# The starter template is what the report was about, so assert it is NOT this.
+check("and the template it used to serve really did carry figures",
+      any(v != 0 for k, v in _numbers(_default_p) if k not in _KEEP))
+
+# The whole point: the dashboard reads nothing rather than somebody's money.
+_eh = calc.health_report(0.0, _empty_p["expenses"], _empty_p["budget"],
+                         dti_pct=None, emergency_fund=None, today="2026-09-04")
+check("an empty profile measures no savings rate, rather than one of zero",
+      _eh["savings_rate"] is None and _eh["savings_status"] == "Needs income")
+check("no budget is 'no budget set', not 0 of 0 on track",
+      _eh["budgeted_categories"] == 0 and _eh["adherence_pct"] is None
+      and _eh["adherence_status"] == "No budget set")
+check("and the strip offers only the month you are in",
+      _eh["months_available"] == ["2026-09"])
 
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")

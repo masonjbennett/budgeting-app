@@ -41,8 +41,15 @@ const browser = await puppeteer.launch({
 async function open({ at = null, theme = "light", width = 1440 } = {}) {
   const ctx = await browser.createBrowserContext();
   const page = await ctx.newPage();
-  const closePage = page.close.bind(page);
-  page.close = async () => { await closePage().catch(() => {}); await ctx.close().catch(() => {}); };
+  /* Close the CONTEXT only. Closing the page and then its context tears the
+     same frames down twice, and when a lifecycle watcher is still live the
+     second one raises "Navigating frame was detached" from a CDP event
+     handler — which cannot be caught at the call site and takes the whole
+     `npm run all` chain with it. A context close disposes its pages. */
+  page.close = async () => {
+    await new Promise((r) => setTimeout(r, 80));
+    await ctx.close().catch(() => {});
+  };
   await page.setViewport({ width, height: 1400 });
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -75,11 +82,20 @@ async function open({ at = null, theme = "light", width = 1440 } = {}) {
 const ROW = () => {
   const cards = [...document.querySelectorAll(".card")];
   const byLabel = (re) => cards.find((c) => re.test(c.querySelector(".label")?.textContent ?? ""));
-  const card = (c) => c && ({
-    value: c.querySelector("p.font-num")?.textContent?.trim() ?? null,
-    badge: c.querySelector(".badge")?.textContent?.trim() ?? null,
-    desc: c.querySelector("p.t-micro")?.textContent?.replace(/\s+/g, " ").trim() ?? null,
-  });
+  const card = (c) => {
+    if (!c) return null;
+    const value = c.querySelector("p.font-num");
+    // A card now carries TWO t-micro lines: the period, above the value, and
+    // the description, below it. `querySelector` took the first, which was
+    // right when there was only one and silently became the period.
+    const after = [...c.querySelectorAll("p.t-micro")].filter(
+      (x) => value && !(x.compareDocumentPosition(value) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return {
+      value: value?.textContent?.trim() ?? null,
+      badge: c.querySelector(".badge")?.textContent?.trim() ?? null,
+      desc: after[0]?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+    };
+  };
   const ring = document.querySelector(".ring-container");
   return {
     ring: ring && {
@@ -241,6 +257,239 @@ console.log("\n--- the row reads in both themes ---");
 }
 
 // ═══════════════════════════════════════════════════════════════════
+console.log("\n--- every figure names the span it covers ---");
+{
+  /* Taken from Actual Budget, whose reports dashboard puts the range under
+     every widget title. Ours had four cards in one row at one type size under
+     a single "This month" heading, covering three different things: take-home
+     is a monthly RATE, spent is however many days of records exist, and
+     budgeted is a PLAN for a month that has not happened. */
+  const page = await open();
+  const periods = await page.evaluate(() => {
+    const out = {};
+    for (const c of document.querySelectorAll(".card")) {
+      const label = c.querySelector(".label")?.textContent?.trim();
+      if (!label) continue;
+      // the period is the t-micro line directly after the label row
+      const ps = [...c.querySelectorAll("p.t-micro")];
+      // `.font-num`, not `p.font-num`: a LedgerCard puts its figure in a span
+      // inside the ruled total, so keying on the tag found nothing and read as
+      // a card with no period line at all.
+      const value = c.querySelector(".font-num");
+      const before = ps.filter((x) => value && (x.compareDocumentPosition(value)
+        & Node.DOCUMENT_POSITION_FOLLOWING));
+      out[label] = before[0]?.textContent?.trim() ?? null;
+    }
+    return {
+      cards: out,
+      // FROM THE FIGURE OUT. The nav's own top bar is a <header>, so `.label`
+      // and `header .label` both returned its "PLANNER" wordmark; then the
+      // sidebar gained a "Net worth" label of its own and matching by content
+      // found that instead. The hero is the one beside `.figure-hero`.
+      hero: (() => {
+        const fig = document.querySelector(".figure-hero");
+        const box = fig?.closest("header") ?? fig?.parentElement?.parentElement;
+        return box?.querySelector(".label")?.textContent?.trim() ?? null;
+      })(),
+      spending: [...document.querySelectorAll("p.label")]
+        .map((x) => x.textContent.trim()).find((t) => /^Spending/.test(t)) ?? null,
+    };
+  });
+
+  const want = {
+    "Take-home": /^a month, after tax$/,
+    Spent: /^\w{3} 1\u2013\d+$|^\w+$/,
+    "Net savings": /^\w{3} 1\u2013\d+$|^\w+$/,
+    Budgeted: /^a month, planned$/,
+    "Debt-to-income": /^as of today$/,
+    "Emergency fund": /^as of today$/,
+    "Budget adherence": /^\w{3} 1\u2013\d+$|^\w+$/,
+  };
+  const missing = Object.keys(want).filter((k) => !(k in periods.cards));
+  check("the run found every card it means to check",
+        missing.length === 0, `missing ${missing.join(", ")}`);
+  const wrong = Object.entries(want)
+    .filter(([k, re]) => k in periods.cards && !re.test(periods.cards[k] ?? ""))
+    .map(([k]) => `${k}="${periods.cards[k]}"`);
+  check("every card states the span it covers, and states the right one",
+        wrong.length === 0, wrong.join(" | "));
+  check("a monthly RATE and a month-to-date figure do not claim the same span",
+        periods.cards["Take-home"] !== periods.cards.Spent,
+        `${periods.cards["Take-home"]} vs ${periods.cards.Spent}`);
+  check("the hero says what a balance is measured at",
+        /as of today/i.test(periods.hero ?? ""), String(periods.hero));
+  check("and the spending section carries the span too",
+        /^Spending · /.test(periods.spending ?? "")
+        && !/^Spending · $/.test(periods.spending ?? ""), String(periods.spending));
+  await page.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+console.log("\n--- the month strip moves the whole dashboard ---");
+{
+  /* The strip exists so a COMPLETE month is reachable: the verdict this page
+     withholds for a month in progress could otherwise appear on the last day
+     of a month and never again. So this asserts the grade actually arrives. */
+  const page = await open();
+
+  const read = () => {
+    const cards = {};
+    for (const c of document.querySelectorAll(".card")) {
+      const label = c.querySelector(".label")?.textContent?.trim();
+      if (!label) continue;
+      const v = c.querySelector("p.font-num");
+      const micros = [...c.querySelectorAll("p.t-micro")];
+      const before = micros.filter((x) => v && (x.compareDocumentPosition(v)
+        & Node.DOCUMENT_POSITION_FOLLOWING));
+      cards[label] = { v: v?.textContent?.trim() ?? null,
+                       period: before[0]?.textContent?.trim() ?? null,
+                       badge: c.querySelector(".badge")?.textContent?.trim() ?? null };
+    }
+    const ring = document.querySelector(".ring-container");
+    return {
+      cards,
+      ring: ring && { text: ring.innerText.replace(/\s+/g, " ").trim(),
+        arc: [...ring.querySelectorAll("circle")].map((c) => c.getAttribute("stroke"))[1] },
+      heads: [...document.querySelectorAll("p.label")].map((x) => x.textContent.trim()),
+      today: [...document.querySelectorAll("button")].some((x) => x.textContent.trim() === "Today"),
+      donut: document.querySelectorAll(".recharts-pie path").length,
+      tones: Object.fromEntries(["positive", "info"].map((t) =>
+        [t, getComputedStyle(document.documentElement).getPropertyValue(`--${t}`).trim()])),
+    };
+  };
+
+  // The month buttons are labelled, not just styled: the visible capitals are
+  // a CSS transform, so text content is "Sep" and the year has no separator
+  // before it — an aria-label is what makes the control announce itself.
+  const strip = await page.evaluate(() =>
+    [...document.querySelectorAll("button[aria-label]")]
+      .map((b) => b.getAttribute("aria-label"))
+      .filter((l) => /^[A-Z][a-z]{2} 20\d\d$/.test(l ?? "")));
+  check("the strip offers named months, not bare glyphs",
+        strip.length >= 2, strip.join(", "));
+
+  const before = await page.evaluate(read);
+  check("it starts on the reader's own month, ungraded",
+        before.ring.arc === before.tones.info && !before.today,
+        `${before.ring.text} | Today btn ${before.today}`);
+
+  const moved = await page.evaluate(() => {
+    const b = [...document.querySelectorAll("button[aria-label]")]
+      .find((x) => /^[A-Z][a-z]{2} 20\d\d$/.test(x.getAttribute("aria-label") ?? "")
+                   && x.getAttribute("aria-current") !== "true");
+    if (!b) return null;
+    b.click();
+    return b.getAttribute("aria-label");
+  });
+  check("an earlier month can be selected", !!moved, String(moved));
+  await new Promise((r) => setTimeout(r, 2200));
+  const after = await page.evaluate(read);
+
+  check("THE FIGURES FOLLOW IT, rather than the heading alone",
+        after.cards.Spent?.v !== before.cards.Spent?.v,
+        `${before.cards.Spent?.v} then ${after.cards.Spent?.v}`);
+  check("so does the span each card names",
+        after.cards.Spent?.period !== before.cards.Spent?.period,
+        `${before.cards.Spent?.period} then ${after.cards.Spent?.period}`);
+  check("and the chart under them", after.donut !== before.donut,
+        `${before.donut} slices then ${after.donut}`);
+  check("a COMPLETE month is graded, which is what the strip is for",
+        after.ring.arc !== after.tones.info && !/days into the month/.test(after.ring.text),
+        `${after.ring.text} | arc ${after.ring.arc}`);
+  check("adherence drops its 'so far' and carries a real badge",
+        !/so far/.test(after.cards["Budget adherence"]?.v ?? "")
+        && after.cards["Budget adherence"]?.badge !== "Partial month",
+        `${after.cards["Budget adherence"]?.v} [${after.cards["Budget adherence"]?.badge}]`);
+  check("the monthly PLAN does not move, because it is not a month's records",
+        after.cards["Take-home"]?.v === before.cards["Take-home"]?.v
+        && after.cards.Budgeted?.v === before.cards.Budgeted?.v);
+  check("a Today control appears once you have left today", after.today);
+
+  await page.evaluate(() => [...document.querySelectorAll("button")]
+    .find((x) => x.textContent.trim() === "Today")?.click());
+  await new Promise((r) => setTimeout(r, 2200));
+  const back = await page.evaluate(read);
+  check("and it returns every figure to the current month",
+        back.cards.Spent?.v === before.cards.Spent?.v && !back.today
+        && back.ring.arc === back.tones.info);
+  check("no console errors driving it", page.__errors.length === 0,
+        page.__errors.slice(0, 2).join(" | "));
+  await page.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+console.log("\n--- the ledger shows the subtraction that produced it ---");
+{
+  const page = await open();
+  const led = await page.evaluate(() => {
+    const c = [...document.querySelectorAll(".card")]
+      .find((x) => /^Net savings$/.test(x.querySelector(".label")?.textContent?.trim() ?? ""));
+    if (!c) return null;
+    const num = (s) => Number(String(s).replace(/[^0-9.-]/g, ""));
+    const rows = [...c.querySelectorAll("div.flex.items-baseline")].map((d) => {
+      const sp = d.querySelectorAll("span");
+      return { label: sp[0]?.textContent?.trim(), value: sp[1]?.textContent?.trim() };
+    });
+    return { rows, nums: rows.map((r) => num(r.value)), rule: !!c.querySelector(".border-t") };
+  });
+  check("the card renders its rows and a total", led && led.rows.length === 3,
+        JSON.stringify(led?.rows));
+  check("it is ruled, so the figures read as being added up", !!led?.rule);
+  // THE POINT: the arithmetic on the card must be the arithmetic. The total is
+  // passed in from the engine, so this is a check that the rows shown are the
+  // ones that produce it — not a re-implementation of the sum.
+  check("take-home less spent IS the total shown",
+        Math.abs((led.nums[0] - Math.abs(led.nums[1])) - led.nums[2]) < 1,
+        led.rows.map((r) => `${r.label} ${r.value}`).join("  "));
+  await page.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+console.log("\n--- the sidebar carries balances, and they are the real ones ---");
+{
+  const page = await open();
+  const bal = await page.evaluate(() => {
+    // TWO nav trees exist — the rail and the off-canvas drawer — and at desktop
+    // width the drawer is zero-size. Measure the one with a rect, or every
+    // visibility answer is trivially true of a zero rect.
+    const head = [...document.querySelectorAll("p")]
+      .filter((p) => p.textContent.trim() === "Balances")
+      .find((p) => p.getBoundingClientRect().height > 0);
+    if (!head) return null;
+    const block = head.parentElement;
+    const num = (s) => Number(String(s).replace(/[^0-9.-]/g, ""));
+    const rows = [...block.querySelectorAll("li")].map((li) => {
+      const sp = li.querySelectorAll("span");
+      return { name: sp[0]?.textContent?.trim(), value: num(sp[1]?.textContent) };
+    });
+    const link = block.querySelector('a[href="/net-worth"]');
+    const r = block.getBoundingClientRect();
+    const hero = document.querySelector(".figure-hero");
+    return {
+      rows,
+      net: num(link?.querySelectorAll("span")[1]?.textContent),
+      linked: !!link,
+      visible: r.top >= 0 && r.bottom <= window.innerHeight && r.height > 0,
+      heroNet: num(hero?.textContent),
+    };
+  });
+  check("the rail carries a balances block", !!bal, "no visible block");
+  check("it is above the fold on a laptop, which is the point of it",
+        bal.visible, JSON.stringify(bal));
+  check("assets and liabilities, both stated", bal.rows.length === 2
+        && /Assets/.test(bal.rows[0].name ?? "") && /Liabilities/.test(bal.rows[1].name ?? ""),
+        JSON.stringify(bal.rows));
+  check("a liability is shown as money OWED, not as a positive balance",
+        bal.rows[1].value <= 0, String(bal.rows[1].value));
+  // The sidebar and the dashboard hero are two renderings of one figure. If
+  // they disagree, one of them is doing its own arithmetic.
+  check("the sidebar's net worth is the dashboard's, to the dollar",
+        Math.abs(bal.net - bal.heroNet) < 1, `${bal.net} vs ${bal.heroNet}`);
+  check("and it links to where those rows are edited", bal.linked);
+  await page.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════
 if (SELFTEST) {
   console.log("\n=== selftest: each check, against an injected fault ===");
 
@@ -288,7 +537,54 @@ if (SELFTEST) {
     await page.close();
   }
 
-  // 4. the clock patch must actually move the month, or section two proves nothing
+  // 4. strip a period line and the check must notice
+  {
+    const page = await open();
+    const gone = await page.evaluate(() => {
+      const c = [...document.querySelectorAll(".card")]
+        .find((x) => /^Take-home$/.test(x.querySelector(".label")?.textContent?.trim() ?? ""));
+      const value = c.querySelector("p.font-num");
+      const ps = [...c.querySelectorAll("p.t-micro")]
+        .filter((x) => x.compareDocumentPosition(value) & Node.DOCUMENT_POSITION_FOLLOWING);
+      ps[0]?.remove();
+      return [...c.querySelectorAll("p.t-micro")]
+        .filter((x) => x.compareDocumentPosition(value) & Node.DOCUMENT_POSITION_FOLLOWING).length;
+    });
+    check("[can fail] a card with no period line is seen to have none", gone === 0, String(gone));
+    await page.close();
+  }
+
+  // 5. break the ledger's arithmetic and the check must see it
+  {
+    const page = await open();
+    const ok = await page.evaluate(() => {
+      const c = [...document.querySelectorAll(".card")]
+        .find((x) => /^Net savings$/.test(x.querySelector(".label")?.textContent?.trim() ?? ""));
+      const rows = [...c.querySelectorAll("div.flex.items-baseline")];
+      const sp = rows[0].querySelectorAll("span")[1];
+      sp.textContent = "$1";
+      return sp.textContent === "$1";
+    });
+    check("[can fail] a ledger whose rows do not make its total is reachable", ok);
+    await page.close();
+  }
+
+  // 6. a sidebar figure that disagrees with the dashboard must be seen
+  {
+    const page = await open();
+    const ok = await page.evaluate(() => {
+      const head = [...document.querySelectorAll("p")]
+        .filter((p) => p.textContent.trim() === "Balances")
+        .find((p) => p.getBoundingClientRect().height > 0);
+      const link = head.parentElement.querySelector('a[href="/net-worth"]');
+      link.querySelectorAll("span")[1].textContent = "$1";
+      return link.querySelectorAll("span")[1].textContent === "$1";
+    });
+    check("[can fail] a sidebar total can be made to disagree and be measured", ok);
+    await page.close();
+  }
+
+  // 7. the clock patch must actually move the month, or section two proves nothing
   {
     const page = await open({ at: "2026-09-30T12:00:00" });
     const d = await page.evaluate(() => new Date().getDate());

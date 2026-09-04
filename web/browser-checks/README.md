@@ -40,15 +40,16 @@ npm run sweep         # every route, both themes
 npm run interact      # drive the newest features
 npm run compare       # /compare, which the demo profile hides from every sweep
 npm run health        # the dashboard grades a month that is not over yet
+npm run empty         # Start empty starts empty, and the empty app renders
 npm run regress       # things already fixed once, that must stay fixed
 npm run mobile        # the phone, measured (carries its own selftest)
 npm run big           # generate a year-sized statement and measure the importer
 npm run streamlit     # the OTHER front end still works (needs port 8502)
 ```
 
-`npm run all` is selftest → sweep → interact → compare → health → regress →
-persist → demonote → mobile, which is the set worth running after any change
-under `src/`.
+`npm run all` is selftest → sweep → interact → compare → health → empty →
+regress → persist → demonote → mobile, which is the set worth running after any
+change under `src/`.
 
 ## What each one is for
 
@@ -58,7 +59,8 @@ under `src/`.
 | `selftest.mjs` | Injects a fault for each of the five sweep checks into a real healthy page and requires the check to fire. **Run this before trusting a sweep run.** |
 | `interact.mjs` | Drives the three features: the savings-rate curve and its marker, `/year`'s caveat and shaded months and budget rule, the CSV importer end to end including a second import of the same file. Also 375px and print, that the dashboard and `/year` agree to the dollar about this month, and that a profile with nothing logged reports null rather than zero. **63 assertions.** |
 | `compare.mjs` | `/compare`, which **the demo profile hides from every other check**: it ships no `scenarios`, so the page renders its empty state and the side-by-side table does not exist to be measured — `sweep.mjs` and `mobile.mjs` both walk the route, at ten widths between them, and both were right to report it clean. Adds scenarios and asserts: no column is off screen at ten widths × 1–4 scenarios; the table stacks because it MEASURED rather than because it is a phone (both directions, or "always stack" would pass); the stacked layout matches the importer's property for property, so the two CSS blocks cannot drift; a generated name never collides; exactly one column carries the winner's paint even when two share a name; the page never scrolls sideways with scenarios on it; only the baseline column calls itself the baseline; contrast in both themes, stacked and grid. **33 assertions**, five of them proved able to fail. |
-| `health.mjs` | The dashboard's health row. The savings ring is `1 - spent_so_far / take_home`, which starts every month at 100% and falls through it, and it was GRADED: 70% painted green on the 4th with one rent charge logged, 48% green on the demo against a budget planning to keep 17%. Adherence was the same defect — a category with nothing logged counts as within budget, so one expense scored 15/15 "On track". Asserts both directions by PATCHING THE CLOCK, since the thing under test is what the page does as a month ends: mid-month the ring is the ungraded tone and says how far in, on the last day it carries a real verdict. Also that the rendered figure is the engine's rounded, so nothing is computed in the page. **27 assertions**, four proved able to fail. |
+| `health.mjs` | The dashboard's health row. The savings ring is `1 - spent_so_far / take_home`, which starts every month at 100% and falls through it, and it was GRADED: 70% painted green on the 4th with one rent charge logged, 48% green on the demo against a budget planning to keep 17%. Adherence was the same defect — a category with nothing logged counts as within budget, so one expense scored 15/15 "On track". Asserts both directions by PATCHING THE CLOCK, since the thing under test is what the page does as a month ends: mid-month the ring is the ungraded tone and says how far in, on the last day it carries a real verdict. Also that the rendered figure is the engine's rounded, so nothing is computed in the page. Also drives the MONTH STRIP by clicking a past month and requiring the figures, the spans, the donut and the verdict to move together while the monthly plan does not; the ledger card's rows to actually produce its total; and the sidebar's net worth to equal the dashboard hero's to the dollar. **56 assertions**, seven proved able to fail. |
+| `empty.mjs` | **"Start empty" starts empty.** It served `get_default_state()`, which is a STARTER TEMPLATE — a $100,000 salary, 17 budget rows totalling $4,430 and $20,000 of assets — so the dashboard read take-home $5,682 and net worth $20,000 to someone who had just asked for no figures. Asserts the served profile carries nothing but keeps its rows, that the dashboard shows `—` rather than `0.0%` where a figure cannot be MEASURED, that the sidebar's balances block is absent rather than a column of `$0`, and that **all thirteen routes still render** — an empty profile is the state most likely to divide by zero or draw a chart with no marks. **22 assertions**, three proved able to fail. |
 | `regression.mjs` | Behaviour already fixed once, where the fix is invisible in the source: the cascade-layer fix by COMPUTED VALUE, the mobile drawer at 375px (focus return, scroll lock, close on Escape and on navigation), the theme toggle across a reload, a real Monte Carlo run, and — by ABORTING the route mid-session — that a failed refetch on `/debt` and `/investments` says the figures under the error are the previous ones. **27 assertions.** |
 | `bigimport.mjs` | Measures the importer on a year-sized file. Reports DOM size, page height, and tick-to-paint. |
 | `bigcorrect.mjs` | Paging and filtering must not change WHAT gets imported — walks every page, then commits and counts what actually landed. **11 assertions.** |
@@ -144,6 +146,12 @@ screen on every phone (171px of 504px at 375px, the clipped edge reading
 "$105," and "$70,") and the winner's colour painted on two columns at once.
 The importer's lesson one step further on: there, a button REVEALED the table;
 here, it creates it. **Ask what a route looks like with data in it.**
+
+**`<nextjs-portal>` is on every page in dev.** It hosts the dev-tools
+indicator, not an error, so a check that treats its presence as "the error
+overlay rendered" reports all thirteen routes broken while `pageerror` and the
+console are silent on every one. Detect the APP's own error boundary text
+instead, and trust the console listener for the rest.
 
 **A route sweep does not see what is behind a button.** The first version of
 `mobile.mjs` walked all 13 routes and reported clean, while the importer — the

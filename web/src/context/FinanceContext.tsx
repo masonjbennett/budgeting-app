@@ -130,6 +130,9 @@ interface Ctx {
    *  figures these are. */
   showingUntouchedDemo: boolean;
   dismissDemoNote: () => void;
+  /** Which month the dashboard is showing; null means the reader's own. */
+  month: string | null;
+  setMonth: (m: string | null) => void;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
@@ -162,6 +165,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   // with older ones — with a number that looks entirely plausible.
   const seq = useRef(0);
 
+  /* WHICH MONTH THE DASHBOARD IS SHOWING.
+
+     In memory, deliberately: it survives a nav click, because React state does,
+     and resets to the current month on a reload. That is the same rule the main
+     site applies to its segment state — a returning reader must land on the
+     obvious thing rather than wherever they wandered last time.
+
+     It lives here rather than on the page because the dashboard payload is
+     fetched here. Nothing else reads `health`, and the fields the other five
+     pages DO read — take_home, liquid_assets, top_bracket, dti, the emergency
+     fund — are all month-independent, so a month change cannot move them. */
+  const [month, setMonthState] = useState<string | null>(null);
+  const monthRef = useRef<string | null>(null);
+
   /** Today, in the READER's timezone. `toISOString()` converts to UTC first
    *  and so returns yesterday for anyone west of Greenwich after 5pm — which
    *  on the last day of a month would tell the engine the month is not over
@@ -191,6 +208,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         // Chicago on New Year's Eve, and this decides which month is "this
         // one" and whether it is over.
         today: localToday(),
+        // undefined, not null: omitted means "the reader's own month", and
+        // the engine decides that rather than the request carrying a guess.
+        month: monthRef.current ?? undefined,
       });
       if (mine === seq.current) {
         setDashboard(d);
@@ -203,6 +223,20 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       }
     }
   }, []);
+
+  /* Moving the strip refetches, because the month is an INPUT to the figures
+     rather than a filter over them: which records count, how much of the month
+     has elapsed, and whether it can carry a verdict at all are all decided in
+     `health_report`. Filtering client-side would be the display layer deciding
+     three of those. */
+  const setMonth = useCallback(
+    (m: string | null) => {
+      monthRef.current = m;
+      setMonthState(m);
+      if (profile) void recompute(profile);
+    },
+    [profile, recompute],
+  );
 
   const persist = useCallback(
     (p: Profile, u: User | null) => {
@@ -401,13 +435,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       resetToEmpty,
       showingUntouchedDemo,
       dismissDemoNote,
+      month,
+      setMonth,
       signIn,
       signUp,
       signOut,
     }),
     [profile, dashboard, status, error, saveState, user, update, replaceProfile,
      resetToDemo, resetToEmpty, showingUntouchedDemo, dismissDemoNote,
-     signIn, signUp, signOut],
+     month, setMonth, signIn, signUp, signOut],
   );
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

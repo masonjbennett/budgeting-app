@@ -32,6 +32,22 @@ PY = sys.executable
 CALC = "calculations.py"
 
 MUTATIONS = [
+    # ── The month strip ──────────────────────────────────────────────
+    ("a past month is judged against today's calendar, so August is 'not over' "
+     "on the 4th of September and can never carry a verdict",
+     ("    complete = key < here or (key == here and ref.day >= days_in_month)",
+      "    complete = ref.day >= days_in_month")),
+    ("the strip offers only the months that hold records, so a month nobody "
+     "logged becomes a gap in the row rather than an answer",
+     ("    start = min(keys) if keys else here",
+      "    return sorted(set(keys)) or [here]")),
+    ("a month string from the caller is trusted unvalidated, so a malformed "
+     "one reaches the date arithmetic",
+     ("    key = str(month) if (month and _is_month_key(month)) else here",
+      "    key = str(month) if month else here")),
+    ("the strip is unbounded, so a decade of imported history is a decade of "
+     "buttons",
+     ("    return out[-MONTH_STRIP_MAX:]", "    return out")),
     # ── The dashboard's health verdicts ──────────────────────────────
     ("a month in progress is GRADED, so the savings ring reads 70% green on "
      "the 4th and 100% for a month nobody has logged anything in yet",
@@ -47,8 +63,8 @@ MUTATIONS = [
       '        adherence_tone, adherence_status = "info", "Partial month"')),
     ("a month with nothing logged in it is treated as a month on record, so "
      "an empty log reads as having saved everything",
-     ('    if not mine:\n        withheld = "nothing logged this month yet"',
-      '    if False:\n        withheld = "nothing logged this month yet"')),
+     ("    if not mine:\n        # Wording follows",
+      "    if False:\n        # Wording follows")),
     ("categories with nothing logged against them are not reported, so the "
      "adherence score reads as a result rather than a count so far",
      ("    unlogged = sum(1 for name in cat_budget if name not in by_category)",

@@ -42,7 +42,7 @@ from pydantic import BaseModel, Field
 # passed over it, because all of them had already made the path right.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app_data import _generate_demo_data, get_default_state  # noqa: E402
+from app_data import _generate_demo_data, empty_profile, get_default_state  # noqa: E402
 from calculations import (  # noqa: E402
     COL_INDEX,
     MONTHS_PER_YEAR,
@@ -154,6 +154,11 @@ class DashboardRequest(BaseModel):
     # wrong for a reader in a timezone behind this function, for whom the
     # server has already rolled into a month they are not in yet.
     today: Optional[str] = None
+    # The month being LOOKED AT, which is not the same as today. Validated in
+    # the engine, which falls back to the current month rather than raising —
+    # a dashboard that 422s because a month string is malformed is worse than
+    # one that shows this month.
+    month: Optional[str] = None
 
 
 class CashFlowRequest(BaseModel):
@@ -310,8 +315,13 @@ def starting_state(demo: bool = True) -> Dict[str, Any]:
     debts whose rate order and balance order conflict. With one debt — which is
     what the abandoned scaffold's hand-written copy had — avalanche and snowball
     are identical by definition and the debt page's whole comparison is dead.
+
+    `demo=false` is EMPTY, not the starting template. It served
+    `get_default_state()` until September 2026, so "Start empty" left a $100,000
+    salary, $4,430 of budget and $20,000 of assets on the dashboard — figures
+    that read as somebody's money to a person who had just asked for none.
     """
-    return _generate_demo_data() if demo else get_default_state()
+    return _generate_demo_data() if demo else empty_profile()
 
 
 @app.get("/api/reference")
@@ -369,6 +379,7 @@ def api_dashboard(req: DashboardRequest) -> Dict[str, Any]:
             dti_pct=dti,
             emergency_fund=ef_months,
             today=req.today,
+            month=req.month,
         ),
         "monthly_debt_service": service,
         "debt_service_source": service_source,
