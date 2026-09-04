@@ -19,6 +19,7 @@
 
 import { useEffect, useState } from "react";
 
+import CashFlowList from "@/components/CashFlowList";
 import Sankey from "@/components/Sankey";
 import { fmt, useFinance } from "@/context/FinanceContext";
 import { api, ApiError, type CashFlow } from "@/lib/api";
@@ -103,7 +104,19 @@ export default function CashFlowPanel() {
         )}
       </div>
 
-      <div className="overflow-x-auto">
+      {/* The diagram above 640px, the same graph as a list below it.
+
+          The Sankey needs ~560px to carry its labels, so at 375px the scroller
+          is 293px of a 640px picture and 20 of its 22 labels are off screen —
+          including every budget bucket, which is the half the panel is for.
+          Two labels survive and two more are clipped mid-figure ("State tax
+          $3"), which reads as a number and is not one.
+
+          Swapped in CSS rather than by a media-query hook: a hook has no
+          answer to give during server render, so the wrong one would paint
+          first and correct itself. Both trees are in the DOM and that is
+          cheap — the list is ~34 elements. */}
+      <div className="hidden overflow-x-auto sm:block">
         <div className="min-w-[640px] pr-2">
           <Sankey
             nodes={flow.nodes}
@@ -113,12 +126,25 @@ export default function CashFlowPanel() {
           />
         </div>
       </div>
+      <div className="sm:hidden">
+        <CashFlowList
+          nodes={flow.nodes}
+          links={flow.links}
+          formatValue={(v) => fmt(v)}
+        />
+      </div>
 
       <p className="t-micro mt-4 border-t border-hair-soft pt-3 text-muted">
         Every stage sums to the one before it — take-home is what is left after
         pre-tax deductions and the three taxes, so the widths are the money
-        rather than an impression of it. Tax figures are annual, shown monthly;
-        a band too thin to carry a label names itself on hover.
+        rather than an impression of it. Tax figures are annual, shown monthly.
+        {/* Hover is the diagram's affordance and a phone has none, so the
+            sentence describing it belongs to the width that has one. Below
+            that the list carries every label already, which is why it needs
+            no equivalent. */}
+        <span className="hidden sm:inline">
+          {" "}A band too thin to carry a label names itself on hover.
+        </span>
         {flow.omitted.length > 0 && (
           <> Zero this month, so not drawn: {flow.omitted.join(", ")}.</>
         )}

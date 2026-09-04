@@ -638,3 +638,52 @@ app's only checkboxes and the importer's primary control.
 run them; I did it the other way and it cost a cycle. The docs edits after that
 went through a file.
 
+## Sep 3 2026 — the Sankey showed 2 of its 22 labels on a phone (web/)
+
+The last thing on the dashboard wider than the phone, and the worst instance of
+the pattern: **the panel wraps the diagram in `overflow-x-auto` with a
+`min-w-[640px]` inner box**, so the page never overflows, no check ever fired,
+and at 375px the scroller is **293px of a 640px diagram**. What a phone showed
+was "Gross pay $8,750" and "FICA $669" — with "State tax $3" and "Federal tax
+$" clipped mid-figure at the scroller's edge, a truncated number that still
+reads as a number, for the THIRD time in this codebase (after Apple's
+`'4,000,000` in filings-terminal and my own "September 202" this morning).
+Every budget bucket was off screen: the half the panel exists for. And the
+caption told the reader a thin band "names itself on hover", on a device that
+has none.
+
+- **A narrower Sankey was the wrong fix.** Its whole claim is that the widths
+  are the money; squeezed to 293px the widths survive and the labels do not, so
+  it keeps the claim and loses the reading. Below 640px it is replaced by
+  `CashFlowList` — the same graph, DERIVED FROM THE SAME `links`: every node
+  that is the source of a link becomes a group and its targets become the rows.
+  Nothing is hardcoded about stages, so a change to `cash_flow`'s shape shows
+  up in both renderings or in neither. **68 of 68 labels visible against 2 of
+  22**, and the proportion is carried by a bar rather than dropped.
+- **Swapped in CSS, not by a media-query hook.** A hook has no answer to give
+  during server render, so the wrong rendering would paint first and correct
+  itself. Both trees are in the DOM; the list is ~34 elements.
+- **Rule 2 still holds.** The bar width is a proportion of its own group's
+  total — layout in exactly the sense the Sankey's ribbon heights are layout —
+  and no proportion is ever printed. Every figure on screen came from the
+  engine. The denominator is what the group DISTRIBUTES rather than the
+  parent's own value: equal wherever the flow balances, and where it is not, a
+  bar against the parent would understate every row alike and look like
+  rounding.
+- **The hover sentence is now `sm:inline`.** The affordance it describes does
+  not exist on a touch device, and the list needs no equivalent because every
+  label is already written out.
+
+**A gap I had created and closed the same session: `sweep.mjs` does both themes
+at ONE width.** So every surface that renders only below 640px — the importer's
+cards, this list — had never been contrast-checked in either theme. `mobile.mjs`
+now sweeps the phone dashboard in light and dark (0 nodes under 3:1 in both)
+and asserts every flow bar resolved to a real colour, because a bar drawn from
+an unresolved custom property paints NOTHING and there is no literal to grep
+for. **A new mobile-only surface is a new set of colours nobody has measured.**
+
+`mobile.mjs` 23 -> **33 assertions**, six of them proved able to fail against an
+injected fault (the sixth puts the Sankey back on the phone). Counts: selftest
+5/5, sweep 130, interact 63, regression 21, mobile 33, big 11; Python unchanged
+at 521 + 33 mutations.
+

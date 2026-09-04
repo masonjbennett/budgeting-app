@@ -360,6 +360,98 @@ console.log("\n--- the importer at 375px ---");
   await p.close();
 }
 
+/* ── 7. the mobile-only renderings, in BOTH themes ───────────────────── */
+console.log("\n--- what only exists on a phone, in dark as well as light ---");
+{
+  // `sweep.mjs` checks contrast in both themes and only at desktop width, so
+  // nothing that renders ONLY below 640px has ever been contrast-checked: the
+  // importer's cards, and the cash-flow list that replaces the Sankey. Both
+  // are new surfaces with their own colours.
+  const CONTRAST = () => {
+    const px = (c) => {
+      const m = String(c).match(/rgba?\(([^)]+)\)/);
+      if (!m) return null;
+      const q = m[1].split(",").map(Number);
+      return { r: q[0], g: q[1], b: q[2], a: q.length > 3 ? q[3] : 1 };
+    };
+    const lum = ({ r, g, b }) => {
+      const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+    const bgOf = (el) => {
+      for (let e = el; e; e = e.parentElement) {
+        const c = px(getComputedStyle(e).backgroundColor);
+        if (c && c.a > 0) return c;
+      }
+      return { r: 255, g: 255, b: 255, a: 1 };
+    };
+    const bad = [];
+    let checked = 0;
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = walk.nextNode())) {
+      if (!n.textContent.trim()) continue;
+      const el = n.parentElement;
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const fg = px(getComputedStyle(el).color);
+      if (!fg) continue;
+      checked++;
+      const c = ratio(fg, bgOf(el));
+      if (c < 3) bad.push(`${n.textContent.trim().slice(0, 22)} @${c.toFixed(2)}`);
+    }
+    // A bar drawn with an unresolved custom property paints nothing, which is
+    // worse than a wrong colour because there is no literal to grep for.
+    const bars = [...document.querySelectorAll('[aria-hidden="true"] > div')]
+      .filter((d) => d.style.background)
+      .map((d) => getComputedStyle(d).backgroundColor);
+    return { checked, bad, bars, unresolvedBars: bars.filter((b) => !/^rgba?\(/.test(b)).length };
+  };
+
+  for (const theme of ["light", "dark"]) {
+    const p = await browser.newPage();
+    await p.setViewport({ width: 375, height: 900, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+    await p.evaluateOnNewDocument((t) => {
+      try { localStorage.setItem("mjb_budget_theme", t); } catch { /* private mode */ }
+    }, theme);
+    await go(p, "/");
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const flow = await p.evaluate(() => {
+      const sankey = [...document.querySelectorAll("div")]
+        .find((d) => typeof d.className === "string" && d.className.includes("min-w-"));
+      const list = [...document.querySelectorAll("div")].find((d) => d.className === "mt-1");
+      return {
+        sankeyHidden: sankey ? getComputedStyle(sankey.parentElement).display === "none" : null,
+        listShown: list ? getComputedStyle(list.parentElement).display !== "none" : false,
+        groups: list ? list.children.length : 0,
+        rows: list ? list.querySelectorAll('[aria-hidden="true"]').length : 0,
+        hoverSentence: /names itself on hover/.test(document.body.innerText),
+      };
+    });
+    if (theme === "light") {
+      check("the phone gets the list, not the Sankey", flow.sankeyHidden === true && flow.listShown,
+            `sankey hidden ${flow.sankeyHidden}, list ${flow.listShown}`);
+      check("and it is the whole graph, group by group", flow.groups >= 5 && flow.rows >= 25,
+            `${flow.groups} groups, ${flow.rows} rows`);
+      // The diagram's affordance does not exist on a touch device, so the
+      // sentence describing it must not either.
+      check("the caption does not tell a phone to hover", flow.hoverSentence === false);
+    }
+
+    const c = await p.evaluate(CONTRAST);
+    check(`${theme}: the dashboard's text was actually measured`, c.checked > 40, `${c.checked} nodes`);
+    check(`${theme}: every text node on the phone dashboard clears 3:1`,
+          c.bad.length === 0, c.bad.slice(0, 3).join(" | "));
+    check(`${theme}: every flow bar resolved to a real colour`,
+          c.bars.length > 0 && c.unresolvedBars === 0,
+          `${c.bars.length} bars, ${c.unresolvedBars} unresolved`);
+    await p.close();
+  }
+}
+
 /* ── the selftest ────────────────────────────────────────────────────── */
 if (SELFTEST) {
   console.log("\n--- proving each check can fail ---");
@@ -433,6 +525,26 @@ if (SELFTEST) {
   });
   check("[can fail] the importer as a plain table is seen to overflow",
         untabled !== null && untabled > 1, `${untabled}px hidden`);
+
+  // 7. show the Sankey on the phone again and require the swap check to fire.
+  await go(p, "/");
+  await new Promise((r) => setTimeout(r, 1200));
+  const swapped = await p.evaluate(() => {
+    const sankey = [...document.querySelectorAll("div")]
+      .find((d) => typeof d.className === "string" && d.className.includes("min-w-"));
+    const list = [...document.querySelectorAll("div")].find((d) => d.className === "mt-1");
+    if (!sankey || !list) return null;
+    sankey.parentElement.classList.remove("hidden");
+    list.parentElement.classList.remove("sm:hidden");
+    list.parentElement.style.display = "none";
+    return {
+      sankeyHidden: getComputedStyle(sankey.parentElement).display === "none",
+      listShown: getComputedStyle(list.parentElement).display !== "none",
+    };
+  });
+  check("[can fail] the phone showing the Sankey instead of the list is seen",
+        swapped !== null && !(swapped.sankeyHidden === true && swapped.listShown),
+        JSON.stringify(swapped));
 
   check("[can fail] an undersized tap target is seen",
         tiny !== null && (tiny.w < 24 || tiny.h < 24),

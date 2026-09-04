@@ -295,6 +295,28 @@ invisible to a green suite AND to looking at the page:
   "do not take the 100% the text inputs get" and left the box at the browser
   default, half the 24px minimum. 18px, and 24px on a coarse pointer.
 
+- **The dashboard's Sankey showed two of its twenty-two labels.** Same shape
+  as the tables and the worst instance of it, on the landing page: the panel
+  wraps the diagram in `overflow-x-auto` with a `min-w-[640px]` inner box, so
+  the page never overflows and every check passed — while at 375px the
+  scroller is **293px of a 640px diagram**. A phone saw "Gross pay $8,750" and
+  "FICA $669", with "State tax $3" and "Federal tax $" clipped mid-figure at
+  the edge (a truncated number that still reads as a number, for the third
+  time in this codebase). Every budget bucket — the half the panel is FOR —
+  was off screen. The caption also told the reader that a thin band "names
+  itself on hover", on a device with no hover.
+
+  A Sankey's claim is that the widths are the money, so narrowing it keeps the
+  claim and loses the labels. Below 640px it is replaced by `CashFlowList`,
+  **the same graph derived from the same `links`**: every node that is the
+  source of a link becomes a group and its targets become the rows, so a
+  change to `cash_flow`'s shape appears in both renderings or in neither.
+  68 of 68 labels visible, against 2 of 22. Swapped in CSS rather than by a
+  media-query hook, because a hook has no answer during server render and
+  would paint the wrong one first. The bar widths are layout in exactly the
+  sense the Sankey's ribbon heights are layout, and no proportion is ever
+  printed as a figure — rule 2 still holds.
+
 `mobile.mjs` holds all of this plus the 24x24 tap-target floor, with a
 `--selftest` that injects each defect and requires the check to fire. **639 and
 640 are both measured**, because that pair is where a column could come back

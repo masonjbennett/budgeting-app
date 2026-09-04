@@ -57,7 +57,7 @@ set worth running after any change under `src/`.
 | `regression.mjs` | Behaviour already fixed once, where the fix is invisible in the source: the cascade-layer fix by COMPUTED VALUE, the mobile drawer at 375px (focus return, scroll lock, close on Escape and on navigation), the theme toggle across a reload, and a real Monte Carlo run. **21 assertions.** |
 | `bigimport.mjs` | Measures the importer on a year-sized file. Reports DOM size, page height, and tick-to-paint. |
 | `bigcorrect.mjs` | Paging and filtering must not change WHAT gets imported — walks every page, then commits and counts what actually landed. **11 assertions.** |
-| `mobile.mjs` | The phone, as NUMBERS: every text-entry control is >= 16px on a coarse pointer (and still 14px on a mouse), no section slug overflows or loses its hairline, no table scrolls sideways at 375/414/639/640/1440, nothing is under 24x24, and **the importer — which is behind a button, so a route sweep never opens it** — stacks into cards with every field labelled. `--selftest` injects a fault for each of the five and requires it to fire. **23 assertions.** |
+| `mobile.mjs` | The phone, as NUMBERS: every text-entry control is >= 16px on a coarse pointer (and still 14px on a mouse), no section slug overflows or loses its hairline, no table scrolls sideways at 375/414/639/640/1440, nothing is under 24x24, and **the importer — which is behind a button, so a route sweep never opens it** — stacks into cards with every field labelled. It also checks the surfaces that exist ONLY on a phone — the importer's cards and the cash-flow list that replaces the Sankey — **in both themes**, which `sweep.mjs` cannot: it does both themes at desktop width only. `--selftest` injects a fault for each of the six and requires it to fire. **33 assertions.** |
 | `streamlit.mjs` | The Streamlit front end still renders every page against the shared engine. Run before pushing anything that touches `calculations.py`. |
 
 ## Three things that cost a cycle each
@@ -70,6 +70,11 @@ for that reason. When the pane and the DOM disagree, capture elsewhere.
 
 **Git Bash mangles a bare `/route` argument into a Windows path.**
 `export MSYS_NO_PATHCONV=1` before `node sweep.mjs --only=/year`.
+
+**`sweep.mjs` does both themes and one width.** Anything that renders only
+below 640px — the importer's cards, the cash-flow list — had never been
+contrast-checked in either theme until `mobile.mjs` grew a pass at 375px. A
+new mobile-only surface is a new set of colours nobody has measured.
 
 **A route sweep does not see what is behind a button.** The first version of
 `mobile.mjs` walked all 13 routes and reported clean, while the importer — the
