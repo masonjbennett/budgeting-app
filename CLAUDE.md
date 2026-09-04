@@ -979,3 +979,102 @@ the states where it must NOT show, because a note saying "these are examples"
 over somebody's real figures is worse than no note at all: after an edit,
 after a dismissal, after a reload of edited figures, over an emptied profile,
 and on any page that is not the dashboard.
+
+## Sep 4 2026 — /compare, the page the DEMO DATA hid (web/)
+
+The handoff's next open thread: `/compare` had been read but never driven. Two
+real defects, both live since the re-skin, and the reason neither was ever seen
+is the part worth keeping.
+
+**The served demo ships no `scenarios`.** So `/compare` renders its empty state,
+and the side-by-side table — the whole reason the screen exists — does not
+exist to be measured. `sweep.mjs` and `mobile.mjs` both walk the route, at ten
+widths between them, and **both were right to report it clean**. This is the
+importer's lesson one step further on: there a button REVEALED the table, here
+it creates it. The generalisation for the next reader is *ask what a route looks
+like with data in it* — a check hidden by the fixture is indistinguishable from
+a check that passes.
+
+- **A scenario column was off screen on every phone.** 375px with two
+  scenarios: **171px of a 504px table hidden**; with three, 313px; and the
+  hidden column is a whole scenario, carrying Take-home and Worth — the answer.
+  The clipped edge read **"$105," and "$70,"**, a truncated number that still
+  reads as a number, for the FOURTH time in this codebase.
+  **One column per scenario means the width this table needs is DATA**, so no
+  fixed breakpoint answers it. Measured with the two text rows wrapping:
+  3 columns fit from 323px, 4 from 424px, 5 from 525px, 6 from 738px. Stacking
+  at 640 like the importer would still hide a column from four scenarios
+  between 640 and 737 — the /goals band again — and would stack a single
+  scenario at 375px where the grid fits and reads better, which is what the
+  page is for. So the page MEASURES its own scroller and stacks when the grid
+  would overflow it: `hidden` is now 0 at all ten widths for 1–4 scenarios.
+  **It is layout, not arithmetic** (rule 2 holds as it does for the Sankey's
+  ribbon heights), and **it cannot paint the wrong thing first** — the
+  objection that sent the Sankey to CSS — because the table exists only after
+  `/api/compare` answers, so there is no server render of it to disagree with,
+  and the measure runs in a layout effect, before paint. The needed width is
+  REMEMBERED, because stacked the table is `display: block` and its scrollWidth
+  is merely the scroller's own width, so a naive re-measure could never unstack.
+- **A NAME IS NOT AN IDENTITY, and the page painted two winners.** Scenarios are
+  numbered `Scenario ${scenarios.length + 1}`, so add two, remove the first, add
+  again → two "Scenario 2", a duplicate nobody typed. Columns were keyed on the
+  name and the winner marked with `result.best === r.name`, so React logged
+  **eleven duplicate-key errors** and the winner's green landed on EVERY column
+  carrying the winning name: measured, **a $49,438 column and a $133,988 column
+  both marked best in one table**. The engine returns `best_index` /
+  `best_take_home_index` now and the paint follows them; `col_changes_answer`
+  compares by index too, or a flipped winner between two columns sharing a
+  label reports "nothing changed". Generated names skip what is taken
+  (including the baseline's own), so the collision no longer arises; a name
+  typed twice is allowed and renders correctly. Also: a blank name left the
+  remove button announcing **"Remove "**.
+- **Two smaller things, both about a page describing itself.** The Difference
+  row printed **"baseline"** under any column within 50c of the baseline rather
+  than under the baseline — and since a new scenario is a COPY of the baseline,
+  two columns both labelled "baseline" was the page's own first state after
+  clicking Add. A scenario that ties now reports "no change", which is the
+  different claim it is actually making. And my check measured the TABLE's
+  overflow at ten widths but never the PAGE's: `mobile.mjs` does measure that on
+  `/compare`, and has only ever seen the empty state — the session's own blind
+  spot, one layer in. Measured with scenarios on screen at all ten widths and
+  1–4 scenarios: **0px**, so the three `<select>`s in each scenario card are
+  fine. That is a measurement now rather than an assumption.
+- **Proved able to fail, by hand, because neither mutation harness reaches
+  this.** `compare_scenarios` is engine code tested only in `test_api.py`, and
+  `test_calc_mutations.py` requires `test_calc.py` to fail while
+  `test_api_mutations.py` cannot touch `calculations.py` without tripping the
+  sync check. So the two name-based versions were put back one at a time and
+  `test_api.py` required to fail on each: it does, the second reporting
+  `changed=False best=0 raw=1` — the shipped defect exactly.
+
+**One failure in my own new check, and it was the check.** It asserted the
+stacked layout matches the importer's card layout property for property (the
+two CSS blocks have the same declarations under different gates — a media query
+cannot add a class and a class cannot carry a media query — so something has to
+stop them drifting). It reported `null`: the importer's table exists only once a
+FILE has been read, and clicking "Open importer" is not enough. Ninth probe
+error in three sessions, same family as the rest.
+
+**And I put a NUL BYTE in a .tsx and shipped it through a green check.** The
+handoff warns that the Bash tool mangles backslashes inside a quoted heredoc;
+it has now cost three sessions. The new part is the failure MODE. Writing
+`join("\\u0000")` through `bash <<'PY'` delivered a single backslash to Python,
+which then interpreted the escape and wrote a real U+0000 into
+`src/app/compare/page.tsx`. It was a perfectly good separator, so:
+**tsc passed, eslint passed, the build passed, and all 30 browser assertions
+passed.** The only symptom was `grep` reporting "Binary file ... matches" and
+refusing to search the file — which is how it was found, while reading the diff
+rather than running anything.
+
+Two things follow. **Write patch scripts with the Write tool and run them** —
+the handoff says so, I did it the other way for speed, and it cost a cycle for
+the third time. And **a source file is worth sweeping for control characters
+after any scripted edit**: every `.ts`, `.tsx` and `.css` under `src/` was
+checked and this was the only one. The replacement needs no escape at all —
+`JSON.stringify(names)` has no separator to smuggle.
+
+`web/browser-checks/compare.mjs` is new and in `npm run all` — **33 assertions**,
+five proved able to fail against an injected fault. `web/README.md` rule 10.
+Counts after: **526 Python assertions** (203 + 42 + 168 + 113) and 33 mutations;
+browser **selftest 7 · sweep 156 · interact 63 · compare 33 · regression 27 ·
+persistence 17 · demonote 14 · mobile 35 · big 11 · streamlit 17**.

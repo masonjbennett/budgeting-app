@@ -513,6 +513,53 @@ check("where cost of living flips the winner, the answer says so",
 check("no scenarios is empty, not an error",
       client.post("/api/compare", json={"scenarios": []}).json()["rows"] == [])
 
+# A NAME IS NOT AN IDENTITY. The page generates "Scenario N" from the count, so
+# removing one and adding another produces two columns with one name and nobody
+# typed a duplicate; the reader can type one deliberately too. `best` alone then
+# matched EVERY column carrying it and the page painted the winner's colour on
+# all of them — measured in the browser, a $49,438 column and a $133,988 column
+# were both marked best in the same table.
+_same = client.post("/api/compare", json={"scenarios": [
+    {"name": "Same", "income": dict(INCOME, gross_salary=60_000, state="Texas",
+                                    bonus_type="None"),
+     "itemized": {}, "city": "Austin, TX"},
+    {"name": "Same", "income": dict(INCOME, gross_salary=200_000, state="Texas",
+                                    bonus_type="None"),
+     "itemized": {}, "city": "Austin, TX"},
+]}).json()
+check("two columns may share a name, and the winner is still ONE of them",
+      _same["best_index"] == 1 and _same["best"] == "Same",
+      f"best_index={_same['best_index']}")
+check("the winning index is the row that actually has the highest real figure",
+      _same["rows"][_same["best_index"]]["real_take_home"]
+      == max(r["real_take_home"] for r in _same["rows"]))
+
+# The same defect in the verdict SENTENCE. Comparing the two winners by name
+# reports "the cost of living did not change the answer" whenever the two
+# different columns happen to share a label — here the cheap column wins on the
+# adjusted figure and the dear one on raw take-home, and both are called "Offer".
+_named = client.post("/api/compare", json={"scenarios": [
+    {"name": "Offer", "income": dict(INCOME, gross_salary=100_000, state="Texas",
+                                     bonus_type="None"),
+     "itemized": {}, "city": "Austin, TX"},
+    {"name": "Offer", "income": dict(INCOME, gross_salary=125_000, state="New York",
+                                     bonus_type="None"),
+     "itemized": {}, "city": "New York, NY"},
+]}).json()
+check("a flipped winner is reported even when both columns carry one name",
+      _named["col_changes_answer"] is True
+      and _named["best_index"] == 0 and _named["best_take_home_index"] == 1,
+      f"changed={_named['col_changes_answer']} best={_named['best_index']} "
+      f"raw={_named['best_take_home_index']}")
+check("the indices agree with the names wherever the names are distinct",
+      cmp_["rows"][cmp_["best_index"]]["name"] == cmp_["best"]
+      and cmp_["rows"][cmp_["best_take_home_index"]]["name"] == cmp_["best_take_home"]
+      and _flip["rows"][_flip["best_index"]]["name"] == _flip["best"])
+check("no ranking means no index either, not a default of zero",
+      _odd["best_index"] is None
+      and client.post("/api/compare", json={"scenarios": [_NYC]})
+                .json()["best_take_home_index"] is None)
+
 
 # ── 6b. The entrypoint imports the way VERCEL imports it ─────────────
 #

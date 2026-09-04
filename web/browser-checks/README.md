@@ -38,14 +38,15 @@ BASE=https://your-app.vercel.app npm run sweep
 npm run selftest      # prove the sweep can fail, FIRST
 npm run sweep         # every route, both themes
 npm run interact      # drive the newest features
+npm run compare       # /compare, which the demo profile hides from every sweep
 npm run regress       # things already fixed once, that must stay fixed
 npm run mobile        # the phone, measured (carries its own selftest)
 npm run big           # generate a year-sized statement and measure the importer
 npm run streamlit     # the OTHER front end still works (needs port 8502)
 ```
 
-`npm run all` is selftest → sweep → interact → regress → persist → demonote →
-mobile, which is the set worth running after any change under `src/`.
+`npm run all` is selftest → sweep → interact → compare → regress → persist →
+demonote → mobile, which is the set worth running after any change under `src/`.
 
 ## What each one is for
 
@@ -54,6 +55,7 @@ mobile, which is the set worth running after any change under `src/`.
 | `sweep.mjs` | Every route × both themes: every `var(--x)` referenced in CSS has a value, every rendered text node clears 3:1 against what is actually behind it (**SVG text by `fill`, not `color`** — see below), no chart is empty, no chart label loses ink to its own `overflow: hidden` surface, every colour a chart paints with is a palette token, no console errors. **156 assertions.** |
 | `selftest.mjs` | Injects a fault for each of the five sweep checks into a real healthy page and requires the check to fire. **Run this before trusting a sweep run.** |
 | `interact.mjs` | Drives the three features: the savings-rate curve and its marker, `/year`'s caveat and shaded months and budget rule, the CSV importer end to end including a second import of the same file. Also 375px and print, that the dashboard and `/year` agree to the dollar about this month, and that a profile with nothing logged reports null rather than zero. **63 assertions.** |
+| `compare.mjs` | `/compare`, which **the demo profile hides from every other check**: it ships no `scenarios`, so the page renders its empty state and the side-by-side table does not exist to be measured — `sweep.mjs` and `mobile.mjs` both walk the route, at ten widths between them, and both were right to report it clean. Adds scenarios and asserts: no column is off screen at ten widths × 1–4 scenarios; the table stacks because it MEASURED rather than because it is a phone (both directions, or "always stack" would pass); the stacked layout matches the importer's property for property, so the two CSS blocks cannot drift; a generated name never collides; exactly one column carries the winner's paint even when two share a name; the page never scrolls sideways with scenarios on it; only the baseline column calls itself the baseline; contrast in both themes, stacked and grid. **33 assertions**, five of them proved able to fail. |
 | `regression.mjs` | Behaviour already fixed once, where the fix is invisible in the source: the cascade-layer fix by COMPUTED VALUE, the mobile drawer at 375px (focus return, scroll lock, close on Escape and on navigation), the theme toggle across a reload, a real Monte Carlo run, and — by ABORTING the route mid-session — that a failed refetch on `/debt` and `/investments` says the figures under the error are the previous ones. **27 assertions.** |
 | `bigimport.mjs` | Measures the importer on a year-sized file. Reports DOM size, page height, and tick-to-paint. |
 | `bigcorrect.mjs` | Paging and filtering must not change WHAT gets imported — walks every page, then commits and counts what actually landed. **11 assertions.** |
@@ -124,6 +126,15 @@ app behind it, the boot wait threw an unhandled TimeoutError. It exited
 non-zero, so it did fail — but a wall of puppeteer internals leaves the next
 reader working out whether the app or the check is broken. Verified both ways:
 a dead host now prints one FAIL line, the live one prints 17 passes.
+
+**A check can be hidden by the DEMO DATA, not by a button.** `/compare` was
+swept at ten widths in both themes for months and was always clean, because
+the served demo ships no `scenarios` — so the table the page exists for had
+never once rendered during a check. Driving it found a scenario column off
+screen on every phone (171px of 504px at 375px, the clipped edge reading
+"$105," and "$70,") and the winner's colour painted on two columns at once.
+The importer's lesson one step further on: there, a button REVEALED the table;
+here, it creates it. **Ask what a route looks like with data in it.**
 
 **A route sweep does not see what is behind a button.** The first version of
 `mobile.mjs` walked all 13 routes and reported clean, while the importer — the

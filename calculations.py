@@ -1203,24 +1203,37 @@ def compare_scenarios(scenarios):
     # Best on the cost-of-living-adjusted figure, and only where EVERY scenario
     # has one — ranking a set where some rows could not be adjusted would be
     # comparing two different measures and calling one of them the winner.
-    comparable = [r for r in rows if r["real_take_home"] is not None]
+    comparable = [i for i, r in enumerate(rows) if r["real_take_home"] is not None]
     usable = len(comparable) == len(rows) and len(rows) > 1
-    best = max(comparable, key=lambda r: r["real_take_home"])["name"] if usable else None
+    best_i = (max(comparable, key=lambda i: rows[i]["real_take_home"])
+              if usable else None)
 
     # The winner on RAW take-home as well, so the page can say whether the
     # cost-of-living adjustment actually changed the answer. Without it the
     # copy has to guess, and it guessed wrong: it claimed take-home "would rank
     # these differently" on a pair where the same city won both ways.
-    best_take_home = (max(rows, key=lambda r: r["annual_take_home"])["name"]
-                      if len(rows) > 1 else None)
+    best_th_i = (max(range(len(rows)), key=lambda i: rows[i]["annual_take_home"])
+                 if len(rows) > 1 else None)
 
+    # THE INDEX IS THE IDENTITY; THE NAME IS ONLY THE LABEL. Names are typed by
+    # the reader and are not unique — the page generates "Scenario N" from the
+    # count, so removing one and adding another produces two columns called the
+    # same thing without anybody typing a duplicate. Returning only a name made
+    # `best` match EVERY column carrying it, and the page painted the winner's
+    # colour on all of them: measured, a $49,438 column and a $133,988 column
+    # were both marked best in the same table. The names are kept because the
+    # verdict sentence reads them aloud.
     return {
         "rows": rows,
         "baseline": base["name"],
-        "best": best,
-        "best_take_home": best_take_home,
+        "best": rows[best_i]["name"] if best_i is not None else None,
+        "best_index": best_i,
+        "best_take_home": rows[best_th_i]["name"] if best_th_i is not None else None,
+        "best_take_home_index": best_th_i,
         # True only where the adjustment moves the winner, not merely the gap.
-        "col_changes_answer": bool(usable and best != best_take_home),
+        # Compared by INDEX, or a set where the leader on both measures happens
+        # to share a name with another column reads as though nothing moved.
+        "col_changes_answer": bool(usable and best_i != best_th_i),
         "all_comparable": len(comparable) == len(rows),
     }
 

@@ -447,6 +447,66 @@ actually sends (deliberately, so typing on the Income page does not refetch),
 `/compare` and `/year` key on the request payload itself, and the importer's
 omission of `existing` cannot bite because committing calls `reset()`.
 
+### 10. A column's identity is its POSITION, and a table stacks when it
+### would hide one — not when the window is small
+
+Both halves of this came off `/compare`, and both had been shipping since the
+re-skin, invisible because **the served demo ships no `scenarios`**: the page
+renders its empty state, so the side-by-side table — the whole reason the
+screen exists — was never once rendered during a check. `sweep.mjs` and
+`mobile.mjs` both walk the route, at ten widths between them, and both were
+right to report it clean. The importer's lesson (a sweep does not see what is
+behind a button) one step further on: there the button revealed the table, here
+it creates it.
+
+**A name is a label; the index is the identity.** The page numbers new
+scenarios `Scenario ${scenarios.length + 1}`, so add two, remove the first, add
+again and there are two "Scenario 2" — a duplicate nobody typed. The table
+keyed its columns on `r.name` and marked the winner with `result.best === r.name`,
+so React reported eleven duplicate-key errors and the winner's green landed on
+**every** column carrying the winning name: measured, a $49,438 column and a
+$133,988 column both painted best in one table. The engine returns
+`best_index` and `best_take_home_index` now and the paint follows them; keys are
+positional. `col_changes_answer` compares by index too, or a flipped winner
+between two columns sharing a label reports "nothing changed" — the assertion
+for that fails against the old code with `changed=False best=0 raw=1`.
+Generated names also skip what is taken, including the baseline's own label, so
+the collision no longer arises; a name the reader types twice is allowed and now
+renders correctly.
+
+**One column per scenario means the width the table needs is DATA.** So no
+fixed breakpoint is right for it. Measured, with the two text rows wrapping:
+3 columns fit from 323px, 4 from 424px, 5 from 525px, 6 from 738px. Stacking at
+640 like the importer would still hide a column from four scenarios between 640
+and 737, and would stack a single scenario at 375px where the grid fits and
+reads better — which is what the page is for. So the page measures its own
+scroller and sets `table-stacked` when the grid would overflow it. Before that:
+171px of a 504px table off screen at 375px with two scenarios, 313px with
+three, the clipped edge reading **"$105," and "$70,"** — a truncated number that
+still reads as a number, for the fourth time in this codebase.
+
+Three things about that measurement:
+
+- **It is layout, not arithmetic.** No figure on the page comes from it; rule 2
+  holds exactly as it does for the Sankey's ribbon heights.
+- **It cannot paint the wrong thing first**, which is the objection that sent
+  the Sankey to CSS. The table exists only after `/api/compare` answers, so
+  there is no server render of it to disagree with, and the measurement runs in
+  a layout effect — before the browser paints. `useMeasure` is the ordinary
+  effect on the server, where React warns if you ask for the layout variant.
+- **The needed width is remembered, because only a rendered GRID can report
+  it.** Stacked, the table is `display: block` and its `scrollWidth` is merely
+  the scroller's own width, so a naive re-measure could never unstack. It is
+  dropped whenever the set of columns changes.
+- **`whitespace-nowrap` came off the two text rows.** Money and rates must
+  never break across lines; a city and a state may, and letting them is worth
+  ~100px a column — three scenarios fit a 525px window instead of a 783px one.
+
+`.table-stacked` and `.table-cards` are two blocks with the same declarations
+under different gates, because a media query cannot add a class and a class
+cannot carry a media query. `compare.mjs` asserts the two produce the same
+computed layout property for property, so they cannot drift.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944

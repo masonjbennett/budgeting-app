@@ -17,7 +17,7 @@
  * things worth varying live.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Empty, Field, NumberInput, Section } from "@/components/Field";
 import Footer from "@/components/Footer";
@@ -32,6 +32,12 @@ import {
 } from "@/lib/api";
 
 const BASELINE_NAME = "As you are now";
+
+/* A layout effect on the client, an ordinary one on the server — where it does
+   nothing either way and React warns if you ask for the layout variant. The
+   measurement below has to run BEFORE the browser paints, or the reader sees
+   one frame of the grid it is about to replace. */
+const useMeasure = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export default function ComparePage() {
   const { profile, update } = useFinance();
@@ -81,10 +87,69 @@ export default function ComparePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  const rows = result?.rows ?? [];
+
+  /* WHEN THE GRID WOULD HIDE A COLUMN, STACK IT.
+
+     One column per scenario, so the width this table needs is DATA and no
+     fixed breakpoint can be right for it. Measured: 3 columns fit from 323px,
+     4 from 424px, 5 from 525px, 6 from 738px. Stacking at 640 like the
+     importer would still hide a column from four scenarios between 640 and
+     737, and would stack a single scenario at 375px where the grid fits and
+     reads better side by side, which is what the page is for.
+
+     `needed` is remembered because only a rendered GRID can say what the grid
+     needs — stacked, the table is `display: block` and its scrollWidth is
+     merely the scroller's own width. It is dropped whenever the set of columns
+     changes, so the next measurement is taken fresh.
+
+     This is a measurement, not arithmetic: no figure on the page comes from
+     it. And unlike the Sankey's phone rendering it cannot paint the wrong
+     thing first — the table exists only after `/api/compare` answers, so
+     there is no server render of it to disagree with. */
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const [stacked, setStacked] = useState(false);
+  const needed = useRef(0);
+  // JSON, not a joined string: a separator has to be a character no
+  // scenario name can contain, and every one of them can be typed.
+  const headKey = JSON.stringify(rows.map((r) => r.name));
+
+  useMeasure(() => {
+    needed.current = 0;
+    setStacked(false);
+  }, [headKey]);
+
+  useMeasure(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const decide = () => {
+      if (!stacked) needed.current = el.scrollWidth;
+      setStacked(needed.current > el.clientWidth);
+    };
+    decide();
+    const ro = new ResizeObserver(decide);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [stacked, headKey]);
+
   if (!profile) return <div className="skeleton h-96" />;
 
   const cities = ref ? Object.keys(ref.col_index) : [baselineCity];
   const setScenarios = (next: Scenario[]) => update({ scenarios: next });
+
+  /* Numbering off the COUNT collided without anybody typing a duplicate: add
+     two, remove the first, add again, and there are two "Scenario 2". The
+     table keyed its columns on the name, so React reported duplicate keys and
+     the winner's colour landed on every column carrying the winning name. The
+     index fixes the paint (see `best_index`); this stops the collision arising
+     in the first place. The baseline's own label is taken too — a scenario
+     called "As you are now" makes the verdict sentence ambiguous. */
+  const nextName = () => {
+    const taken = new Set<string>([BASELINE_NAME, ...scenarios.map((s) => s.name)]);
+    let n = scenarios.length + 1;
+    while (taken.has(`Scenario ${n}`)) n++;
+    return `Scenario ${n}`;
+  };
 
   const addScenario = () =>
     setScenarios([
@@ -92,7 +157,7 @@ export default function ComparePage() {
       {
         // A copy of where you are now is the only sensible starting point:
         // the whole exercise is changing ONE thing and seeing what it does.
-        name: `Scenario ${scenarios.length + 1}`,
+        name: nextName(),
         income: { ...profile.income },
         city: baselineCity,
       },
@@ -103,8 +168,6 @@ export default function ComparePage() {
 
   const patchIncome = (i: number, p: Partial<Scenario["income"]>) =>
     patch(i, { income: { ...scenarios[i].income, ...p } });
-
-  const rows = result?.rows ?? [];
 
   return (
     <div>
@@ -169,7 +232,7 @@ export default function ComparePage() {
                   <div className="flex-1" />
                   <button
                     onClick={() => setScenarios(scenarios.filter((_, j) => j !== i))}
-                    aria-label={`Remove ${s.name}`}
+                    aria-label={`Remove ${s.name.trim() || `scenario ${i + 1}`}`}
                     className="btn-remove"
                   >
                     ✕
@@ -244,13 +307,17 @@ export default function ComparePage() {
 
       {rows.length > 1 && !error && (
         <Section title="Side by side">
-          <div className="card card-flush overflow-x-auto">
-            <table>
+          <div ref={scroller} className="card card-flush overflow-x-auto">
+            <table className={stacked ? "table-stacked" : undefined}>
               <thead>
                 <tr>
                   <th>Measure</th>
-                  {rows.map((r) => (
-                    <th key={r.name} className="text-right">
+                  {rows.map((r, i) => (
+                    // Keyed on the POSITION, not the name. Two columns can
+                    // legitimately carry one name — the reader types them —
+                    // and React reported duplicate keys for eleven elements
+                    // the first time two "Scenario 2" appeared.
+                    <th key={i} className="text-right">
                       {r.name}
                     </th>
                   ))}
@@ -259,24 +326,33 @@ export default function ComparePage() {
               <tbody>
                 {(
                   [
-                    ["Where", (r: (typeof rows)[number]) => `${r.city}`],
-                    ["State tax rules", (r: (typeof rows)[number]) => r.state],
-                    ["Gross salary", (r: (typeof rows)[number]) => fmt(r.gross)],
-                    ["Total tax", (r: (typeof rows)[number]) => fmt(r.total_tax)],
-                    ["Effective rate", (r: (typeof rows)[number]) => pct(r.effective_rate)],
+                    // `wrap` marks the cells that are WORDS. Money and rates
+                    // must never break across lines; a city and a state may,
+                    // and letting them is worth ~100px a column — enough that
+                    // three scenarios fit a 525px window instead of a 783px one.
+                    ["Where", (r: (typeof rows)[number]) => `${r.city}`, true],
+                    ["State tax rules", (r: (typeof rows)[number]) => r.state, true],
+                    ["Gross salary", (r: (typeof rows)[number]) => fmt(r.gross), false],
+                    ["Total tax", (r: (typeof rows)[number]) => fmt(r.total_tax), false],
+                    ["Effective rate", (r: (typeof rows)[number]) => pct(r.effective_rate), false],
                     [
                       "Marginal (fed + state)",
                       (r: (typeof rows)[number]) =>
                         `${pct(r.marginal_fed, 0)} + ${pct(r.marginal_state, 2)}`,
+                      false,
                     ],
-                    ["Take-home", (r: (typeof rows)[number]) => fmt(r.annual_take_home)],
-                    ["Per month", (r: (typeof rows)[number]) => fmt(r.monthly_take_home)],
+                    ["Take-home", (r: (typeof rows)[number]) => fmt(r.annual_take_home), false],
+                    ["Per month", (r: (typeof rows)[number]) => fmt(r.monthly_take_home), false],
                   ] as const
-                ).map(([label, render]) => (
+                ).map(([label, render, wrap]) => (
                   <tr key={label}>
                     <td className="text-ink">{label}</td>
-                    {rows.map((r) => (
-                      <td key={r.name} className="font-num text-right whitespace-nowrap">
+                    {rows.map((r, i) => (
+                      <td
+                        key={i}
+                        data-label={r.name}
+                        className={`font-num text-right${wrap ? "" : " whitespace-nowrap"}`}
+                      >
                         {render(r)}
                       </td>
                     ))}
@@ -292,14 +368,24 @@ export default function ComparePage() {
                       take-home ÷ the local cost of living
                     </span>
                   </td>
-                  {rows.map((r) => (
-                    <td key={r.name} className="font-num text-right whitespace-nowrap">
+                  {rows.map((r, i) => (
+                    <td
+                      key={i}
+                      data-label={r.name}
+                      className="font-num text-right whitespace-nowrap"
+                    >
                       {r.real_take_home === null ? (
                         <span className="text-muted">not indexed</span>
                       ) : (
                         <span
                           className={
-                            result?.best === r.name ? "font-medium text-positive" : "text-ink"
+                            // By index. `result.best === r.name` marked EVERY
+                            // column sharing the winner's name: measured, a
+                            // $49,438 column and a $133,988 column were both
+                            // painted the winner in one table.
+                            result?.best_index === i
+                              ? "font-medium text-positive"
+                              : "text-ink"
                           }
                         >
                           {fmt(r.real_take_home)}
@@ -313,12 +399,23 @@ export default function ComparePage() {
                     Difference
                     <span className="t-micro block">against {result?.baseline}</span>
                   </td>
-                  {rows.map((r) => (
-                    <td key={r.name} className="font-num text-right whitespace-nowrap">
+                  {rows.map((r, i) => (
+                    <td
+                      key={i}
+                      data-label={r.name}
+                      className="font-num text-right whitespace-nowrap"
+                    >
                       {r.vs_baseline_real === null ? (
                         "—"
-                      ) : Math.abs(r.vs_baseline_real) < 0.5 ? (
+                      ) : i === 0 ? (
+                        // The baseline names itself. A SCENARIO within 50c of
+                        // it has no difference to report, which is not the same
+                        // claim — and since a new scenario is a copy of the
+                        // baseline, "baseline" in both columns was the first
+                        // thing anyone saw after adding one.
                         <span className="text-muted">baseline</span>
+                      ) : Math.abs(r.vs_baseline_real) < 0.5 ? (
+                        <span className="text-muted">no change</span>
                       ) : (
                         <span
                           className={

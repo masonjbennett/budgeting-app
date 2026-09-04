@@ -208,8 +208,12 @@ export interface Comparison {
   baseline: string | null;
   /** null unless EVERY row could be cost-of-living adjusted. */
   best: string | null;
+  /** Which ROW won. Names are typed by the reader and are not unique, so the
+   *  paint has to follow the index — a name matched every column carrying it. */
+  best_index: number | null;
   /** The winner on RAW take-home, so the page can say whether adjusting moved it. */
   best_take_home: string | null;
+  best_take_home_index: number | null;
   /** True only where the adjustment changes the winner, not merely the gap. */
   col_changes_answer: boolean;
   all_comparable: boolean;

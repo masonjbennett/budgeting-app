@@ -406,6 +406,61 @@
     .table-cards td[data-label="Line"] { display: none; }
   }
 
+  /* The same card layout, gated by MEASUREMENT rather than by a breakpoint.
+
+     `table-cards` above answers "is this a phone", which is the right question
+     for the importer: its columns are controls and they never fit one however
+     few rows there are. The comparison table asks a different question, because
+     the width it needs is DATA — one column per scenario, unbounded. Measured
+     with the two text rows wrapping: 3 columns fit from 323px, 4 from 424px,
+     5 from 525px, 6 from 738px. No fixed breakpoint is right for all of those;
+     640 would leave four scenarios hiding a column between 640 and 737, and
+     would stack a single scenario at 375px where the grid fits and reads better.
+
+     So `/compare` sets this class itself when the grid would overflow its
+     scroller, and the rule is exactly that: stack when a column would be hidden.
+     Two blocks rather than one because a media query cannot add a class and a
+     class cannot carry a media query — `compare-stacking` in browser-checks
+     asserts the two produce the same computed layout, so they cannot drift. */
+  .table-stacked thead { display: none; }
+  .table-stacked,
+  .table-stacked tbody,
+  .table-stacked tr,
+  .table-stacked td { display: block; width: 100%; }
+  .table-stacked tr {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .table-stacked tbody tr:last-child { border-bottom: none; }
+  .table-stacked td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+    border-bottom: none;
+    max-width: none;
+  }
+  .table-stacked td::before {
+    content: attr(data-label);
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  /* The measure is the card's HEADING, not a value in it: it is the one cell
+     with no column above it, so it takes the whole line and stays left. Left
+     because `justify-content: space-between` against an empty ::before would
+     push it to the right edge, which reads as another right-aligned figure. */
+  .table-stacked td:not([data-label]) {
+    display: block;
+    padding-bottom: 6px;
+  }
+  .table-stacked td:not([data-label])::before { content: none; }
+
   hr { border: none; border-top: 1px solid var(--hair); margin: 0; }
 
   /* ── Focus ── */
