@@ -58,7 +58,7 @@ set worth running after any change under `src/`.
 | `bigimport.mjs` | Measures the importer on a year-sized file. Reports DOM size, page height, and tick-to-paint. |
 | `bigcorrect.mjs` | Paging and filtering must not change WHAT gets imported — walks every page, then commits and counts what actually landed. **11 assertions.** |
 | `mobile.mjs` | The phone, as NUMBERS: every text-entry control is >= 16px on a coarse pointer (and still 14px on a mouse), no section slug overflows or loses its hairline, no page scrolls sideways at any of TEN widths (320/360/375/390/414/639/640/768/1024/1440 — a responsive bug does not live at the widths people pick, and `/goals` overflowed in a 50px band nothing sampled), no table scrolls sideways from 360px up, nothing is under 24x24, and **the importer — which is behind a button, so a route sweep never opens it** — stacks into cards with every field labelled. It also checks the surfaces that exist ONLY on a phone — the importer's cards and the cash-flow list that replaces the Sankey — **in both themes**, which `sweep.mjs` cannot: it does both themes at desktop width only. `--selftest` injects a fault for each of the six and requires it to fire. **33 assertions.** |
-| `streamlit.mjs` | The Streamlit front end still renders every page against the shared engine. Run before pushing anything that touches `calculations.py`. |
+| `streamlit.mjs` | The Streamlit front end still renders every page against the shared engine. Run before pushing anything that touches `calculations.py`. **Takes `BASE`**, so it can check the DEPLOYED fallback and not just localhost — `BASE=https://masonbennett-budget.streamlit.app`. Streamlit Cloud frames the app at `<host>/~/+/` and leaves the outer document empty, so the suffix is added for you; a probe pointed at the bare host measures nothing and calls a healthy app dead. **17 assertions.** |
 
 ## Three things that cost a cycle each
 
@@ -104,6 +104,24 @@ this project keeps meeting. Cropped at 6x device scale it reads `2026-09-01`
 in full: the 2px overhang is the glyph's trailing side bearing, which is
 inside the advance width and carries no ink. Measure the pixels before
 believing the rectangle.
+
+**A backup is only a backup if something checks it.** `streamlit.mjs` was
+hardcoded to `localhost:8502`, so it verified the CODE and had never once
+looked at the live fallback — the thing that is supposed to catch a Vercel
+outage. It takes `BASE` now. Live result: **17/17, 308 widgets, 0 Python
+exceptions, all eleven pages.**
+
+**Sleep-then-assert is not a wait.** That same first live run reported "0
+plotly charts" on a dashboard that draws four. The check paused a flat 5s
+after `stApp` — ample against localhost, not against a deployment waking from
+sleep. Measured on the warm app: charts appear 2s after `stApp`. It polls for
+them now, with a timeout, so it still reads 0 and fails if they never come.
+
+**A dead app is a failed check, not a stack trace.** Pointed at a URL with no
+app behind it, the boot wait threw an unhandled TimeoutError. It exited
+non-zero, so it did fail — but a wall of puppeteer internals leaves the next
+reader working out whether the app or the check is broken. Verified both ways:
+a dead host now prints one FAIL line, the live one prints 17 passes.
 
 **A route sweep does not see what is behind a button.** The first version of
 `mobile.mjs` walked all 13 routes and reported clean, while the importer — the

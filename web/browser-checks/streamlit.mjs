@@ -1,14 +1,29 @@
 /**
  * The Streamlit app still works against the modified engine.
  *
- * masonbennett-budget.streamlit.app is the live recruiter-safe link, it
- * auto-deploys from master, and it shares `calculations.py` with the web app.
- * So any change to the engine can take it down, and CLAUDE.md is explicit that
- * a green import proves nothing about it: Streamlit re-runs the script in a
- * long-lived process, so `import calculations` can hand back the copy already
- * in sys.modules. The check has to be a real page load, on every page.
+ * masonbennett-budget.streamlit.app auto-deploys from master and shares
+ * `calculations.py` with the web app, so any change to the engine can take it
+ * down. CLAUDE.md is explicit that a green import proves nothing about it:
+ * Streamlit re-runs the script in a long-lived process, so `import
+ * calculations` can hand back the copy already in sys.modules. The check has
+ * to be a real page load, on every page.
  *
  * Run it before pushing anything that touches calculations.py.
+ *
+ * IT IS THE FALLBACK NOW, NOT THE RECRUITER LINK — this header used to say the
+ * opposite, and it stopped being true on 3 Sep 2026 when
+ * budget.masonjbennett.com became the primary. That matters for what this
+ * check is FOR: a backup is only a backup if it works, so `BASE` points it at
+ * the DEPLOYMENT as well as at localhost. It was hardcoded to localhost:8502
+ * and had therefore never once looked at the live app.
+ *
+ *   node streamlit.mjs                                    # local, port 8502
+ *   BASE=https://masonbennett-budget.streamlit.app node streamlit.mjs
+ *
+ * Streamlit Cloud serves the app inside an iframe at `<host>/~/+/` and leaves
+ * the outer document empty, so a probe pointed at the bare host measures
+ * nothing and reports it as a dead app. The suffix is added here rather than
+ * being something the caller has to know.
  */
 import { mkdirSync } from "node:fs";
 import puppeteer from "puppeteer-core";
@@ -42,12 +57,44 @@ await page.setViewport({ width: 1500, height: 1000 });
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 
-await page.goto("http://localhost:8502", { waitUntil: "networkidle0", timeout: 120000 });
-await page.waitForFunction(
-  () => document.querySelectorAll('[data-testid="stApp"]').length > 0,
-  { timeout: 90000 },
-);
-await new Promise((r) => setTimeout(r, 5000));
+const RAW = process.env.BASE ?? "http://localhost:8502";
+// Streamlit Cloud frames the app; localhost serves it directly.
+const TARGET = /streamlit\.app/.test(RAW) && !/~\/\+/.test(RAW)
+  ? RAW.replace(/\/+$/, "") + "/~/+/"
+  : RAW;
+console.log(`  target: ${TARGET}`);
+await page.goto(TARGET, { waitUntil: "networkidle0", timeout: 120000 });
+/* An app that never boots is a FAILED CHECK, not a stack trace. Pointed at a
+   URL with no app behind it this threw an unhandled TimeoutError — it did
+   exit non-zero, so it failed, but a wall of puppeteer internals is not a
+   report and the next reader has to work out whether the app or the check is
+   broken. */
+const booted = await page
+  .waitForFunction(() => document.querySelectorAll('[data-testid="stApp"]').length > 0,
+                   { timeout: 90000 })
+  .then(() => true)
+  .catch(() => false);
+if (!booted) {
+  check("the app boots at all", false, `no [data-testid="stApp"] at ${TARGET} after 90s`);
+  await browser.close();
+  console.log(`\nSTREAMLIT: ${pass} passed, ${fails.length} failed`);
+  process.exit(1);
+}
+/* WAIT for the charts, do not sleep and hope.
+
+   This was a flat 5s pause, which is ample against localhost and not against
+   a deployment waking from sleep: pointed at the live app for the first time
+   it reported "0 plotly charts" on a dashboard that draws four. Measured
+   afterwards on the warm app, they appear 2s after `stApp` — so the check was
+   impatient, the app was fine, and the failure was about cold start.
+
+   Polling keeps it able to fail: if the charts never arrive the wait times
+   out and the assertion below still reads 0. */
+await page
+  .waitForFunction(() => document.querySelectorAll(".js-plotly-plot").length > 0,
+                   { timeout: 60000 })
+  .catch(() => {});
+await new Promise((r) => setTimeout(r, 2500));
 
 const first = await page.evaluate(() => ({
   widgets: document.querySelectorAll('[data-testid^="st"]').length,
