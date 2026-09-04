@@ -73,6 +73,23 @@ export default function FirePage() {
 
   const [result, setResult] = useState<MonteCarlo | null>(null);
   const [ss, setSs] = useState<SocialSecurity | null>(null);
+  /* The settings the simulation on screen was actually run with.
+
+     Without this the results block reads from LIVE state while its numbers
+     come from a stored run, and the two drift apart the moment anything is
+     touched. Measured before this existed: changing "Plan through age" from
+     95 to 100 rewrote the success card to "Money left at age 100 in 966 of
+     1,000 paths" — a sentence describing a simulation that was never run, and
+     a horizon five years longer than the one those 966 paths survived.
+     Moving the stock allocation from 80% to 20% moved the curve above (7
+     months sooner -> 11) and left the success rate at the 80% run's 97%, so
+     the page showed a deterministic curve for one portfolio beside a
+     simulation of another. `setResult` was only ever called on success and
+     never cleared, and nothing on screen said so. */
+  const [ranWith, setRanWith] = useState<{
+    currentAge: number; retireAge: number; endAge: number;
+    stockPct: number; inflation: number; nSims: number;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,6 +151,7 @@ export default function FirePage() {
       ]);
       setResult(mc);
       setSs(social);
+      setRanWith({ currentAge, retireAge, endAge, stockPct, inflation, nSims });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Simulation failed");
     }
@@ -141,6 +159,22 @@ export default function FirePage() {
   };
 
   const ordered = retireAge > currentAge && endAge > retireAge;
+
+  /* Which settings have moved since the run on screen.
+
+     Named rather than counted, because "your settings changed" leaves the
+     reader hunting for which one — and the whole point is that the numbers
+     below belong to the old value. Comparison, not arithmetic: nothing here
+     derives a figure, it decides what to say. */
+  const drift: string[] = [];
+  if (ranWith) {
+    if (ranWith.currentAge !== currentAge) drift.push("current age");
+    if (ranWith.retireAge !== retireAge) drift.push("retirement age");
+    if (ranWith.endAge !== endAge) drift.push("plan-through age");
+    if (ranWith.stockPct !== stockPct) drift.push("stock allocation");
+    if (ranWith.inflation !== inflation) drift.push("inflation");
+    if (ranWith.nSims !== nSims) drift.push("number of simulations");
+  }
   // A budget with nothing in it gives a FIRE number of zero, which is
   // arithmetically right and useless as a headline. The page says so instead.
   const noBudget = !!fire && fire.annual_expenses <= 0;
@@ -417,6 +451,24 @@ export default function FirePage() {
 
       {result && (
         <div className="animate-fade-in">
+          {drift.length > 0 && (
+            /* The results are kept rather than cleared, so two settings can be
+               compared — but a stored answer sitting under changed controls is
+               the page arguing with itself, which is the one thing the curve
+               and the simulation were built not to do. Saying which settings
+               moved is the difference between a stale number and a wrong one. */
+            <div className="card mark-caution t-small mb-4 text-body">
+              These results are the previous run. Since then you changed the{" "}
+              <span className="text-ink">
+                {drift.length === 1
+                  ? drift[0]
+                  : `${drift.slice(0, -1).join(", ")} and ${drift[drift.length - 1]}`}
+              </span>{" "}
+              — the curve above
+              has followed, and the figures below have not. Run it again to bring
+              them back together.
+            </div>
+          )}
           <Section title={`Results · ${result.n_sims.toLocaleString()} scenarios`}>
             <div className="stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <StatusCard
@@ -436,7 +488,10 @@ export default function FirePage() {
                       ? "caution"
                       : "critical"
                 }
-                description={`Money left at age ${endAge} in ${result.success_count.toLocaleString()} of ${result.n_sims.toLocaleString()} paths.`}
+                /* `ranWith.endAge`, never the live `endAge`: these counts
+                   are the stored run's, and quoting a horizon the run did not
+                   use makes the sentence describe a simulation nobody ran. */
+                description={`Money left at age ${ranWith ? ranWith.endAge : endAge} in ${result.success_count.toLocaleString()} of ${result.n_sims.toLocaleString()} paths.`}
               />
               <BigFigure label="Median ending" value={result.median_ending} />
               <BigFigure
@@ -497,7 +552,8 @@ export default function FirePage() {
                 note={
                   <>
                     The two charts above show the RANGE; this shows the shape. Bars in
-                    claret are paths that ran out of money before age {endAge} —{" "}
+                    claret are paths that ran out of money before age{" "}
+                    {ranWith ? ranWith.endAge : endAge} —{" "}
                     {(result.n_sims - result.success_count).toLocaleString()} of{" "}
                     {result.n_sims.toLocaleString()}. A run can have a comfortable median
                     and a long tail of failures, and a band chart hides that.

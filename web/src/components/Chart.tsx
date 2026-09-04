@@ -393,7 +393,16 @@ export function FanChart({
 
   return (
     <Card title={title} height={height}>
-      <AreaChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+      {/* top: 20, not 8, because THIS chart carries a `position: "top"`
+          reference label and the others do not.
+
+          Recharts puts that label ABOVE the plot area, and the surface is
+          `overflow: hidden`. With 8px of headroom against a 13px label,
+          "Retirement" was measured starting 7px above the SVG's own top edge
+          — more than half of it clipped, so the glyph tops were sliced and it
+          read as nonsense. Unlike the axis date that looked cut and was not,
+          this one loses real ink. */}
+      <AreaChart data={data} margin={{ top: 20, right: 12, left: 4, bottom: 4 }}>
         <CartesianGrid stroke={p.hairSoft} vertical={false} />
         <XAxis dataKey="age" {...AXIS} tickLine={false} axisLine={{ stroke: p.hair }} />
         <YAxis {...AXIS} tickFormatter={money} tickLine={false} axisLine={false} width={58} />

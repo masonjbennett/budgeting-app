@@ -784,3 +784,54 @@ wrong reason and would have missed the real version.
 Counts: selftest 5/5 -> **6/6**, sweep 130, interact 63, regression 21,
 mobile 35, big 11; Python unchanged at 521 + 33 mutations.
 
+## Sep 4 2026 — /fire was arguing with itself (web/)
+
+The most complex page, gone over on Mason's pick. Two real defects, both of
+the kind this project keeps meeting: a page ASSERTING something it had not
+computed.
+
+- **The Monte Carlo results were stale, and the sentences under them were
+  MISLABELLED.** `/fire` runs the simulation behind a button while the
+  savings-rate curve above refetches on a 220ms debounce; `setResult` was only
+  ever called on success and never cleared. So the page's own documented claim
+  — "the deterministic curve and the stochastic simulation on one page
+  describe ONE world, move the slider and both follow" — held only until you
+  pressed Run. **Measured: allocation 80% -> 20% moved the curve (7 months
+  sooner -> 11) and left the success rate at the 80% run's 97%.**
+  The worse half is that two sentences read `age ${endAge}` from LIVE STATE
+  beside counts from the stored run, so changing the horizon 95 -> 100
+  produced **"Money left at age 100 in 966 of 1,000 paths"** — a simulation
+  nobody ran, over a horizon five years longer than those 966 paths survived.
+  The same defect sat in the histogram's note.
+  Fixed with `ranWith`, the settings the run on screen actually used; both
+  sentences quote those and never the controls. The block is KEPT rather than
+  cleared so two settings can be compared, and a caution banner NAMES the
+  inputs that moved — "your settings changed" would leave the reader hunting
+  for which one, and the point is that the numbers belong to the old value.
+  Verified by driving: 10 assertions covering appears / names only what moved
+  / accumulates a second change / disappears when the settings are put back /
+  clears on re-run with the card then quoting the NEW horizon.
+- **"Retirement" was cut in half by the chart it lives in.** Recharts draws a
+  `position: "top"` reference label ABOVE the plot area and the surface is
+  `overflow: hidden`; the fan chart had `margin.top: 8` against a 13px label,
+  so the label started **7px above the SVG's own top edge** and its glyph tops
+  were sliced. It read as nonsense on the app's headline chart. `margin.top`
+  is 20 now.
+  **This is the opposite verdict to yesterday's axis-date finding and the
+  distinction is the point**: that one overhung horizontally by 2px, which is
+  the glyph's trailing side bearing and carries no ink (confirmed at 6x). This
+  one loses real ink vertically. `sweep.mjs` now reports VERTICAL overhang
+  only, over every text node in every chart: **261 across 13 routes, 0
+  clipped** after the fix. Sweep 130 -> **156**, selftest 6/6 -> **7/7**.
+  The selftest's first version translated a label by a fixed -14px and did not
+  fire — the label it grabbed was nowhere near the top edge, so it reported
+  the CHECK broken when the FAULT was. It computes the shift now.
+
+Also driven and found sound: the age-ordering guard (Run disabled with a
+warning naming the rule), and the state where results are already on screen
+when the ages become invalid — banner and warning both show, consistently, no
+console errors.
+
+Counts: selftest **7/7**, sweep **156**, interact 63, regression 21, mobile 35,
+big 11; Python unchanged at 521 + 33 mutations.
+

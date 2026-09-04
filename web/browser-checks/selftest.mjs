@@ -49,6 +49,23 @@ const FAULTS = [
     svg.querySelectorAll("path,rect,circle,line,g").forEach((n) => n.remove());
   }, (r) => r.emptyCharts.length > 0],
 
+  ["a chart label clipped by its own surface", () => {
+    // Recharts draws a `position: "top"` reference label ABOVE the plot area
+    // and the surface is overflow:hidden, so a chart whose top margin is
+    // smaller than the label slices it silently. The fan chart's
+    // "Retirement" was cut by 7px of its 13 and read as nonsense.
+    const svg = document.querySelector(".recharts-wrapper svg");
+    const t = svg.querySelector("text");
+    // Compute the shift rather than guessing one. A fixed -14px was the first
+    // version and did not fire: the label it happened to grab was nowhere
+    // near the surface's top edge, so nothing was clipped and the selftest
+    // reported the CHECK broken when the fault was.
+    const q = t.getBoundingClientRect();
+    const R = svg.getBoundingClientRect();
+    const shift = q.top - R.top + Math.round(q.height * 0.7);
+    t.setAttribute("transform", `translate(0,${-shift})`);
+  }, (r) => r.clippedLabels.length > 0],
+
   ["off-palette chart colour", () => {
     const p = document.querySelector(".recharts-wrapper svg path");
     p.setAttribute("fill", "#ff00ff");

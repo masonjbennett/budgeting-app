@@ -355,6 +355,28 @@ before the table fits — a gap invisible at any width anyone would think to try
 And it OPENS THE IMPORTER, because the first version of it walked routes only
 and therefore never saw the worst table in the app.
 
+### 9. A stored answer under changed controls is the page arguing with itself
+
+`/fire` runs its Monte Carlo behind a button while the savings-rate curve
+above it refetches on a 220ms debounce. `setResult` was only ever called on
+success and never cleared, so the two drifted apart the moment anything was
+touched — against this app's own documented claim that "the deterministic
+curve and the stochastic simulation on one page describe ONE world".
+
+Measured: moving the stock allocation from 80% to 20% moved the curve (7
+months sooner → 11) and left the success rate at the 80% run's 97%. **Worse
+than stale, the results were MISLABELLED** — the success card's sentence read
+`Money left at age ${endAge}` from LIVE state beside counts from the stored
+run, so changing the horizon 95 → 100 produced *"Money left at age 100 in 966
+of 1,000 paths"*: a sentence describing a simulation that was never run, over
+a horizon five years longer than those 966 paths survived.
+
+The run's own settings are captured in `ranWith` and the descriptions quote
+those, never the controls. The block is KEPT rather than cleared, so two
+settings can still be compared, and a caution banner names exactly which
+inputs moved — "your settings changed" would leave the reader hunting for
+which one, and the point is that the numbers belong to the old value.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944

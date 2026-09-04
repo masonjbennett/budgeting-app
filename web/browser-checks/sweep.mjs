@@ -11,6 +11,7 @@
  *   - every chart has <path> elements (Recharts leaves a pie's sectors as
  *     empty groups when an entry animation does not complete);
  *   - every colour a chart paints with is a palette token, not a literal;
+ *   - no chart label loses ink to its own `overflow: hidden` surface;
  *   - no console errors.
  *
  * Run:  node sweep.mjs [--theme=dark] [--only=/year]
@@ -219,10 +220,36 @@ const PROBE = () => {
     }
   }
 
+  /* ── A chart label that loses ink to its own surface ──
+     Recharts draws a `position: "top"` reference label ABOVE the plot area,
+     and the surface is `overflow: hidden`. A chart whose top margin is
+     smaller than the label therefore slices it and says nothing: the fan
+     chart's "Retirement" was cut by 7px of its 13, so the glyph tops were
+     gone and it read as nonsense.
+
+     VERTICAL overhang only. A horizontal pixel or two is the glyph's
+     trailing side bearing, which carries no ink — measured at 6x device
+     scale on the axis dates, which looked clipped and were not. */
+  const clippedLabels = [];
+  for (const svg of document.querySelectorAll("svg")) {
+    if (getComputedStyle(svg).overflow !== "hidden") continue;
+    const R = svg.getBoundingClientRect();
+    if (R.width === 0) continue;
+    for (const t of svg.querySelectorAll("text")) {
+      const q = t.getBoundingClientRect();
+      if (q.width === 0 || q.height === 0) continue;
+      const lost = Math.max(Math.round(R.top - q.top), Math.round(q.bottom - R.bottom));
+      if (lost > 2) {
+        clippedLabels.push(`"${(t.textContent || "").trim().slice(0, 20)}" cut ${lost}px`);
+      }
+    }
+  }
+
   return {
     unresolved, low, textNodes,
     svgCount: svgs.length, emptyCharts,
     offPalette: [...new Set(offPalette)],
+    clippedLabels,
   };
 };
 
@@ -274,6 +301,8 @@ for (const theme of THEMES) {
           res.low.slice(0, 3).map((l) => `"${l.text}" ${l.ratio}:1 ${l.color}`).join(" | "));
     check(`${tag}: no chart is empty (${res.svgCount} charts)`,
           res.emptyCharts.length === 0, res.emptyCharts.join(" | "));
+    check(`${tag}: no chart label is clipped by its own surface`,
+          res.clippedLabels.length === 0, res.clippedLabels.slice(0, 3).join(" | "));
     check(`${tag}: charts paint only palette colours`,
           res.offPalette.length === 0, res.offPalette.slice(0, 4).join(" | "));
     check(`${tag}: no console errors`, errors.length === 0,

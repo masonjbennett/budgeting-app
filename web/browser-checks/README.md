@@ -51,7 +51,7 @@ set worth running after any change under `src/`.
 
 | File | What it asserts |
 |---|---|
-| `sweep.mjs` | Every route × both themes: every `var(--x)` referenced in CSS has a value, every rendered text node clears 3:1 against what is actually behind it (**SVG text by `fill`, not `color`** — see below), no chart is empty, every colour a chart paints with is a palette token, no console errors. **130 assertions.** |
+| `sweep.mjs` | Every route × both themes: every `var(--x)` referenced in CSS has a value, every rendered text node clears 3:1 against what is actually behind it (**SVG text by `fill`, not `color`** — see below), no chart is empty, no chart label loses ink to its own `overflow: hidden` surface, every colour a chart paints with is a palette token, no console errors. **156 assertions.** |
 | `selftest.mjs` | Injects a fault for each of the five sweep checks into a real healthy page and requires the check to fire. **Run this before trusting a sweep run.** |
 | `interact.mjs` | Drives the three features: the savings-rate curve and its marker, `/year`'s caveat and shaded months and budget rule, the CSV importer end to end including a second import of the same file. Also 375px and print, that the dashboard and `/year` agree to the dollar about this month, and that a profile with nothing logged reports null rather than zero. **63 assertions.** |
 | `regression.mjs` | Behaviour already fixed once, where the fix is invisible in the source: the cascade-layer fix by COMPUTED VALUE, the mobile drawer at 375px (focus return, scroll lock, close on Escape and on navigation), the theme toggle across a reload, and a real Monte Carlo run. **21 assertions.** |
@@ -87,6 +87,15 @@ invisible — scores **1.00 by fill and 14.8 by the old method**. 165 real
 labels per theme clear 3:1, so nothing was hiding behind it; but nothing
 could have been seen if it were. `selftest.mjs` now injects exactly that
 label and requires the check to fire.
+
+**A label can be clipped by the chart it lives in.** Recharts draws a
+`position: "top"` reference label ABOVE the plot area, and the surface is
+`overflow: hidden` — so a chart whose top margin is smaller than the label
+slices it and says nothing. The fan chart on `/fire` had `margin.top: 8`
+against a 13px label: **"Retirement" was cut by 7px**, its glyph tops gone,
+and it read as nonsense on the app's most complex page. `sweep.mjs` now
+reports VERTICAL overhang only — a horizontal pixel or two is side bearing,
+which carries no ink, confirmed at 6x on the axis dates.
 
 **A bounding rect is not ink.** `charts.mjs` flagged a `2026-09-01` axis
 label as painted outside its SVG on two routes, and the SVG really is
