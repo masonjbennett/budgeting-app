@@ -938,3 +938,44 @@ check itself fell out of pointing it somewhere new: a flat 5s pause that was
 ample against localhost and reported "0 plotly charts" against an app waking
 from sleep (it polls now; measured, charts appear 2s after `stApp`), and an
 unhandled TimeoutError instead of a report when there is no app at the URL.
+
+## Sep 4 2026 — the demo now says it is the demo (web/)
+
+Mason asked whether the app should load BLANK, or grow a reset button. Neither,
+and the reasoning is worth keeping.
+
+- **A reset already existed** — /data has "Start over" with Load demo profile
+  and Start empty, behind a two-click confirm. It works; nothing was missing.
+- **Loading blank would gut the recruiting value.** This app is charts and
+  derived figures: empty means the Sankey, the fan chart, the histogram, the
+  year view and every table render as empty states, and someone following the
+  link from masonjbennett.com sees a shell. The demo is also LOAD-BEARING for
+  one feature — it ships three debts whose rate order and balance order
+  conflict, which is the only reason avalanche and snowball differ at all.
+- **The actual gap was that nothing said the figures were examples.** That is
+  what made them read as "random values all over the place".
+
+So: one line on the dashboard, `Start empty` and `Got it` inline, retiring
+itself on the first edit. Not a modal, not on all thirteen pages.
+
+**The flag is set, never inferred.** It goes on when the SERVED profile loads
+and off in `update()`. Comparing the loaded figures against the demo's would
+be wrong the moment somebody edited a value back to what it was, and would
+need the demo shipped twice. It is a separate localStorage key rather than a
+field on `Profile`, because Profile is the schema the engine and the
+export/import path both speak and a UI flag would ride into every exported
+file.
+
+**Three states, not two, and the third is the whole reason dismissal works.**
+Dismissing first REMOVED the key — indistinguishable from never having seen
+it. A visitor who dismisses has by definition not edited anything, so nothing
+is stored locally, so the next load fetches the served demo, calls it a first
+visit and shows the note again. Measured: dismissed, reloaded, back. `"0"`
+records the decision, absent means unseen, and an explicit reset to the demo
+re-arms it.
+
+`web/browser-checks/demonote.mjs` — 14 assertions, and most of them are about
+the states where it must NOT show, because a note saying "these are examples"
+over somebody's real figures is worse than no note at all: after an edit,
+after a dismissal, after a reload of edited figures, over an emptied profile,
+and on any page that is not the dashboard.

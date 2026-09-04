@@ -77,7 +77,8 @@ const MONTH_NAMES = [
 ];
 
 export default function Dashboard() {
-  const { profile, dashboard, status, error } = useFinance();
+  const { profile, dashboard, status, error, showingUntouchedDemo,
+          dismissDemoNote, resetToEmpty } = useFinance();
 
   if (status === "error") {
     return (
@@ -149,6 +150,45 @@ export default function Dashboard() {
 
   return (
     <div>
+      {/* ── Whose figures are these? ───────────────────────────────────
+             The app ships a populated demo so that a first visit shows the
+             Sankey, the fan chart, the year view and a debt comparison
+             working rather than a shell of empty states — and the demo is
+             load-bearing for one of them, since it carries three debts whose
+             rate order and balance order conflict, which is the only reason
+             avalanche and snowball differ at all.
+
+             What it did NOT do was say so anywhere, so the figures read as
+             somebody's real money, or as noise. This says it once, on the
+             landing page, and retires itself on the first edit — the flag is
+             set when the SERVED profile loads and cleared by `update`, rather
+             than guessing by comparing values, which would be wrong the
+             moment somebody edited a number back to what it was.
+
+             Not a modal, and not on all thirteen pages: it is one line where
+             the visit starts, and it can be dismissed. ────────────────── */}
+      {showingUntouchedDemo && (
+        <div className="card mark-accent animate-fade-in mb-8">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+            <p className="t-small text-body">
+              These are <span className="text-ink">example figures</span>, so every
+              chart has something to show. Edit anything and they become yours.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => void resetToEmpty()}
+                className="btn-secondary text-[12px]"
+              >
+                Start empty
+              </button>
+              <button onClick={dismissDemoNote} className="btn-ghost text-[12px]">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── The hero. One figure at display size; everything else is demoted
              to it, because a 4-up grid of identically weighted numbers gives
              the eye nowhere to land. ─────────────────────────────────── */}

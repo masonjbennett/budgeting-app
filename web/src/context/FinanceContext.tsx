@@ -33,7 +33,14 @@ import type { User } from "@supabase/supabase-js";
 
 import { api, ApiError, type Dashboard, type Debt, type Income } from "@/lib/api";
 import { authErrorMessage, cloudConfigured, supabase } from "@/lib/supabase";
-import { clearLocalProfile, readLocalProfile, writeLocalProfile } from "@/lib/localProfile";
+import {
+  clearLocalProfile,
+  demoNoteState,
+  isUntouchedDemo,
+  markUntouchedDemo,
+  readLocalProfile,
+  writeLocalProfile,
+} from "@/lib/localProfile";
 
 // ── The profile ──────────────────────────────────────────────────────
 
@@ -118,6 +125,11 @@ interface Ctx {
   replaceProfile: (p: Profile) => void;
   resetToDemo: () => Promise<void>;
   resetToEmpty: () => Promise<void>;
+  /** The served demo profile is loaded and nothing has been edited yet. The
+   *  dashboard says so, once, rather than leaving a reader to wonder whose
+   *  figures these are. */
+  showingUntouchedDemo: boolean;
+  dismissDemoNote: () => void;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
@@ -135,6 +147,9 @@ const SAVE_DEBOUNCE_MS = 1500;
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
+  // Read after mount, never during render: localStorage during render is a
+  // hydration mismatch, and the server has no browser to ask.
+  const [showingUntouchedDemo, setShowingUntouchedDemo] = useState(false);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -220,9 +235,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       // copy must never shadow the account.
       if (!loaded) loaded = readLocalProfile();
 
+      let fromServer = false;
       if (!loaded) {
         try {
           loaded = (await fetch("/api/state").then((r) => r.json())) as Profile;
+          fromServer = true;
         } catch {
           if (!cancelled) {
             setStatus("error");
@@ -235,6 +252,25 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setProfile(loaded);
       setStatus("ready");
+      // `fromServer` only: a profile restored from the account or from this
+      // browser's own copy is the reader's, whatever it started as. The flag
+      // survives reloads so the note does not reappear after being dismissed,
+      // and does not appear at all for someone who has edited anything.
+      if (fromServer) {
+        // Unseen becomes "show". A previous DISMISSAL is respected: without a
+        // stored profile there is nothing else to tell this visit apart from
+        // a first one, so removing the key on dismiss simply brought the note
+        // back on the next load.
+        const seen = demoNoteState();
+        if (seen === "dismissed") {
+          setShowingUntouchedDemo(false);
+        } else {
+          markUntouchedDemo(true);
+          setShowingUntouchedDemo(true);
+        }
+      } else {
+        setShowingUntouchedDemo(isUntouchedDemo());
+      }
       await recompute(loaded);
     })();
 
@@ -251,6 +287,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   // ── Mutations ──────────────────────────────────────────────────────
   const update = useCallback(
     (patch: Partial<Profile>) => {
+      // Any edit and these are no longer "the demo, untouched".
+      markUntouchedDemo(false);
+      setShowingUntouchedDemo(false);
       setProfile((prev) => {
         if (!prev) return prev;
         const next = { ...prev, ...patch };
@@ -275,9 +314,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     async (demo: boolean) => {
       const p = (await fetch(`/api/state?demo=${demo}`).then((r) => r.json())) as Profile;
       replaceProfile(p);
+      // An empty profile needs no explaining; the demo does.
+      markUntouchedDemo(demo);
+      setShowingUntouchedDemo(demo);
     },
     [replaceProfile],
   );
+
+  const dismissDemoNote = useCallback(() => {
+    markUntouchedDemo(false);
+    setShowingUntouchedDemo(false);
+  }, []);
 
   const resetToDemo = useCallback(() => loadStarting(true), [loadStarting]);
   const resetToEmpty = useCallback(() => loadStarting(false), [loadStarting]);
@@ -332,12 +379,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       replaceProfile,
       resetToDemo,
       resetToEmpty,
+      showingUntouchedDemo,
+      dismissDemoNote,
       signIn,
       signUp,
       signOut,
     }),
     [profile, dashboard, status, error, saveState, user, update, replaceProfile,
-     resetToDemo, resetToEmpty, signIn, signUp, signOut],
+     resetToDemo, resetToEmpty, showingUntouchedDemo, dismissDemoNote,
+     signIn, signUp, signOut],
   );
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

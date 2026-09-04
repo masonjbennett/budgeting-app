@@ -100,3 +100,53 @@ export function writeLocalProfile(p: Profile): void {
   }
 }
 
+
+/* ── "These figures are the demo, and nobody has touched them" ──────────
+   A separate key, NOT a field on Profile. Profile is the data schema the
+   engine and the export/import path both speak; a UI flag in there would ride
+   into every exported file and every stored row, and the next reader would
+   have to work out whether it meant anything to the maths. It does not.
+
+   Set when the served demo profile is loaded and cleared on the FIRST edit,
+   so the note can say "these are examples" and stop saying it the moment that
+   is no longer the whole truth. Guessing instead — comparing the loaded
+   figures against the demo's — would be wrong the moment somebody edits a
+   value back to what it was, and would need the demo shipped twice. */
+const DEMO_KEY = "mjb_budget_untouched_demo_v1";
+
+/* THREE STATES, NOT TWO, and the third is why dismissal works at all.
+
+   Dismissing used to REMOVE the key, which is indistinguishable from never
+   having seen it. A visitor who dismissed the note had stored no profile —
+   they had not edited anything, that being the point — so the next load found
+   nothing local, fetched the served demo, decided it was a first visit and
+   showed the note again. Measured: dismissed, reloaded, back.
+
+   "0" records the decision. Absent means unseen; "1" means showing; "0" means
+   they have said they understand. An explicit reset to the demo re-arms it,
+   because deliberately loading the demo is a moment where saying so is
+   useful again. */
+export type DemoNoteState = "unseen" | "show" | "dismissed";
+
+export function demoNoteState(): DemoNoteState {
+  try {
+    const v = window.localStorage.getItem(DEMO_KEY);
+    if (v === "1") return "show";
+    if (v === "0") return "dismissed";
+    return "unseen";
+  } catch {
+    return "unseen";
+  }
+}
+
+export function markUntouchedDemo(on: boolean): void {
+  try {
+    window.localStorage.setItem(DEMO_KEY, on ? "1" : "0");
+  } catch {
+    /* storage unavailable: the note simply does not persist its dismissal */
+  }
+}
+
+export function isUntouchedDemo(): boolean {
+  return demoNoteState() === "show";
+}

@@ -180,6 +180,30 @@ a dead entry sat in that browser forever failing to parse on every load.
 unparseable JSON, valid JSON of the wrong shape, an error object, an empty
 object, a truncated profile, and storage that throws on every access.
 
+### 4b. The demo says it is the demo
+
+The app ships a populated demo so a first visit shows the Sankey, the fan
+chart, the year view and a working debt comparison rather than a shell of
+empty states — and the demo is load-bearing for one of those, since it carries
+three debts whose rate order and balance order conflict, which is the only
+reason avalanche and snowball differ at all. Loading empty by default would
+cost all of that.
+
+What it did not do was SAY so, so the figures read as somebody's real money.
+One line on the dashboard now does, with `Start empty` inline, and it retires
+itself on the first edit. The flag is set when the SERVED profile loads and
+cleared by `update` — never guessed by comparing the loaded figures against
+the demo's, which would be wrong the moment somebody edited a value back to
+what it was and would need the demo shipped twice.
+
+**Three states, not two, and the third is why dismissal works.** Dismissing
+first REMOVED the key, which is indistinguishable from never having seen it —
+and a visitor who dismisses has by definition not edited anything, so nothing
+was stored locally, so the next load fetched the served demo, called it a
+first visit and showed the note again. Measured: dismissed, reloaded, back.
+`"0"` records the decision; absent is unseen. An explicit reset to the demo
+re-arms it.
+
 ### 4. Auth is browser-side; the API is a pure calculator
 
 The browser talks to Supabase directly and row-level security enforces isolation
