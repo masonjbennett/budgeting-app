@@ -32,8 +32,33 @@ const browser = await puppeteer.launch({
   args: ["--no-sandbox"], protocolTimeout: 600000,
 });
 
+/* Each page gets its OWN browser context, so every section starts as a
+   first-time visitor.
+
+   These all shared one context and relied on the app FORGETTING: a signed-out
+   profile was never written down, so each `goto` reloaded the demo and any
+   import committed by an earlier section vanished. Once signed-out figures
+   started persisting to localStorage (lib/localProfile.ts) that stopped being
+   true, and "a fresh file has nothing already recorded" found 7 — rows a
+   previous section had imported, still there.
+
+   The app is right and the precondition was implicit. An isolated context
+   states it instead, which is also what each section was always testing. */
 async function open(route, { width = 1440, theme = "light" } = {}) {
-  const page = await browser.newPage();
+  const ctx = await browser.createBrowserContext();
+  const page = await ctx.newPage();
+  /* Dispose the context with its page.
+
+     Every section calls `page.close()` and nothing knew about the context, so
+     each one leaked an empty browser context for the rest of the run. Eight of
+     them is not much, but the run died once with a CDP ProtocolError mid-open
+     and an undisposed context is the only new thing here — cheap to close,
+     and not worth leaving as a suspect. */
+  const closePage = page.close.bind(page);
+  page.close = async () => {
+    await closePage().catch(() => {});
+    await ctx.close().catch(() => {});
+  };
   await page.setViewport({ width, height: 1100 });
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));

@@ -153,6 +153,33 @@ month now comes from the expenses actually recorded, and says "no prior month to
 compare" when there is none. The net-worth trend only draws from snapshots the
 user has logged.
 
+### 4a. A signed-out visitor's figures survive a refresh
+
+`persist()` writes to Supabase and returned immediately without a user, and
+there was no localStorage anywhere — so for a signed-out visitor, which is the
+default and what anyone following the link is, **nothing was written down at
+all**. Client-side navigation hid it, because the context lives in the layout
+and a nav click keeps React state; a RELOAD did not. Measured: a budget
+category added, then reloaded, was gone. The app's own copy said the figures
+were "gone when you close it", which understated a refresh, a deep link and a
+restored session.
+
+`lib/localProfile.ts` now keeps them, with four guards that are each a lesson
+this project has already paid for: nothing empty or malformed is written or
+read back (`isProfile`), the key is versioned so a schema change invalidates
+copies already sitting in browsers, every access is wrapped because private
+mode and a full quota THROW rather than returning null, and the account still
+wins — the local copy is only consulted when there is no user and is cleared
+on sign-in, so it can never shadow somebody's account on a shared machine.
+
+**Both routes out of the read have to clean up.** The first version dropped a
+payload that failed the shape check but left UNPARSEABLE JSON in place: the
+app rendered correctly off the served profile, so nothing looked wrong, while
+a dead entry sat in that browser forever failing to parse on every load.
+`browser-checks/persistence.mjs` drives the feature and all four guards —
+unparseable JSON, valid JSON of the wrong shape, an error object, an empty
+object, a truncated profile, and storage that throws on every access.
+
 ### 4. Auth is browser-side; the API is a pure calculator
 
 The browser talks to Supabase directly and row-level security enforces isolation

@@ -33,6 +33,7 @@ import type { User } from "@supabase/supabase-js";
 
 import { api, ApiError, type Dashboard, type Debt, type Income } from "@/lib/api";
 import { authErrorMessage, cloudConfigured, supabase } from "@/lib/supabase";
+import { clearLocalProfile, readLocalProfile, writeLocalProfile } from "@/lib/localProfile";
 
 // ── The profile ──────────────────────────────────────────────────────
 
@@ -171,7 +172,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const persist = useCallback(
     (p: Profile, u: User | null) => {
       const db = supabase;   // narrowing does not survive into the callback
-      if (!db || !u) return;
+      // NO ACCOUNT IS NOT NO STORAGE. This returned here and wrote nothing,
+      // so a signed-out visitor — the default, and anyone following the link —
+      // lost every figure on a refresh. Client-side navigation hid it, because
+      // the context lives in the layout; a reload did not. See lib/localProfile.
+      if (!u) {
+        writeLocalProfile(p);
+        return;
+      }
+      if (!db) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
         setSaveState("saving");
@@ -205,6 +214,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
           if (row?.app_data) loaded = row.app_data as Profile;
         }
       }
+
+      // The account first, then this browser's own copy, then the served
+      // starting profile. Only reached when there is no user: a stale local
+      // copy must never shadow the account.
+      if (!loaded) loaded = readLocalProfile();
 
       if (!loaded) {
         try {
@@ -275,6 +289,10 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
       if (err) return { error: authErrorMessage(err) };
       setUser(data.user);
+      // The account is the source of truth from here, and a local copy left
+      // behind would be read on the next signed-out load as if it were this
+      // person's — on a shared machine, somebody else's figures.
+      clearLocalProfile();
       const { data: row } = await supabase
         .from("user_data")
         .select("app_data")

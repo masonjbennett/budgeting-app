@@ -875,3 +875,66 @@ proves nothing: the change function fired a `resize` event, which triggers no
 refetch, so nothing was ever tested there. /year's clearing path is verified
 by reading, not by driving, and is recorded as such.
 
+## Sep 4 2026 — a signed-out visitor's figures now survive a refresh (web/)
+
+A functional pass over the pages nothing had DRIVEN yet — /budget, /goals,
+/net-worth, /income, /tax, /compare, /data — plus the feature it turned up.
+
+**The app is functionally sound and all three "failures" were my probes**,
+which is the sixth, seventh and eighth of this session:
+- "the dashboard does not reflect a salary change" — the dashboard has no
+  gross-salary figure at all. Its labels are Net worth, Take-home, Spent,
+  Net savings, Budgeted, Financial health. I asserted on something the page
+  never claims to show.
+- "a goal cannot be added" — "Add goal" needs a name AND a target above zero,
+  and the probe filled the wrong number field. A disabled click is a no-op
+  that looks exactly like a broken feature.
+- "a budget category does not persist" — measured with `page.goto()`, which is
+  a FULL RELOAD. Clicking the nav link, which is how people move, keeps it and
+  /expenses offers it immediately. I measured the harshest path and called it
+  the normal one.
+
+**But the third one was half right, and that is the feature.** `persist()`
+writes to Supabase and returned immediately without a user, and there was no
+localStorage anywhere — so for a signed-out visitor, the default and what
+anyone following the link is, **nothing was written down at all**. A reload
+lost everything, and the app's own copy on /data said the figures were "gone
+when you close it", which understated a refresh, a deep link and a restored
+session.
+
+`web/src/lib/localProfile.ts` keeps them now. Four guards, each a lesson this
+project has already paid for: nothing empty or malformed is written or read
+back; the key is VERSIONED, which is the only way to invalidate a copy already
+sitting in a browser in the wild; every access is wrapped, because private
+mode and a full quota THROW rather than returning null and an exception on
+boot would blank the app; and **the account still wins** — the local copy is
+read only when there is no user and is cleared on sign-in, so it cannot shadow
+somebody's account on a shared machine.
+
+**A bug in my own new code, found by testing the guards rather than the
+feature**: the first version dropped a payload that failed the shape check but
+left UNPARSEABLE JSON in place. The app rendered correctly off the served
+profile, so nothing looked wrong, while a dead entry sat in that browser
+forever failing to parse on every load. Both routes out of the read clean up
+now.
+
+The /data copy was rewritten to match, and deliberately still says an account
+is what carries figures to another browser — the sentence must not drift into
+implying local storage is a substitute for signing in.
+
+`web/browser-checks/persistence.mjs` is new and in `npm run all`: 17
+assertions over the feature, a reset clearing the stored copy, and five bad
+payloads plus storage that throws, each of which must leave the app rendering
+AND be dropped.
+
+**Also this session: the Streamlit check now points at the live fallback.**
+`streamlit.mjs` was hardcoded to localhost:8502, so it verified the CODE and
+had never looked at the deployed app — the thing that is supposed to catch a
+Vercel outage. It takes `BASE` now and adds Streamlit Cloud's `/~/+/` iframe
+path itself, because a probe pointed at the bare host measures an empty
+document and calls a healthy app dead. **Live result: 17/17, 308 widgets, 0
+Python exceptions, all eleven pages — the fallback works.** Two defects in the
+check itself fell out of pointing it somewhere new: a flat 5s pause that was
+ample against localhost and reported "0 plotly charts" against an app waking
+from sleep (it polls now; measured, charts appear 2s after `stApp`), and an
+unhandled TimeoutError instead of a report when there is no app at the URL.

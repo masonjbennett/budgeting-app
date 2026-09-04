@@ -103,11 +103,26 @@ export default function DataPage() {
               </p>
             </>
           ) : (
-            <p className="t-small text-body">
-              Not signed in. Everything works, but your figures live in this browser tab
-              only and are gone when you close it. Sign in from the navigation to save
-              them, or export below.
-            </p>
+            <>
+              <p className="t-small text-body">
+                Not signed in. Everything works, and your figures are kept in this
+                browser — they survive a refresh and a closed tab. They do not follow
+                you to another browser or another device, and clearing your browsing
+                data removes them. Sign in from the navigation to carry them
+                anywhere, or export below.
+              </p>
+              {/* This used to say the figures lived "in this browser tab only and
+                  are gone when you close it". That was true and understated: they
+                  were gone on a REFRESH too, which is a great deal more likely than
+                  closing the tab — a deep link, a restored session, any reload.
+                  They are written to localStorage now, so the sentence had to
+                  change anyway; what it must not do is drift back into implying an
+                  account is not needed to move between devices. */}
+              <p className="t-micro mt-2 leading-relaxed text-muted">
+                Kept in this browser only — a private window, a different browser, or
+                clearing site data all start fresh.
+              </p>
+            </>
           )}
         </div>
       </Section>
