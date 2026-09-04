@@ -31,6 +31,19 @@ const FAULTS = [
     document.body.appendChild(p);
   }, (r) => r.low.length > 0],
 
+  ["a chart label painted its own card colour", () => {
+    // SVG text is painted with `fill`; this check used to read `color`, which
+    // on a Recharts tick is the body ink it INHERITS rather than the grey it
+    // is drawn in. So a label could be any colour at all and the contrast
+    // check compared body-ink-against-card and passed. Painting one exactly
+    // its own card's colour makes it invisible: 1.00 by fill, and the old
+    // method scored the same element 14.8.
+    const t = document.querySelector("svg text");
+    const card = t.closest(".card");
+    t.style.fill = getComputedStyle(card).backgroundColor;
+    t.setAttribute("data-selftest", "1");
+  }, (r) => r.low.length > 0],
+
   ["empty chart", () => {
     const svg = document.querySelector(".recharts-wrapper svg");
     svg.querySelectorAll("path,rect,circle,line,g").forEach((n) => n.remove());

@@ -51,7 +51,7 @@ set worth running after any change under `src/`.
 
 | File | What it asserts |
 |---|---|
-| `sweep.mjs` | Every route × both themes: every `var(--x)` referenced in CSS has a value, every rendered text node clears 3:1 against what is actually behind it, no chart is empty, every colour a chart paints with is a palette token, no console errors. **130 assertions.** |
+| `sweep.mjs` | Every route × both themes: every `var(--x)` referenced in CSS has a value, every rendered text node clears 3:1 against what is actually behind it (**SVG text by `fill`, not `color`** — see below), no chart is empty, every colour a chart paints with is a palette token, no console errors. **130 assertions.** |
 | `selftest.mjs` | Injects a fault for each of the five sweep checks into a real healthy page and requires the check to fire. **Run this before trusting a sweep run.** |
 | `interact.mjs` | Drives the three features: the savings-rate curve and its marker, `/year`'s caveat and shaded months and budget rule, the CSV importer end to end including a second import of the same file. Also 375px and print, that the dashboard and `/year` agree to the dollar about this month, and that a profile with nothing logged reports null rather than zero. **63 assertions.** |
 | `regression.mjs` | Behaviour already fixed once, where the fix is invisible in the source: the cascade-layer fix by COMPUTED VALUE, the mobile drawer at 375px (focus return, scroll lock, close on Escape and on navigation), the theme toggle across a reload, and a real Monte Carlo run. **21 assertions.** |
@@ -75,6 +75,18 @@ for that reason. When the pane and the DOM disagree, capture elsewhere.
 below 640px — the importer's cards, the cash-flow list — had never been
 contrast-checked in either theme until `mobile.mjs` grew a pass at 375px. A
 new mobile-only surface is a new set of colours nobody has measured.
+
+**`color` is not what SVG paints with, and this check read it for six
+months.** Every text node was measured on `getComputedStyle(el).color`,
+including the ones inside charts — but SVG text is painted with `fill`. On a
+Recharts tick the two differ: the tspan INHERITS the body ink through `color`
+while `fill` carries the grey it is drawn in. So every chart label was scored
+as body-ink-against-card, which passes comfortably in either theme whatever
+the label is really painted. Measured: a label given its own card's colour —
+invisible — scores **1.00 by fill and 14.8 by the old method**. 165 real
+labels per theme clear 3:1, so nothing was hiding behind it; but nothing
+could have been seen if it were. `selftest.mjs` now injects exactly that
+label and requires the check to fire.
 
 **A bounding rect is not ink.** `charts.mjs` flagged a `2026-09-01` axis
 label as painted outside its SVG on two routes, and the SVG really is

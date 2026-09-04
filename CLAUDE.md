@@ -732,3 +732,55 @@ picture of the wrong part of the page is the visual form of measuring nothing.
 selftest 5/5, sweep 130, interact 63, regression 21, mobile 35, big 11; Python
 unchanged at 521 + 33 mutations.
 
+## Sep 4 2026 — `color` is not what SVG paints with (web/)
+
+Chasing the last gap I had left — `mobile.mjs` swept contrast on `/` only, and
+`sweep.mjs` does both themes at ONE width — turned up one real defect, one
+latent hole in the primary check, and **three false positives of my own**,
+which is the more useful number.
+
+- **THE HOLE. `sweep.mjs` measured every text node on
+  `getComputedStyle(el).color`, including the ones inside charts, and SVG text
+  is painted with `fill`.** On a Recharts tick the two differ: the tspan
+  INHERITS the body ink through `color` while `fill` carries the grey it is
+  actually drawn in. So every chart label was scored as body-ink-against-card,
+  which passes comfortably in either theme no matter what the label is really
+  painted. **Measured: a label given its own card's colour — invisible — scores
+  1.00 by fill and 14.8 by the old method.** 165 real labels per theme clear
+  3:1, so nothing was hiding behind it; but nothing could have been seen if it
+  were. Fixed in `sweep.mjs` and `mobile.mjs`, and `selftest.mjs` now injects
+  exactly that label and requires the check to fire — 5/5 -> **6/6**.
+- **THE DEFECT, and it is the same shape.** The mobile header's breadcrumb
+  separator is the ONLY `text-faint` text node in the app (the other use is an
+  SVG icon), and it measured **2.57:1** on paper against the sweep's own 3:1
+  rule. It survived because the header is `lg:hidden` and every contrast check
+  ran at desktop width. `text-muted` now. Exempting it as decorative because it
+  carries `aria-hidden` was the alternative and is worse: it makes the rule
+  negotiable. `mobile.mjs` sweeps contrast over EVERY route in both themes at
+  375px now, not just the dashboard.
+
+**Three false positives, all mine, all caught before changing anything.**
+- **A chart axis label at 1.19:1 in dark mode, on nine routes** — my probe read
+  `color` (the same bug as above) and fell back to WHITE for the background
+  even in dark mode. Two wrong inputs, one alarming number.
+- **The landscape drawer: "9 of 12 nav links unreachable".** Two errors in one
+  investigation. The probe queried `aside`; the drawer is a `div`, so it
+  measured a zero-size element — which made every link "visible" (top >= 0 and
+  bottom <= 375 are both trivially true of a zero rect) AND reported no
+  scrolling ancestor, two opposite wrong answers from one wrong selector. Then
+  the corrected version sampled only the top and bottom of the scroll range and
+  called the middle of the list unreachable. Sampled properly: **12 of 12
+  reachable**, `flex-1 overflow-y-auto` doing its job. Landscape is fine.
+- **A `2026-09-01` axis label "painted outside its SVG"** on two routes, and the
+  SVG really is `overflow: hidden` — cropped at 6x it reads in full. The 2px is
+  the glyph's trailing side bearing, which carries no ink.
+
+The generalisation worth keeping: **every one of these was a probe reading the
+wrong property, the wrong element, or too few samples.** The rule that a
+failing check is guilty until proven innocent held four times in two days, and
+the one time a check was RIGHT about something invisible, it was right for the
+wrong reason and would have missed the real version.
+
+Counts: selftest 5/5 -> **6/6**, sweep 130, interact 63, regression 21,
+mobile 35, big 11; Python unchanged at 521 + 33 mutations.
+

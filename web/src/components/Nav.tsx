@@ -390,7 +390,15 @@ export default function Nav() {
         <Wordmark />
         {current && current.href !== "/" && (
           <>
-            <span className="text-faint" aria-hidden="true">/</span>
+            {/* `text-muted`, not `text-faint`: faint on paper is 2.57:1 and
+                this app's own standard, asserted by the sweep, is that every
+                rendered text node clears 3:1. It went unmeasured because this
+                header is `lg:hidden` — the only text-faint TEXT in the app
+                lived at a width no contrast check ever ran at. Leaving it as
+                decorative because it is `aria-hidden` was the alternative and
+                is worse: it makes the sweep's rule negotiable, and the glyph
+                is still the thing separating the wordmark from where you are. */}
+            <span className="text-muted" aria-hidden="true">/</span>
             <span className="truncate text-[13px] text-muted">{current.name}</span>
           </>
         )}

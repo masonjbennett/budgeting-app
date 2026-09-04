@@ -339,6 +339,15 @@ invisible to a green suite AND to looking at the page:
   overflow. The check counts those and prints the count rather than failing,
   so the day it gets worse is visible.
 
+- **The only `text-faint` TEXT in the app lived where no check ran.** The
+  mobile header's breadcrumb separator measured **2.57:1** against paper, and
+  this app's own standard — asserted by the sweep — is that every rendered
+  text node clears 3:1. It survived because the header is `lg:hidden` and
+  every contrast check ran at desktop width. `text-muted` now. Exempting it
+  as decorative because it is `aria-hidden` was the alternative and is worse:
+  it makes the sweep's rule negotiable. `mobile.mjs` sweeps contrast over
+  **every route in both themes at 375px**, not just the dashboard.
+
 `mobile.mjs` holds all of this plus the 24x24 tap-target floor, with a
 `--selftest` that injects each defect and requires the check to fire. **639 and
 640 are both measured**, because that pair is where a column could come back

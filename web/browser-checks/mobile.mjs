@@ -405,11 +405,20 @@ console.log("\n--- what only exists on a phone, in dark as well as light ---");
     };
     const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
     const bgOf = (el) => {
+      // Containment, not mere ancestry: an element that overhangs the box it
+      // descends from is not sitting on that colour. And the fallback is the
+      // BODY's background rather than white, which in dark mode is the
+      // difference between a real ratio and a fabricated one.
+      const r = el.getBoundingClientRect();
       for (let e = el; e; e = e.parentElement) {
         const c = px(getComputedStyle(e).backgroundColor);
-        if (c && c.a > 0) return c;
+        const q = e.getBoundingClientRect();
+        const inside = r.left >= q.left - 1 && r.right <= q.right + 1
+                    && r.top >= q.top - 1 && r.bottom <= q.bottom + 1;
+        if (c && c.a > 0 && (e === el || inside)) return c;
       }
-      return { r: 255, g: 255, b: 255, a: 1 };
+      return px(getComputedStyle(document.body).backgroundColor)
+          || { r: 255, g: 255, b: 255, a: 1 };
     };
     const bad = [];
     let checked = 0;
@@ -421,7 +430,14 @@ console.log("\n--- what only exists on a phone, in dark as well as light ---");
       if (!el) continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
-      const fg = px(getComputedStyle(el).color);
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.opacity === "0") continue;
+      // SVG text is painted with `fill`, not `color` — a Recharts tick
+      // INHERITS the body ink through `color` while `fill` carries the grey
+      // it is drawn in, so reading `color` measures a chart label that does
+      // not exist. `fill: none` and url(#gradient) are not judgeable.
+      const inSvg = el.ownerSVGElement != null;
+      const fg = px(inSvg ? cs.fill : cs.color);
       if (!fg) continue;
       checked++;
       const c = ratio(fg, bgOf(el));
@@ -467,12 +483,27 @@ console.log("\n--- what only exists on a phone, in dark as well as light ---");
     }
 
     const c = await p.evaluate(CONTRAST);
-    check(`${theme}: the dashboard's text was actually measured`, c.checked > 40, `${c.checked} nodes`);
-    check(`${theme}: every text node on the phone dashboard clears 3:1`,
-          c.bad.length === 0, c.bad.slice(0, 3).join(" | "));
     check(`${theme}: every flow bar resolved to a real colour`,
           c.bars.length > 0 && c.unresolvedBars === 0,
           `${c.bars.length} bars, ${c.unresolvedBars} unresolved`);
+
+    // EVERY route, not just the dashboard. `sweep.mjs` does both themes at
+    // desktop width; the layouts below 640px are genuinely different — wrapped
+    // slugs, hidden columns, the importer's cards, the cash-flow list — and
+    // the only `text-faint` TEXT in the app turned out to live in the mobile
+    // header, at a width no contrast check had ever run at. It measured
+    // 2.57:1.
+    let measured = c.checked;
+    const low = c.bad.map((b) => `/ ${b}`);
+    for (const route of ROUTES.slice(1)) {
+      await go(p, route);
+      const rc = await p.evaluate(CONTRAST);
+      measured += rc.checked;
+      for (const b of rc.bad) low.push(`${route} ${b}`);
+    }
+    check(`${theme}: the phone's text was actually measured`, measured > 600, `${measured} nodes`);
+    check(`${theme}: every text node clears 3:1 on every route at 375px`,
+          low.length === 0, low.slice(0, 4).join(" | "));
     await p.close();
   }
 }

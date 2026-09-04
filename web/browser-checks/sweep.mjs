@@ -152,13 +152,28 @@ const PROBE = () => {
     const el = t.parentElement;
     if (!el || !visible(el)) continue;
     if (el.closest("[hidden]")) continue;
+    const cs = getComputedStyle(el);
+    // SVG TEXT IS PAINTED WITH `fill`, NOT `color`, and this check read
+    // `color` for every node including the ones inside charts. On a Recharts
+    // tick the two differ: the tspan INHERITS the body ink through `color`
+    // while `fill` carries the grey it is actually drawn in. So every chart
+    // label was measured as body-ink-on-card — a comfortable pass in either
+    // theme, whatever the label was really painted. Measured: a label given
+    // its own card's colour, which is invisible, scores 1.00 by fill and
+    // 14.8 by the old method. 165 real labels per theme clear 3:1, so nothing
+    // was hiding behind it — but nothing could have been seen if it were.
+    const inSvg = el.ownerSVGElement != null;
+    const raw = inSvg ? cs.fill : cs.color;
+    const parsed = px(raw);
+    // `fill: none`, or a url(#gradient), is not a colour anyone can judge.
+    if (inSvg && !parsed) continue;
     textNodes++;
     const bg = bgOf(el);
-    const fg = over(px(getComputedStyle(el).color) || { r: 0, g: 0, b: 0, a: 1 }, bg);
+    const fg = over(parsed || { r: 0, g: 0, b: 0, a: 1 }, bg);
     const r = ratio(fg, bg);
     if (r < 3) {
       low.push({ text: text.slice(0, 42), ratio: +r.toFixed(2),
-                 color: getComputedStyle(el).color, tag: el.tagName });
+                 color: raw, tag: el.tagName });
     }
   }
 
