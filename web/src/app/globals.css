@@ -244,11 +244,28 @@
   input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
+  /* Sized, because the user agent's default is 13x13.
+
+     `width: auto` here meant "do not inherit the 100% the text inputs get",
+     which is right, but it left the box at the browser default — half the
+     24x24 WCAG 2.2 AA minimum. The importer's per-row ticks are the ONLY
+     checkboxes in the app and they are its primary control: on a phone you
+     are asked to accept or reject a hundred rows through a 13px target.
+
+     `accent-color` is here because the first native checkbox in the app
+     rendered in the user agent's BLUE — the one colour the palette had never
+     touched, and one `check:tokens` cannot see because there is no literal in
+     the source to grep for. */
   input[type="checkbox"],
   input[type="radio"] {
-    width: auto;
+    width: 18px;
+    height: 18px;
     accent-color: var(--accent);
     cursor: pointer;
+  }
+  @media (pointer: coarse) {
+    input[type="checkbox"],
+    input[type="radio"] { width: 24px; height: 24px; }
   }
   input[type="checkbox"]:disabled,
   input[type="radio"]:disabled { cursor: not-allowed; }
@@ -322,6 +339,71 @@
      640px breakpoint, so a table cannot end up half-adapted. */
   @media (max-width: 639px) {
     thead th, td { padding-left: 8px; padding-right: 8px; }
+  }
+
+  /* A table that becomes a stack of cards below the tables' breakpoint.
+
+     Opt-in, via `table-cards` on the <table>, because it is only right where
+     a ROW IS A DECISION rather than a readout. The importer is that: every
+     row carries a checkbox and a category <select>, and those two controls
+     alone are wider than a phone. Dropping columns — which is what the other
+     four tables do — cannot work here, because the columns are the decision.
+
+     One rendering, not two. The label comes from `data-label` on each cell
+     rather than a second block of JSX, so a column cannot end up saying one
+     thing on a phone and another on a laptop.
+
+     The cell is `flex`, not `text-align`, so the ::before label sits left and
+     the value right regardless of the `text-right` a cell may already carry —
+     an alignment utility that would otherwise have pushed BOTH to the right
+     edge, label included. */
+  @media (max-width: 639px) {
+    .table-cards thead { display: none; }
+    .table-cards,
+    .table-cards tbody,
+    .table-cards tr,
+    .table-cards td { display: block; width: 100%; }
+    .table-cards tr {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--hair);
+    }
+    .table-cards tbody tr:last-child { border-bottom: none; }
+    .table-cards td {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 3px 0;
+      border-bottom: none;
+      max-width: none;
+    }
+    .table-cards td::before {
+      content: attr(data-label);
+      flex: none;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    /* A cell with no label still lines up with the ones that have one. */
+    .table-cards td:not([data-label])::before { content: ""; }
+    /* The description is the one value allowed to wrap; truncating it inside
+       a card would hide the merchant, which is the whole basis for the
+       category the row is proposing. */
+    .table-cards td[data-label="Description"] {
+      display: block;
+      overflow: visible;
+      white-space: normal;
+      text-overflow: clip;
+    }
+    .table-cards td[data-label="Description"]::before { display: block; }
+    .table-cards td select { width: auto; max-width: 62%; }
+    /* The file's line number is for cross-referencing the CSV, which is not
+       something anyone does on a phone. It costs a whole line of every card;
+       it is still there on a laptop, where the row is one line. */
+    .table-cards td[data-label="Line"] { display: none; }
   }
 
   hr { border: none; border-top: 1px solid var(--hair); margin: 0; }

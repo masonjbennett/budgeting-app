@@ -269,10 +269,38 @@ invisible to a green suite AND to looking at the page:
   enough that nothing had to be hidden merely for margin. All of it returns at
   640px, where the content area is ~600px and every table fits.
 
+- **The importer could not be fixed by dropping columns, and it was invisible
+  to the first pass of this check.** It is collapsed behind a button, so a
+  sweep that walks routes never opened it: measured, 736px of table in a 335px
+  scroller with 401px off screen, and six 13x13 checkboxes — the app's only
+  checkboxes, and its primary control. Column-dropping cannot save it because
+  the columns ARE the decision: each row carries a tick and a category
+  `<select>`, and the select alone is ~146px at touch type size.
+
+  So `table-cards` on a `<table>` stacks its rows into label/value lines below
+  640px, driven by `data-label` on each cell rather than a second block of JSX
+  — one rendering, so a column cannot say one thing on a phone and another on a
+  laptop. The cell is `flex`, not `text-align`, or the `text-right` a cell
+  already carries would push the label to the right edge along with the value.
+  It is opt-in for a reason: it is right only where a row is a DECISION, and
+  wrong for the four data tables, which read better as a grid.
+
+  What it costs, measured at 100 rows: the page goes 7,635px to 25,219px on a
+  phone. What it does NOT cost is the thing the September work bought — the DOM
+  is unchanged (3,608 nodes, 1,887 options either way, because this is CSS) and
+  a tick still paints in under 20ms. A long scroll is the right trade against a
+  table with more than half of itself off screen.
+
+- **Checkboxes were the user agent's 13x13.** `width: auto` was correct as
+  "do not take the 100% the text inputs get" and left the box at the browser
+  default, half the 24px minimum. 18px, and 24px on a coarse pointer.
+
 `mobile.mjs` holds all of this plus the 24x24 tap-target floor, with a
 `--selftest` that injects each defect and requires the check to fire. **639 and
 640 are both measured**, because that pair is where a column could come back
 before the table fits — a gap invisible at any width anyone would think to try.
+And it OPENS THE IMPORTER, because the first version of it walked routes only
+and therefore never saw the worst table in the app.
 
 ## Things measured, with the numbers
 

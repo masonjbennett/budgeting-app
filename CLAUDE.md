@@ -584,3 +584,57 @@ unaffected and `streamlit.mjs` was not required). `npm run build`,
 "Cleared" and `/expenses`' note are simply absent below 640px rather than
 reachable some other way — that was the deliberate trade against a card-list
 rendering, which stays available if the columns turn out to be missed.
+
+**DEPLOYED the same day.** Verified against the real domain in a real browser:
+`pointer: coarse` matching, smallest field 16px, page overflow 0, slug `wrap`,
+13 delete controls at 32x32, and `/expenses` showing Date · Category · Amount
+with 0px hidden; `/year` and `/debt` likewise.
+**curl cannot verify this site.** It gets a 403 *Vercel Security Checkpoint*,
+and so does headless Chrome — a script polled that challenge page for ten
+minutes and concluded "the new build is not serving yet", which was a statement
+about a page it never reached. A normal browser passes straight through, so
+real visitors are unaffected; use the Browser pane, not curl and not puppeteer.
+Also worth knowing: the handoff said master was "green at 1667f07, pushed" and
+the remote was actually at 21b33d9 — that commit had never gone up. It was
+CLAUDE.md only, so nothing functional was missing from production.
+
+## Sep 3 2026 — the importer on a phone (web/, second pass)
+
+The handoff's own question — "is the importer's table usable at all on a phone,
+or should it degrade to a card list?" — answered by driving it. **It is the one
+table in the app that cannot be fixed by dropping columns**, and it was
+invisible to the first mobile check because it is collapsed behind a button: a
+sweep that walks routes never opens it. Measured on opening it: **736px of
+table in a 335px scroller, 401px off screen, and six 13x13 checkboxes** — the
+app's only checkboxes and the importer's primary control.
+
+- **Column-dropping cannot work here because the columns ARE the decision.**
+  Each row carries a tick and a category `<select>`, and the select alone is
+  ~146px at touch type size. So `table-cards` on a `<table>` stacks its rows
+  into label/value lines below 640px, from `data-label` on each cell rather
+  than a second block of JSX — one rendering, so a column cannot say one thing
+  on a phone and another on a laptop. The cell is `flex` rather than
+  `text-align`, or the `text-right` a cell already carries would push the LABEL
+  to the right edge along with the value. Opt-in, because it is right only
+  where a row is a decision and wrong for the four data tables.
+- **What it costs, measured at 100 rows: 7,635px → 25,219px on a phone.** What
+  it does not cost is what the September importer work bought: the DOM is
+  unchanged at 3,608 nodes and 1,887 options either way, because this is CSS,
+  and a tick still paints in under 20ms. Desktop is untouched — `npm run big`
+  is 11/11 with 3,608 nodes and 7,635px against the 3,580 and 7,491px on
+  record, and ticks at 16-19ms against 26-63ms.
+- **Checkboxes were the user agent's 13x13.** `width: auto` was right as "do
+  not take the 100% the text inputs get" and left the box at the browser
+  default, half the 24px minimum. 18px now, 24px on a coarse pointer.
+- Adding an expense at 375px was driven end to end and is fine: 16px field, a
+  335x39 Add button, the row lands, no overflow.
+- `mobile.mjs` 15 → **23 assertions**, and it now OPENS the importer and
+  uploads a file. Five selftests, including one that strips `table-cards` and
+  requires the overflow to reappear.
+
+**And I hit the Bash-tool heredoc trap the handoff warns about.** Writing
+`\n` inside `<< 'PYEOF'` collapsed it to a real newline, which broke
+`mobile.mjs`'s parse. The handoff says to write scripts with the Write tool and
+run them; I did it the other way and it cost a cycle. The docs edits after that
+went through a file.
+

@@ -40,6 +40,14 @@
  * Run:  node mobile.mjs            (add --selftest to prove it can fail)
  */
 import puppeteer from "puppeteer-core";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// fileURLToPath, not URL.pathname: this repo lives under a directory with a
+// space in its name.
+const HERE = dirname(fileURLToPath(import.meta.url));
+mkdirSync(join(HERE, "fixtures"), { recursive: true });
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -273,6 +281,85 @@ console.log("\n--- every control clears 24x24 on a phone ---");
   await p.close();
 }
 
+/* ── 6. the importer, which is BEHIND A BUTTON ───────────────────────── */
+console.log("\n--- the importer at 375px ---");
+{
+  // Everything above walks routes as they load. The importer is collapsed by
+  // default, so none of it ever saw the app's biggest table or its only
+  // checkboxes: measured before the fix, 736px of table in a 335px scroller
+  // with 401px off screen, and six 13x13 ticks. A check that only visits
+  // routes cannot see a panel.
+  const p = await pageAt(375);
+  await go(p, "/expenses");
+  const opened = await p.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find((x) => /open importer/i.test(x.textContent));
+    if (!b) return false;
+    b.click();
+    return true;
+  });
+  check("the importer opens", opened);
+  await new Promise((r) => setTimeout(r, 800));
+
+  const input = await p.$('input[type="file"]');
+  check("it offers a file input", !!input);
+  if (input) {
+    const csv = join(HERE, "fixtures", "phone-import.csv");
+    writeFileSync(csv, [
+      "Date,Description,Amount",
+      "09/01/2026,STARBUCKS STORE 442,-5.40",
+      "09/01/2026,UBER TRIP 8F2K,-18.75",
+      "09/02/2026,NETFLIX.COM,-15.99",
+      "09/02/2026,WHOLE FOODS MKT,-84.12",
+      "09/03/2026,PAYMENT THANK YOU,250.00",
+    ].join("\n"));
+    await input.uploadFile(csv);
+    await p.waitForFunction(() => document.querySelectorAll(".table-cards tbody tr").length > 0,
+                            { timeout: 30000 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 900));
+  }
+
+  const imp = await p.evaluate(() => {
+    const de = document.documentElement;
+    const t = document.querySelector(".table-cards");
+    const sc = t ? t.closest(".overflow-x-auto") : null;
+    const boxes = [...document.querySelectorAll('input[type="checkbox"]')].map((c) => {
+      const r = c.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
+    });
+    // In card mode the header is gone and each cell shows its own label, so
+    // the labels are the witness that the stacked layout is actually on.
+    const labels = t
+      ? [...new Set([...t.querySelectorAll("tbody td[data-label]")]
+          .filter((td) => getComputedStyle(td).display !== "none")
+          .map((td) => td.getAttribute("data-label")))]
+      : [];
+    return {
+      rows: t ? t.querySelectorAll("tbody tr").length : 0,
+      headVisible: t && t.querySelector("thead")
+        ? getComputedStyle(t.querySelector("thead")).display !== "none" : null,
+      hidden: sc ? sc.scrollWidth - sc.clientWidth : null,
+      pageOverflow: de.scrollWidth - de.clientWidth,
+      boxes,
+      labels,
+    };
+  });
+
+  check("the preview built rows", imp.rows > 0, `${imp.rows} rows`);
+  check("the row is stacked, not a table — the header is hidden",
+        imp.headVisible === false, `thead display is ${imp.headVisible}`);
+  check("and every field is labelled in the card",
+        ["Import", "Date", "Description", "Amount", "Category", "Status"]
+          .every((l) => imp.labels.includes(l)),
+        imp.labels.join(", "));
+  check("nothing in the importer scrolls sideways",
+        imp.hidden !== null && imp.hidden <= 1 && imp.pageOverflow <= 1,
+        `scroller ${imp.hidden}px, page ${imp.pageOverflow}px`);
+  check("the ticks are the app's only checkboxes, and they clear 24x24",
+        imp.boxes.length > 0 && imp.boxes.every((b) => b.w >= 24 && b.h >= 24),
+        `${imp.boxes.length} boxes: ${[...new Set(imp.boxes.map((b) => `${b.w}x${b.h}`))].join(", ")}`);
+  await p.close();
+}
+
 /* ── the selftest ────────────────────────────────────────────────────── */
 if (SELFTEST) {
   console.log("\n--- proving each check can fail ---");
@@ -324,6 +411,29 @@ if (SELFTEST) {
     const r = b.getBoundingClientRect();
     return { w: Math.round(r.width), h: Math.round(r.height) };
   });
+  // 6. put the importer back to a plain table and watch it stop fitting.
+  await go(p, "/expenses");
+  await p.evaluate(() => {
+    [...document.querySelectorAll("button")].find((x) => /open importer/i.test(x.textContent))?.click();
+  });
+  await new Promise((r) => setTimeout(r, 700));
+  const fi = await p.$('input[type="file"]');
+  if (fi) {
+    await fi.uploadFile(join(HERE, "fixtures", "phone-import.csv"));
+    await p.waitForFunction(() => document.querySelectorAll("table tbody tr").length > 0,
+                            { timeout: 30000 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 900));
+  }
+  const untabled = await p.evaluate(() => {
+    const t = document.querySelector(".table-cards");
+    if (!t) return null;
+    t.classList.remove("table-cards");
+    const sc = t.closest(".overflow-x-auto");
+    return sc.scrollWidth - sc.clientWidth;
+  });
+  check("[can fail] the importer as a plain table is seen to overflow",
+        untabled !== null && untabled > 1, `${untabled}px hidden`);
+
   check("[can fail] an undersized tap target is seen",
         tiny !== null && (tiny.w < 24 || tiny.h < 24),
         tiny ? `${tiny.w}x${tiny.h}` : "no remove control found");

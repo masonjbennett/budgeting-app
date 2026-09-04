@@ -97,7 +97,7 @@ const Row = memo(function Row({
   const blocked = row.skip !== null;
   return (
     <tr className={blocked || !checked ? "opacity-55" : undefined}>
-      <td>
+      <td data-label="Import">
         <input
           type="checkbox"
           aria-label={`Import line ${row.line}`}
@@ -106,15 +106,19 @@ const Row = memo(function Row({
           onChange={(e) => onToggle(row.line, e.target.checked)}
         />
       </td>
-      <td className="font-num text-right text-muted">{row.line}</td>
-      <td className="font-num whitespace-nowrap">{row.date ?? "—"}</td>
-      <td className="max-w-[22rem] truncate text-body" title={row.description}>
+      <td data-label="Line" className="font-num text-right text-muted">{row.line}</td>
+      <td data-label="Date" className="font-num whitespace-nowrap">{row.date ?? "—"}</td>
+      <td
+        data-label="Description"
+        className="max-w-[22rem] truncate text-body"
+        title={row.description}
+      >
         {row.description || "—"}
       </td>
-      <td className="font-num text-right whitespace-nowrap text-ink">
+      <td data-label="Amount" className="font-num text-right whitespace-nowrap text-ink">
         {row.amount === null ? "—" : fmt(row.amount, 2)}
       </td>
-      <td>
+      <td data-label="Category">
         {blocked ? (
           <span className="text-muted">—</span>
         ) : (
@@ -133,7 +137,7 @@ const Row = memo(function Row({
           </select>
         )}
       </td>
-      <td className="t-micro">
+      <td data-label="Status" className="t-micro">
         {blocked ? (
           <span className="text-muted">{row.skip}</span>
         ) : row.duplicate_of ? (
@@ -594,8 +598,15 @@ export default function ImportPanel({ categories }: { categories: string[] }) {
               </div>
             )}
 
+            {/* `table-cards` stacks each row into label/value lines below
+                640px — see globals.css. The importer is the one table in the
+                app that cannot be made to fit a phone by dropping columns:
+                its category <select> alone is ~146px at touch type size, and
+                a row carries TWO controls because it is a decision, not a
+                readout. Measured before the change: 736px of table in a 335px
+                scroller, 401px of it off screen. */}
             <div className="overflow-x-auto">
-              <table>
+              <table className="table-cards">
                 <thead>
                   <tr>
                     <th className="w-8" />
