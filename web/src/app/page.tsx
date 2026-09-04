@@ -92,15 +92,25 @@ export default function Dashboard() {
 
   const th = dashboard.take_home;
   const monthly = th.monthly_take_home;
+  /* The month's figures and all four verdicts, from the engine.
 
-  // Adding up what the user typed. Every RULE — thresholds, denominators,
-  // classifications — is in Python; nothing below decides anything.
+     This comment used to say "every RULE — thresholds, denominators,
+     classifications — is in Python" and the twenty lines under it computed a
+     savings rate, an adherence percentage and four sets of bands. Worse, both
+     month-dependent cards graded a month that was not over: the ring read 70%
+     GREEN on the 4th with one rent charge logged, and adherence read 15/15 "On
+     track" because a category with nothing against it counts as within budget.
+     `health_report` reports the month so far and withholds the verdict until
+     the month is complete. The comment is true now. */
+  const h = dashboard.health;
+
+  // Adding up what the user typed, which is the one thing this layer may do.
   const now = new Date();
   const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const monthExpenses = profile.expenses.filter((e) => e.date.startsWith(curKey));
-  const spent = monthExpenses.reduce((s, e) => s + e.amount, 0);
-  const netSavings = monthly - spent;
-  const savingsRate = monthly > 0 ? (netSavings / monthly) * 100 : null;
+  const spent = h.spent;
+  const netSavings = h.net_savings;
+  const savingsRate = h.savings_rate;
 
   const totalAssets = sum(profile.assets);
   const totalLiabilities = sum(profile.liabilities);
@@ -142,8 +152,6 @@ export default function Dashboard() {
     sum(profile.budget.needs) + sum(profile.budget.wants) + sum(profile.budget.savings);
   const allCats = { ...profile.budget.needs, ...profile.budget.wants, ...profile.budget.savings };
   const budgeted = Object.entries(allCats).filter(([, v]) => v > 0);
-  const onTrack = budgeted.filter(([c, v]) => (byCategory[c] ?? 0) <= v).length;
-  const adherence = budgeted.length ? Math.round((onTrack / budgeted.length) * 100) : null;
 
   const ef = dashboard.emergency_fund_months;
   const dti = dashboard.dti_pct;
@@ -308,9 +316,17 @@ export default function Dashboard() {
               value={Math.max(0, Math.min(savingsRate, 100))}
               size={102}
               strokeWidth={5}
-              tone={savingsRate >= 20 ? "positive" : savingsRate >= 10 ? "caution" : "critical"}
+              /* The engine's verdict, or its refusal to give one. A ring
+                 painted "info" is not a grade — it is the figure with no
+                 grade attached, which is the honest answer to a month that is
+                 four days old. */
+              tone={h.savings_tone ?? "info"}
               label={`${savingsRate.toFixed(0)}%`}
-              sublabel={`Saved in ${MONTH_NAMES[now.getMonth()]}`}
+              sublabel={
+                h.verdict_withheld
+                  ? `Saved so far · ${h.verdict_withheld}`
+                  : `Saved in ${MONTH_NAMES[now.getMonth()]}`
+              }
             />
           )}
         </div>
@@ -327,8 +343,8 @@ export default function Dashboard() {
           <StatusCard
             label="Debt-to-income"
             value={pct(dti)}
-            status={dti === 0 ? "No debt" : dti <= 20 ? "Healthy" : dti <= 36 ? "Manageable" : "High"}
-            tone={dti <= 20 ? "positive" : dti <= 36 ? "caution" : "critical"}
+            status={h.dti_status}
+            tone={h.dti_tone ?? "info"}
             description={`${fmt(dashboard.monthly_debt_service)}/mo of ${
               dashboard.debt_service_source === "debts"
                 ? "minimums on the debts you entered"
@@ -353,15 +369,15 @@ export default function Dashboard() {
           <StatusCard
             label="Emergency fund"
             value={`${ef.toFixed(1)} mo`}
-            status={ef >= 6 ? "Strong" : ef >= 3 ? "Building" : "Priority"}
-            tone={ef >= 6 ? "positive" : ef >= 3 ? "caution" : "critical"}
+            status={h.emergency_fund_status}
+            tone={h.emergency_fund_tone ?? "info"}
             description={`${fmt(dashboard.liquid_assets)} counted from ${dashboard.emergency_fund_counted.join(
               ", ",
             )}, against ${fmt(dashboard.monthly_needs)}/mo of needs.`}
           />
         )}
 
-        {adherence === null ? (
+        {h.budgeted_categories === 0 ? (
           <StatusCard
             label="Budget adherence"
             value="—"
@@ -372,12 +388,26 @@ export default function Dashboard() {
         ) : (
           <StatusCard
             label="Budget adherence"
-            value={`${onTrack}/${budgeted.length}`}
-            status={adherence >= 80 ? "On track" : "Watch"}
-            tone={adherence >= 80 ? "positive" : "caution"}
-            description={`Categories within budget this month. Total budgeted ${fmt(
-              budgetTotal,
-            )}/mo.`}
+            value={
+              h.verdict_withheld
+                ? `${h.on_track}/${h.budgeted_categories} so far`
+                : `${h.on_track}/${h.budgeted_categories}`
+            }
+            status={h.adherence_status ?? "Partial month"}
+            tone={h.adherence_tone ?? "info"}
+            /* A category with nothing logged against it counts as within
+               budget, which is true of the month so far and says nothing
+               about the month. Naming them is what stops the score reading
+               as a result — measured, a profile with one expense in it
+               scored 15/15 "On track". */
+            description={
+              `Categories within budget${h.verdict_withheld ? " so far" : " this month"}. ` +
+              (h.unlogged_categories > 0
+                ? `${h.unlogged_categories} of them ` +
+                  `${h.verdict_withheld ? "have nothing logged yet" : "had nothing logged against them"}. `
+                : "") +
+              `Total budgeted ${fmt(budgetTotal)}/mo.`
+            }
           />
         )}
       </div>

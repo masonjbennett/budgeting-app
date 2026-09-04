@@ -82,8 +82,52 @@ export interface TakeHome {
   filing: string;
 }
 
+/** A verdict the ENGINE reached. `tone` names a meaning, not a colour, and
+ *  null means no verdict — never "neutral is fine". */
+export type Tone = "positive" | "caution" | "critical" | "info";
+
+/**
+ * The dashboard's four verdicts and the month they are measured over.
+ *
+ * Every band here was a ternary in `page.tsx`, and the savings rate and
+ * adherence percentage were computed there too. Worse, both month-dependent
+ * cards graded a month that was not over, flatteringly: the ring read 70%
+ * green on the 4th with one rent charge logged, and adherence read 15/15 "On
+ * track" because a category with nothing against it counts as within budget.
+ * The figures are the month SO FAR; a tone of null means the engine declined
+ * to grade it and `verdict_withheld` says why.
+ */
+export interface Health {
+  month: string;
+  day: number;
+  days_in_month: number;
+  month_complete: boolean;
+  transactions: number;
+  spent: number;
+  net_savings: number;
+  /** null when no salary has been entered. */
+  savings_rate: number | null;
+  savings_tone: Tone | null;
+  savings_status: string | null;
+  /** The reason there is no verdict, in words. null means there IS one. */
+  verdict_withheld: string | null;
+  budgeted_categories: number;
+  on_track: number;
+  /** Budgeted categories with nothing logged against them. They count as on
+   *  track, which is true of the month so far and says nothing about it. */
+  unlogged_categories: number;
+  adherence_pct: number | null;
+  adherence_tone: Tone | null;
+  adherence_status: string | null;
+  dti_tone: Tone | null;
+  dti_status: string;
+  emergency_fund_tone: Tone | null;
+  emergency_fund_status: string;
+}
+
 export interface Dashboard {
   take_home: TakeHome;
+  health: Health;
   monthly_debt_service: number;
   /** "debts" when read from entered debts, "budget" when from the category. */
   debt_service_source: string;
@@ -464,6 +508,9 @@ export const api = {
     request<TakeHome>("/take-home", { income, itemized }),
 
   dashboard: (input: {
+    expenses?: Expense[];
+    budget?: Record<string, Record<string, number>>;
+    today?: string;
     income: Income;
     itemized?: Record<string, number>;
     debts: Debt[];

@@ -1023,6 +1023,89 @@ check("an empty file is an empty preview, not an error",
       calc.import_preview([], categories=_CATS)["rows"] == [])
 
 
+# ── The dashboard's health verdicts ──────────────────────────────────
+print("\n--- health_report: the month is not over ---")
+
+_HEXP = [{"id": "1", "date": "2026-09-01", "amount": 1800.0, "category": "Rent"}]
+_HBUD = {"needs": {"Rent": 1800, "Groceries": 600}, "wants": {"Dining": 300},
+         "savings": {}}
+_mid = calc.health_report(5932.0, _HEXP, _HBUD, dti_pct=0.0,
+                          emergency_fund=4.9, today="2026-09-04")
+_end = calc.health_report(5932.0, _HEXP, _HBUD, dti_pct=0.0,
+                          emergency_fund=4.9, today="2026-09-30")
+
+# THE DEFECT. `1 - spent_so_far / take_home` starts each month at 100% and
+# falls through it, so on the 4th with one rent charge logged the ring read
+# 70% and was painted GREEN. The figure is still reported; the GRADE is not.
+check("a month in progress reports its figure",
+      round(_mid["savings_rate"], 1) == 69.7, str(_mid["savings_rate"]))
+check("but is not graded, and says why",
+      _mid["savings_tone"] == "info" and _mid["savings_status"] is None
+      and _mid["verdict_withheld"] == "4 of 30 days into the month",
+      f'{_mid["savings_tone"]} / {_mid["verdict_withheld"]}')
+check("the same month, once complete, IS graded",
+      _end["verdict_withheld"] is None
+      and _end["savings_tone"] == "positive" and _end["savings_status"] == "Strong")
+
+# The second half of the same defect: a category with nothing logged against
+# it is "within budget", so a month holding one expense scored 15/15.
+check("adherence counts a category with nothing logged as on track",
+      _mid["on_track"] == 3 and _mid["budgeted_categories"] == 3)
+check("and REPORTS how many those are, so the score is not read as a result",
+      _mid["unlogged_categories"] == 2)
+check("adherence is not graded mid-month either",
+      _mid["adherence_tone"] == "info" and _mid["adherence_status"] == "Partial month")
+check("a budgeted category at zero is not a category",
+      calc.health_report(1000.0, [], {"needs": {"Rent": 0}},
+                         today="2026-09-30")["budgeted_categories"] == 0)
+
+# A month with nothing in it cannot be graded either, however far through it
+# is: an expense log has holes and a hole looks exactly like a frugal month.
+_empty = calc.health_report(5932.0, [], _HBUD, today="2026-09-30")
+check("a complete month with nothing logged is still not graded",
+      _empty["verdict_withheld"] == "nothing logged this month yet"
+      and _empty["savings_tone"] == "info")
+check("and its rate would have been a flattering 100%",
+      _empty["savings_rate"] == 100.0)
+
+# "Needs income" is not a verdict about the month, so it survives.
+_broke = calc.health_report(0.0, [], _HBUD, today="2026-09-04")
+check("with no salary the rate is None, not zero",
+      _broke["savings_rate"] is None)
+check("and the reason given is the missing salary, not the missing month",
+      _broke["savings_status"] == "Needs income")
+
+check("expenses from another month are not this month's",
+      calc.health_report(1000.0, [{"date": "2026-08-31", "amount": 500.0}],
+                         today="2026-09-04")["spent"] == 0)
+check("the client's date decides which month 'this month' is",
+      calc.health_report(1000.0, _HEXP, today="2026-10-04")["transactions"] == 0
+      and calc.health_report(1000.0, _HEXP, today="2026-09-04")["transactions"] == 1)
+
+print("\n--- the bands live in one place ---")
+# They were a ternary on the dashboard and a DIFFERENT ternary on /year —
+# three tiers against four — so one rate was graded two ways depending which
+# page you were looking at.
+check("the savings bands are Strong / Building / Thin / Negative",
+      [calc.savings_rate_verdict(r)[1] for r in (25, 15, 5, -5)]
+      == ["Strong", "Building", "Thin", "Negative"])
+check("and /year reports its verdict from that same function",
+      calc.year_to_date([{"date": "2026-01-15", "amount": 100.0, "category": "X"}],
+                        monthly_take_home=1000.0, today="2026-03-04")["savings_status"]
+      == calc.savings_rate_verdict(
+          calc.year_to_date([{"date": "2026-01-15", "amount": 100.0, "category": "X"}],
+                            monthly_take_home=1000.0, today="2026-03-04")["savings_rate"])[1])
+check("lender DTI bands are graded on the boundaries, not near them",
+      [calc.dti_verdict(v)[1] for v in (None, 0, 20, 20.1, 36, 36.1)]
+      == ["Needs income", "No debt", "Healthy", "Manageable", "Manageable", "High"])
+check("emergency-fund coverage of None is not coverage of zero",
+      calc.emergency_fund_verdict(None)[1] == "Not measurable"
+      and calc.emergency_fund_verdict(0)[1] == "Priority"
+      and calc.emergency_fund_verdict(6)[1] == "Strong")
+check("February knows about leap years",
+      calc._days_in_month(2028, 2) == 29 and calc._days_in_month(2027, 2) == 28
+      and calc._days_in_month(2026, 12) == 31)
+
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")
 print("=" * 66)

@@ -1078,3 +1078,73 @@ five proved able to fail against an injected fault. `web/README.md` rule 10.
 Counts after: **526 Python assertions** (203 + 42 + 168 + 113) and 33 mutations;
 browser **selftest 7 · sweep 156 · interact 63 · compare 33 · regression 27 ·
 persistence 17 · demonote 14 · mobile 35 · big 11 · streamlit 17**.
+
+## Sep 4 2026 — the dashboard graded a month that was not over (web/)
+
+The handoff's next tier — the dashboard, `/income`, `/tax`, `/net-worth`,
+`/data` had only been driven shallowly. The landing page went first. Two
+defects, and the comment sitting directly above the offending code said
+*"Adding up what the user typed. Every RULE — thresholds, denominators,
+classifications — is in Python; nothing below decides anything."* The twenty
+lines beneath it computed a savings rate, an adherence percentage, and four
+sets of bands.
+
+- **THE MONTH IS NOT OVER, and both month-dependent cards graded it anyway —
+  in the FLATTERING direction, which is the one nobody checks, because a green
+  ring looks like the app working.** The savings ring is
+  `1 - spent_so_far / take_home`, which starts every month at 100% and falls
+  through it, so it grades a countdown. Measured on the 4th of September with a
+  single rent charge logged: **70%, painted green**. On the shipped demo:
+  **48% green**, against a budget that plans to keep **17%**. Budget adherence
+  was the same defect one card over — a category with nothing logged against it
+  counts as within budget — so a profile holding ONE expense scored **15/15,
+  "On track"**.
+  This is `year_to_date`'s own lesson arriving on the page `/year` calls *one
+  month wide*: an expense log has holes and a hole looks exactly like a frugal
+  month. `health_report` reports the figures for the month SO FAR and withholds
+  the VERDICT until the month is complete. `verdict_withheld` carries the reason
+  in WORDS rather than a flag, so the ring reads *"48% · Saved so far · 4 of 30
+  days into the month"* in the ungraded tone instead of leaving an unexplained
+  blank, and adherence reads *"16/16 so far"* with **"5 of them have nothing
+  logged yet"** underneath. Pro-rating the budget by elapsed days was not open
+  as an alternative: `year_to_date` measured it and it reported rent paid on the
+  1st as thirty times over budget on the 2nd. Debt-to-income and the emergency
+  fund are not month-dependent and keep their verdicts.
+- **Every band moved into the engine**, as `savings_rate_verdict`,
+  `dti_verdict` and `emergency_fund_verdict`. They had been a ternary on the
+  dashboard and a DIFFERENT ternary on `/year` — **three tiers against four** —
+  so one measure was graded by one set on one page and another set on the next;
+  `/year` reads the same function now. Every state carries a tone AND a word,
+  including the ungraded one, so the page renders what it is handed rather than
+  deciding what "no verdict" looks like.
+- **The route had never been given the data, which is WHY the two figures were
+  in TypeScript.** `DashboardRequest` gained `expenses`, `budget` and the
+  client's `today` — the same three `year_to_date` already took, for the same
+  timezone reason. `localToday()` builds the date from its PARTS, because
+  `toISOString()` is UTC and hands back yesterday for anyone west of Greenwich,
+  which on the last day of a month would tell the engine the month is not over
+  when it is.
+- `ExpenseIn` had to move above `DashboardRequest` — a pydantic model cannot
+  reference one defined below it, and the failure is at import, in production.
+
+**`web/browser-checks/health.mjs` is new and in `npm run all` — 27 assertions,
+four proved able to fail. It PATCHES THE CLOCK rather than the data**, because
+the thing under test is what the page does as a month ends: mid-month the ring
+must be the ungraded tone and say how far in, on the last day it must carry a
+real verdict. Asserting only the first would pass on a page that never grades
+anything. It also re-fetches `/api/dashboard` itself and requires the rendered
+percentage to equal the engine's rounded, so the page cannot quietly start
+computing one again.
+
+Two smaller things: my own first probe reported the ring and the health cards as
+**absent** — wrong selectors, the tenth probe error in this run of sessions —
+and its second version tried to rewrite the profile in `localStorage`, which
+holds nothing until the visitor edits something (rule 4a working as designed).
+And the adherence description said "so far" even on a completed month, found by
+reading the rendered output rather than the code.
+
+Counts: **552 Python assertions** (221 + 42 + 168 + 121) and **40 mutations**
+(29 + 11) — `test_calc_mutations.py` gained 7, one per new rule, each required
+to fail `test_calc.py`. Browser: selftest 7 · sweep 156 · interact 63 ·
+compare 33 · **health 27** · regression 27 · persistence 17 · demonote 14 ·
+mobile 35 · big 11 · streamlit 17.

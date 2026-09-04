@@ -162,6 +162,17 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   // with older ones — with a number that looks entirely plausible.
   const seq = useRef(0);
 
+  /** Today, in the READER's timezone. `toISOString()` converts to UTC first
+   *  and so returns yesterday for anyone west of Greenwich after 5pm — which
+   *  on the last day of a month would tell the engine the month is not over
+   *  when it is, and on the 1st that it is a month it has left. */
+  const localToday = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate(),
+    ).padStart(2, "0")}`;
+  };
+
   const recompute = useCallback(async (p: Profile) => {
     const mine = ++seq.current;
     try {
@@ -171,6 +182,15 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
         debts: p.debts,
         budget_needs: p.budget.needs,
         assets: p.assets,
+        // The month's spending and the whole budget, because the savings rate
+        // and budget adherence are measured over them. They were worked out in
+        // page.tsx for the simple reason that this call never sent the data.
+        expenses: p.expenses,
+        budget: p.budget,
+        // The READER's date. The server's is a month ahead of somebody in
+        // Chicago on New Year's Eve, and this decides which month is "this
+        // one" and whether it is over.
+        today: localToday(),
       });
       if (mine === seq.current) {
         setDashboard(d);

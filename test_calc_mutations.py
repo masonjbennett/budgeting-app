@@ -32,6 +32,38 @@ PY = sys.executable
 CALC = "calculations.py"
 
 MUTATIONS = [
+    # ── The dashboard's health verdicts ──────────────────────────────
+    ("a month in progress is GRADED, so the savings ring reads 70% green on "
+     "the 4th and 100% for a month nobody has logged anything in yet",
+     ('    if withheld and rate is not None:\n'
+      '        savings_tone, savings_status = "info", None',
+      '    if False and rate is not None:\n'
+      '        savings_tone, savings_status = "info", None')),
+    ("budget adherence is graded mid-month, so a profile holding one expense "
+     "scores 15/15 'On track'",
+     ('    elif withheld:\n'
+      '        adherence_tone, adherence_status = "info", "Partial month"',
+      '    elif False:\n'
+      '        adherence_tone, adherence_status = "info", "Partial month"')),
+    ("a month with nothing logged in it is treated as a month on record, so "
+     "an empty log reads as having saved everything",
+     ('    if not mine:\n        withheld = "nothing logged this month yet"',
+      '    if False:\n        withheld = "nothing logged this month yet"')),
+    ("categories with nothing logged against them are not reported, so the "
+     "adherence score reads as a result rather than a count so far",
+     ("    unlogged = sum(1 for name in cat_budget if name not in by_category)",
+      "    unlogged = 0")),
+    ("the savings bands lose a tier, so a negative rate reads the same as a "
+     "thin positive one",
+     ('    if rate >= 0:\n        return "critical", "Thin"',
+      '    if rate >= -1e9:\n        return "critical", "Thin"')),
+    ("debt-to-income treats no debt at all as merely healthy",
+     ('    if pct == 0:\n        return "positive", "No debt"',
+      '    if pct is None and False:\n        return "positive", "No debt"')),
+    ("February is 28 days every year",
+     ("    nxt = _date(year + 1, 1, 1) if month == 12 else _date(year, month + 1, 1)\n"
+      "    return (nxt - _date(year, month, 1)).days",
+      "    return [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]")),
     # ── The year so far ──────────────────────────────────────────────
     ("the year is measured against the CALENDAR rather than against the "
      "months that hold records (a missing March reads as being under budget)",

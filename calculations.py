@@ -1771,9 +1771,197 @@ def year_to_date(expenses, budget=None, monthly_take_home=0.0, today=None):
         "take_home_to_date": take_home_to_date,
         "saved": saved,
         "savings_rate": savings_rate,
+        # From the SAME bands the dashboard uses. This was a ternary here and a
+        # different ternary there — four tiers against three — so one measure
+        # was graded two ways depending which page you were on.
+        "savings_tone": savings_rate_verdict(savings_rate)[0],
+        "savings_status": savings_rate_verdict(savings_rate)[1],
         "by_month": by_month,
         "by_bucket": by_bucket,
         "by_category": by_category,
+    }
+
+
+
+def _days_in_month(year, month):
+    """Length of a month, from the date type already imported.
+
+    `calendar.monthrange` would do it and would be the fourth import in a file
+    that is deliberately close to stdlib-bare; the difference between the
+    first of this month and the first of the next is the same answer and is
+    leap-year correct by construction rather than by table.
+    """
+    nxt = _date(year + 1, 1, 1) if month == 12 else _date(year, month + 1, 1)
+    return (nxt - _date(year, month, 1)).days
+
+
+def savings_rate_verdict(rate):
+    """The bands for a savings rate, in ONE place.
+
+    They were a ternary in `page.tsx` and a DIFFERENT ternary in
+    `year/page.tsx` — three tiers against four — which is how two copies of a
+    rule drift: a rate of 5% was graded by one set on one page and another set
+    on the next. Both pages read this now.
+
+    Returns (tone, status). `tone` names a MEANING, not a colour.
+    """
+    if rate is None:
+        return None, "Needs income"
+    if rate >= 20:
+        return "positive", "Strong"
+    if rate >= 10:
+        return "caution", "Building"
+    if rate >= 0:
+        return "critical", "Thin"
+    return "critical", "Negative"
+
+
+def dti_verdict(pct):
+    """Lender bands, which are defined on GROSS income — see the denominator
+    in api_dashboard. No debt at all is its own answer, not merely healthy."""
+    if pct is None:
+        return "info", "Needs income"
+    if pct == 0:
+        return "positive", "No debt"
+    if pct <= 20:
+        return "positive", "Healthy"
+    if pct <= 36:
+        return "caution", "Manageable"
+    return "critical", "High"
+
+
+def emergency_fund_verdict(months):
+    """None is not zero: it means coverage could not be measured."""
+    if months is None:
+        return "info", "Not measurable"
+    if months >= 6:
+        return "positive", "Strong"
+    if months >= 3:
+        return "caution", "Building"
+    return "critical", "Priority"
+
+
+def health_report(monthly_take_home, expenses, budget=None, dti_pct=None,
+                  emergency_fund=None, today=None):
+    """The dashboard's four verdicts, and the month they are measured over.
+
+    TWO THINGS LIVED IN THE DISPLAY LAYER AND BOTH BELONG HERE.
+
+    The first is every band above. The savings ring, debt-to-income, the
+    emergency fund and budget adherence were each graded by a ternary in
+    `page.tsx`, under a comment claiming that "every RULE — thresholds,
+    denominators, classifications — is in Python"; the savings rate and
+    adherence percentage were computed there too. That is the shape of the
+    defect this endpoint exists to prevent, and web/README.md rule 2 is about
+    exactly it.
+
+    The second produced a wrong number rather than a misplaced one. THE MONTH
+    ON THE DASHBOARD IS NOT OVER, and both month-dependent cards graded it as
+    though it were — in the flattering direction, which is the one nobody
+    checks:
+
+      * the savings ring is `1 - spent_so_far / take_home`, which starts every
+        month at 100% and falls through it. Measured on the 4th of September
+        with a single rent charge logged it read **70%, painted green**; on the
+        shipped demo it read **48% green**, against a budget that plans to keep
+        17%.
+      * adherence counts a category as on track when nothing has been logged
+        against it, so a month holding one expense scored **15/15, "On
+        track"**. That is `year_to_date`'s lesson exactly: an expense log has
+        holes, and a hole looks precisely like a frugal month.
+
+    So the FIGURES are reported for the month so far, because that is what a
+    reader wants to see, and the VERDICT is withheld until the month is
+    complete. `verdict_withheld` carries the REASON rather than a flag, so the
+    page can print it instead of leaving an unexplained blank. The alternative
+    — pro-rating the budget by elapsed days so the month can be graded early —
+    is not open: `year_to_date` measured it and it reported rent paid on the
+    1st as thirty times over budget on the 2nd.
+
+    `today` is the CLIENT's date, for the reason given on `year_to_date`.
+    """
+    ref = _parse_iso(today) or _date.today()
+    key = "%04d-%02d" % (ref.year, ref.month)
+    days_in_month = _days_in_month(ref.year, ref.month)
+    complete = ref.day >= days_in_month
+
+    mine = [e for e in (expenses or []) if str(e.get("date") or "").startswith(key)]
+    spent = sum(float(e.get("amount") or 0) for e in mine)
+    net_savings = monthly_take_home - spent
+    rate = (net_savings / monthly_take_home * 100.0) if monthly_take_home > 0 else None
+
+    by_category = {}
+    for e in mine:
+        cat = e.get("category") or ""
+        by_category[cat] = by_category.get(cat, 0.0) + float(e.get("amount") or 0)
+
+    b = budget or {}
+    cat_budget = {}
+    for bucket in ("needs", "wants", "savings"):
+        for name, amount in (b.get(bucket) or {}).items():
+            if float(amount) > 0:
+                cat_budget[name] = float(amount)
+
+    budgeted = len(cat_budget)
+    on_track = sum(1 for name, amount in cat_budget.items()
+                   if by_category.get(name, 0.0) <= amount)
+    # The categories carrying no record at all. They count as on track above,
+    # which is true of the month so far and says nothing about the month, so
+    # the page names them rather than letting them quietly pad the score.
+    unlogged = sum(1 for name in cat_budget if name not in by_category)
+    adherence = (on_track / budgeted * 100.0) if budgeted else None
+
+    # Why no verdict is being given. None means one IS.
+    if not mine:
+        withheld = "nothing logged this month yet"
+    elif not complete:
+        withheld = "%d of %d days into the month" % (ref.day, days_in_month)
+    else:
+        withheld = None
+
+    # EVERY state carries a tone and a word, including the ungraded one, so
+    # the page renders what it is handed rather than deciding what "no verdict"
+    # should look like. "info" is the ungraded tone: it is not a grade.
+    savings_tone, savings_status = savings_rate_verdict(rate)
+    # "Needs income" is not a verdict about the month, so it survives being
+    # withheld — a reader with no salary entered must still be told why.
+    if withheld and rate is not None:
+        savings_tone, savings_status = "info", None
+
+    if not budgeted:
+        adherence_tone, adherence_status = "info", "No budget set"
+    elif withheld:
+        adherence_tone, adherence_status = "info", "Partial month"
+    elif adherence >= 80:
+        adherence_tone, adherence_status = "positive", "On track"
+    else:
+        adherence_tone, adherence_status = "caution", "Watch"
+
+    dti_tone, dti_status = dti_verdict(dti_pct)
+    ef_tone, ef_status = emergency_fund_verdict(emergency_fund)
+
+    return {
+        "month": key,
+        "day": ref.day,
+        "days_in_month": days_in_month,
+        "month_complete": complete,
+        "transactions": len(mine),
+        "spent": spent,
+        "net_savings": net_savings,
+        "savings_rate": rate,
+        "savings_tone": savings_tone,
+        "savings_status": savings_status,
+        "verdict_withheld": withheld,
+        "budgeted_categories": budgeted,
+        "on_track": on_track,
+        "unlogged_categories": unlogged,
+        "adherence_pct": adherence,
+        "adherence_tone": adherence_tone,
+        "adherence_status": adherence_status,
+        "dti_tone": dti_tone,
+        "dti_status": dti_status,
+        "emergency_fund_tone": ef_tone,
+        "emergency_fund_status": ef_status,
     }
 
 

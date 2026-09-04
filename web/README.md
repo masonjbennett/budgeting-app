@@ -507,6 +507,48 @@ under different gates, because a media query cannot add a class and a class
 cannot carry a media query. `compare.mjs` asserts the two produce the same
 computed layout property for property, so they cannot drift.
 
+### 11. A verdict needs complete data, and the bands belong in the engine
+
+Both halves came off the landing page, and the comment above the offending
+twenty lines said *"every RULE — thresholds, denominators, classifications — is
+in Python; nothing below decides anything"*. Beneath it the page computed a
+savings rate, an adherence percentage, and four sets of bands.
+
+**The month on the dashboard is not over.** The savings ring is
+`1 - spent_so_far / take_home`, which starts every month at 100% and falls
+through it, so it grades a countdown. Measured on the 4th of September with a
+single rent charge logged it read **70%, painted green**; on the shipped demo it
+read **48% green** against a budget that plans to keep **17%**. Budget adherence
+was the same defect in the next card: a category with nothing logged against it
+counts as within budget, so a profile holding one expense scored **15/15, "On
+track"**. Both fail in the FLATTERING direction — the one nobody checks, because
+a green ring looks like the app working.
+
+This is `year_to_date`'s lesson arriving on the page `/year` itself calls *one
+month wide*: an expense log has holes and a hole looks exactly like a frugal
+month. So `health_report` reports the figures for the month SO FAR and withholds
+the VERDICT until the month is complete. `verdict_withheld` carries the reason in
+words rather than a flag, so the ring can say *"4 of 30 days into the month"*
+instead of leaving an unexplained blank, and adherence reads *"16/16 so far"*
+with the count of categories that have nothing logged yet.
+
+**Pro-rating the budget by elapsed days is not the alternative** — `year_to_date`
+measured it and it reported rent paid on the 1st as thirty times over budget on
+the 2nd. Debt-to-income and the emergency fund are not month-dependent and keep
+their verdicts.
+
+**Every band is now in `calculations.py`**, in `savings_rate_verdict`,
+`dti_verdict` and `emergency_fund_verdict`. They had been a ternary here and a
+DIFFERENT ternary in `year/page.tsx` — three tiers against four — so one measure
+was graded by one set on one page and another on the next. `/year` reads the same
+function now. Every state carries a tone and a word, including the ungraded one,
+so the page renders what it is handed rather than deciding what "no verdict"
+should look like; `"info"` is the ungraded tone and is not a grade.
+
+The route had never been given the data — that is *why* the two figures were in
+TypeScript — so `DashboardRequest` gained `expenses`, `budget` and the client's
+`today`, the same three `year_to_date` already took, for the same timezone reason.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944

@@ -62,6 +62,7 @@ from calculations import (  # noqa: E402
     capital_equivalent,
     compute_take_home,
     emergency_fund_months,
+    health_report,
     fire_projection,
     histogram,
     import_preview,
@@ -110,6 +111,21 @@ class PayoffRequest(BaseModel):
     extra: float = 0
 
 
+class ExpenseIn(BaseModel):
+    """One logged expense, as the profile stores it.
+
+    Permissive on purpose: this crosses from a store the user controls, and a
+    row with a missing note or an unparseable date must reach the engine to be
+    REPORTED as unreadable rather than 422 the whole request. The engine's
+    date parsing already returns None rather than raising for exactly that.
+    """
+    id: str = ""
+    date: str = ""
+    amount: float = 0
+    category: str = ""
+    note: str = ""
+
+
 class DashboardRequest(BaseModel):
     """Everything the health ratios need, in one round trip.
 
@@ -128,6 +144,16 @@ class DashboardRequest(BaseModel):
     debts: List[Debt] = Field(default_factory=list)
     budget_needs: Dict[str, float] = Field(default_factory=dict)
     assets: Dict[str, float] = Field(default_factory=dict)
+    # The month's spending and the whole budget, because the savings rate and
+    # budget adherence are measured over them — and both were computed and
+    # GRADED in page.tsx until September 2026 for the simple reason that this
+    # route was never given the data. See `health_report`.
+    expenses: List[ExpenseIn] = Field(default_factory=list, max_length=50_000)
+    budget: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    # The CLIENT's date. Omitted, the server's is used — right for a test and
+    # wrong for a reader in a timezone behind this function, for whom the
+    # server has already rolled into a month they are not in yet.
+    today: Optional[str] = None
 
 
 class CashFlowRequest(BaseModel):
@@ -224,21 +250,6 @@ class FireRequest(BaseModel):
     stock_pct: float = 80.0
     inflation: float = 3.0
     swr: float = SWR_DEFAULT
-
-
-class ExpenseIn(BaseModel):
-    """One logged expense, as the profile stores it.
-
-    Permissive on purpose: this crosses from a store the user controls, and a
-    row with a missing note or an unparseable date must reach the engine to be
-    REPORTED as unreadable rather than 422 the whole request. The engine's
-    date parsing already returns None rather than raising for exactly that.
-    """
-    id: str = ""
-    date: str = ""
-    amount: float = 0
-    category: str = ""
-    note: str = ""
 
 
 class YearToDateRequest(BaseModel):
@@ -344,11 +355,24 @@ def api_dashboard(req: DashboardRequest) -> Dict[str, Any]:
     # earlier versions did — shrinks it by about a quarter and grades people a
     # whole category harsher than a lender would.
     gross_monthly = th["annual_gross"] / 12
+    dti = (service / gross_monthly * 100) if gross_monthly else None
     return {
         "take_home": th,
+        # Every band on the page, and the month they are measured over. The
+        # figures are for the month SO FAR; the verdict is withheld until the
+        # month is complete, because a month in progress grades flatteringly
+        # and both of these cards were doing it.
+        "health": health_report(
+            th["monthly_take_home"],
+            [e.model_dump() for e in req.expenses],
+            req.budget,
+            dti_pct=dti,
+            emergency_fund=ef_months,
+            today=req.today,
+        ),
         "monthly_debt_service": service,
         "debt_service_source": service_source,
-        "dti_pct": (service / gross_monthly * 100) if gross_monthly else None,
+        "dti_pct": dti,
         "monthly_needs": monthly_needs,
         # None is not 0.0: it means coverage could not be measured, not that it
         # is zero. The client must render the two differently.

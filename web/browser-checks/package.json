@@ -10,12 +10,13 @@
     "interact": "node interact.mjs",
     "big": "node fixtures/make-big.mjs && node bigimport.mjs && node bigcorrect.mjs",
     "streamlit": "node streamlit.mjs",
-    "all": "node selftest.mjs && node sweep.mjs && node interact.mjs && node compare.mjs --selftest && node regression.mjs && node persistence.mjs && node demonote.mjs && node mobile.mjs --selftest",
+    "all": "node selftest.mjs && node sweep.mjs && node interact.mjs && node compare.mjs --selftest && node health.mjs --selftest && node regression.mjs && node persistence.mjs && node demonote.mjs && node mobile.mjs --selftest",
     "regress": "node regression.mjs",
     "mobile": "node mobile.mjs --selftest",
     "persist": "node persistence.mjs",
     "demonote": "node demonote.mjs",
-    "compare": "node compare.mjs --selftest"
+    "compare": "node compare.mjs --selftest",
+    "health": "node health.mjs --selftest"
   },
   "dependencies": {
     "puppeteer-core": "^23.0.0"

@@ -608,6 +608,49 @@ check("and it still defines every route once imported that way",
       f"subprocess saw {_r.stdout.strip()!r}")
 
 
+# ── 6e. The dashboard's health verdicts ──────────────────────────────
+print("\n--- health ---")
+_HBODY = {
+    "income": dict(INCOME, gross_salary=105_000, bonus_type="None"),
+    "budget": {"needs": {"Rent": 1800, "Groceries": 600}, "wants": {"Dining": 300},
+               "savings": {}},
+    "budget_needs": {"Rent": 1800, "Groceries": 600},
+    "expenses": [{"id": "1", "date": "2026-09-01", "amount": 1800,
+                  "category": "Rent", "note": "Rent"}],
+    "assets": {"Checking": 5000, "Savings": 8000},
+    "today": "2026-09-04",
+}
+_hmid = client.post("/api/dashboard", json=_HBODY).json()
+_hend = client.post("/api/dashboard", json=dict(_HBODY, today="2026-09-30")).json()
+
+check("the dashboard carries the verdicts, not just the figures",
+      "health" in _hmid and _hmid["health"]["month"] == "2026-09")
+check("the route hands the engine what it was given, unchanged",
+      _hmid["health"] == calc.health_report(
+          _hmid["take_home"]["monthly_take_home"], _HBODY["expenses"],
+          _HBODY["budget"], dti_pct=_hmid["dti_pct"],
+          emergency_fund=_hmid["emergency_fund_months"], today="2026-09-04"))
+check("a month in progress is reported but not graded",
+      _hmid["health"]["savings_tone"] == "info"
+      and _hmid["health"]["savings_status"] is None
+      and _hmid["health"]["verdict_withheld"].endswith("days into the month"))
+check("and the completed month is",
+      _hend["health"]["verdict_withheld"] is None
+      and _hend["health"]["savings_status"] == "Strong")
+check("THE CLIENT'S date decides the month, not the server's",
+      client.post("/api/dashboard", json=dict(_HBODY, today="2026-10-04"))
+            .json()["health"]["transactions"] == 0
+      and _hmid["health"]["transactions"] == 1)
+check("debt-to-income keeps its own value AND gains its verdict",
+      _hmid["dti_pct"] == 0.0 and _hmid["health"]["dti_status"] == "No debt")
+check("an unreadable expense row does not 422 the whole dashboard",
+      client.post("/api/dashboard", json=dict(
+          _HBODY, expenses=[{"date": "not a date", "amount": 10}])).status_code == 200)
+check("no budget at all is its own answer, not a division by zero",
+      client.post("/api/dashboard", json=dict(_HBODY, budget={})).json()
+            ["health"]["adherence_pct"] is None)
+
+
 # ── 7. Nothing here touches user data ────────────────────────────────
 print("\n--- the API stays a pure calculator ---")
 # Read the CODE, not the prose about the code. The first version of this check
