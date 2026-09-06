@@ -1303,7 +1303,16 @@ direction: **two screens agreeing today is not the same as there being one
 rule.** These two had agreed for as long as every profile carried amounts in
 every row, and disagreed the first time one did not.
 
-## Sep 6 2026 — the portfolio X-ray, slice 1 (web/, NOT deployed, NOT pushed)
+## Sep 6 2026 — the portfolio X-ray, slice 1 (web/, DEPLOYED, commit 4764db7)
+
+**Pushed to master and confirmed live the same day** at
+budget.masonjbennett.com/portfolio. Verified in PRODUCTION rather than by
+assuming the build: the page renders, and `POST /api/portfolio` answers 200
+with correct figures — which is the check that matters, because
+`api/index.py` now imports a THIRD synced module and the first deploy of this
+API crashed on import in production behind a completely green build log. The
+live Streamlit backup was re-checked too (17/17, no ImportError), since
+`calculations.py` gained a module-level `from fund_data import`.
 
 A private, **unlinked** route at `/portfolio` that takes a list of
 holdings and says what someone actually owns: concentration, fees, mix, and
