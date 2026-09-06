@@ -142,7 +142,11 @@ const TABLES = () => {
       .map((th) => {
         const r = th.getBoundingClientRect();
         return {
-          name: (th.textContent || "").trim().slice(0, 14) || "(actions)",
+          // innerText, not textContent: a heading may carry a short form
+          // and a long one with CSS choosing between them, and
+          // textContent concatenates BOTH — a failure on /year named the
+          // column "DiffVariance", which is no column at all.
+          name: (th.innerText || "").trim().slice(0, 14) || "(actions)",
           vis: r.left >= scRect.left - 1 && r.right <= scRect.right + 1,
         };
       });

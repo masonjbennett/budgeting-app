@@ -44,6 +44,34 @@ function nameMonths(keys: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+/**
+ * A column heading with a short form for narrow screens.
+ *
+ * `/year`'s four columns came to 358px of HEADER against a 318px scroller at
+ * 360px — in every one of them the widest cell was the heading, not the
+ * figure. Shortening two words is what buys the room; dropping a column would
+ * have cost a figure to keep a word.
+ *
+ * Both forms are in the DOM and CSS chooses, so `innerText` reports whichever
+ * is displayed and a check reads what a reader reads.
+ */
+function ColHead({
+  children,
+  short,
+  className = "",
+}: {
+  children: string;
+  short: string;
+  className?: string;
+}) {
+  return (
+    <th className={className}>
+      <span className="sm:hidden">{short}</span>
+      <span className="hidden sm:inline">{children}</span>
+    </th>
+  );
+}
+
 export default function YearPage() {
   const { profile } = useFinance();
   const [ytd, setYtd] = useState<YearToDate | null>(null);
@@ -317,9 +345,9 @@ export default function YearPage() {
                         Spent and Variance are actually measured against. */}
                     <th>Bucket</th>
                     <th className="hidden text-right sm:table-cell">Per month</th>
-                    <th className="text-right">Budgeted</th>
+                    <ColHead short="Plan" className="text-right">Budgeted</ColHead>
                     <th className="text-right">Spent</th>
-                    <th className="text-right">Variance</th>
+                    <ColHead short="Diff" className="text-right">Variance</ColHead>
                   </tr>
                 </thead>
                 <tbody>
@@ -397,7 +425,13 @@ export default function YearPage() {
             <table>
               <thead>
                 <tr>
-                  {/* On a phone this is Category · Budgeted · Spent ·
+                  {/* SIX columns, so this one waits for `md` rather than
+                      `sm`: with Bucket and Of budget back it needs 664px and
+                      the content area at 640 is 582. The five-column table
+                      above fits at 640 with nothing to spare (582 in 582),
+                      which is why the breakpoint is per-table.
+
+                      On a phone this is Category · Budgeted · Spent ·
                       Variance. Six columns are 539px against 335px, so
                       Spent, Of budget AND Variance were all off screen —
                       every number the table carries.
@@ -408,11 +442,11 @@ export default function YearPage() {
                       Budgeted stays because Variance is meaningless without
                       the figure it is measured against. */}
                   <th>Category</th>
-                  <th className="hidden sm:table-cell">Bucket</th>
-                  <th className="text-right">Budgeted</th>
+                  <th className="hidden md:table-cell">Bucket</th>
+                  <ColHead short="Plan" className="text-right">Budgeted</ColHead>
                   <th className="text-right">Spent</th>
-                  <th className="hidden text-right sm:table-cell">Of budget</th>
-                  <th className="text-right">Variance</th>
+                  <th className="hidden text-right md:table-cell">Of budget</th>
+                  <ColHead short="Diff" className="text-right">Variance</ColHead>
                 </tr>
               </thead>
               <tbody>
@@ -420,14 +454,20 @@ export default function YearPage() {
                   .filter((c) => c.spent > 0 || c.budget_monthly > 0)
                   .map((c) => (
                     <tr key={c.category}>
-                      <td className="text-ink">{c.category}</td>
-                      <td className="hidden text-muted sm:table-cell">{c.bucket ?? "—"}</td>
+                      {/* Bounded, or one long category name overflows the
+                          table on that person's data and nobody else's. The
+                          full name is in `title`; the row is still the
+                          category, so nothing is hidden, only clipped. */}
+                      <td className="max-w-[7rem] truncate text-ink sm:max-w-none" title={c.category}>
+                        {c.category}
+                      </td>
+                      <td className="hidden text-muted md:table-cell">{c.bucket ?? "—"}</td>
                       <td className="font-num text-right">
                         {c.budget_monthly > 0 ? fmt(c.budget_to_date) : "not budgeted"}
                       </td>
                       <td className="font-num text-right text-ink">{fmt(c.spent)}</td>
                       <td
-                        className={`font-num hidden text-right sm:table-cell ${c.over ? "text-critical" : "text-muted"}`}
+                        className={`font-num hidden text-right md:table-cell ${c.over ? "text-critical" : "text-muted"}`}
                       >
                         {c.pct_of_budget === null ? "—" : pct(c.pct_of_budget, 0)}
                       </td>

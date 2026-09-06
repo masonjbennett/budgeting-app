@@ -17,6 +17,14 @@
  *      Worth — the answer. The clipped edge read "$105," and "$70,": a
  *      truncated number that still reads as a number, for the fourth time in
  *      this codebase.
+ *
+ *      A CORRECTION worth keeping, because the numbers were quoted for a
+ *      while: the fit thresholds recorded at the time — 3 columns from 323px,
+ *      4 from 424, 5 from 525, 6 from 738 — were measured in a trial that
+ *      forced `table th { white-space: normal }`. The shipped fix only
+ *      unwrapped the two text ROWS; `thead th` is nowrap, so a header never
+ *      folds and every real threshold is higher. The page measures rather than
+ *      assuming, so it is right either way — but do not trust those figures.
  *   2. Two columns could carry one name without anybody typing a duplicate —
  *      add two, remove the first, add again — and the winner's colour then
  *      landed on EVERY column carrying the winning name. Measured: a $49,438
@@ -81,9 +89,26 @@ async function open({ width = 1440, theme = "light", route = "/compare" } = {}) 
   return page;
 }
 
+/* A destroyed execution context means the document went away and came back —
+   in dev that is an HMR reload landing between `open()` settling and the next
+   call. The click never happened, so retry it once; without this the whole
+   `npm run all` chain dies on an uncaught rejection, and the alternative
+   failure mode is worse: a missing scenario reported as an app defect. */
+const evalRetry = async (page, fn) => {
+  try {
+    return await page.evaluate(fn);
+  } catch (e) {
+    if (!/Execution context was destroyed|Target closed/.test(String(e))) throw e;
+    await page.waitForFunction(() => !document.querySelector(".skeleton"), { timeout: 30000 })
+      .catch(() => {});
+    await new Promise((r) => setTimeout(r, 600));
+    return page.evaluate(fn);
+  }
+};
+
 const addScenario = async (page, n = 1) => {
   for (let i = 0; i < n; i++) {
-    await page.evaluate(() => [...document.querySelectorAll("button")]
+    await evalRetry(page, () => [...document.querySelectorAll("button")]
       .find((b) => /Add a scenario/i.test(b.textContent))?.click());
     await new Promise((r) => setTimeout(r, 650));
   }
@@ -228,12 +253,18 @@ console.log("\n--- it stacks because it MEASURED, not because it is a phone ---"
   const page = await open({ width: 375 });
   await addScenario(page, 1);
   const one375 = await page.evaluate(TABLE);
-  check("one scenario fits a phone, so the grid is kept", !one375.stacked && one375.hidden <= 1,
-        `stacked=${one375.stacked} hidden=${one375.hidden}`);
+  /* NOT "one scenario keeps the grid at 375px". That was asserted once, off a
+     threshold of 323px taken from a trial that forced headers to wrap with
+     `!important` — and `thead th` is `white-space: nowrap`, so they never do.
+     One scenario really needs ~350px against a 333px scroller. The assertion
+     passed for weeks and then failed with NO source change, which is what a
+     test pinned to a font-metric margin does. What matters is the property. */
+  check("whichever way a phone resolves it, no column is off screen",
+        one375.hidden <= 1, `stacked=${one375.stacked} hidden=${one375.hidden}`);
 
   await addScenario(page, 1);
   const two375 = await page.evaluate(TABLE);
-  check("a second scenario does not, so it stacks", two375.stacked,
+  check("two scenarios on a phone stack rather than hide one", two375.stacked,
         `hidden=${two375.hidden}`);
 
   await page.setViewport({ width: 1440, height: 1200 });
@@ -477,9 +508,10 @@ if (SELFTEST) {
     await page.close();
   }
 
-  // 2. stack a table that fits, and the "grid is kept" assertion must fire
+  // 2. a WIDE window keeps the grid, and forcing the class must be visible —
+  //    at 1440 the answer is not marginal, which is the point of moving it
   {
-    const page = await open({ width: 375 });
+    const page = await open({ width: 1440 });
     await addScenario(page, 1);
     const before = await page.evaluate(TABLE);
     const after = await page.evaluate(() => {
@@ -488,7 +520,8 @@ if (SELFTEST) {
       return t.classList.contains("table-stacked");
     });
     check("[can fail] a table forced to stack is seen to have stacked",
-          !before.stacked && after === true);
+          !before.stacked && after === true,
+          `before stacked=${before.stacked}`);
     await page.close();
   }
 
