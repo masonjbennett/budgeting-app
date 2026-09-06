@@ -11,7 +11,12 @@ interface RingChartProps {
   strokeWidth?: number;
   tone?: Token;
   label?: string;
+  /** Two or three words. Anything longer belongs in `caption` — the centre of
+   *  a 102px dial is not a paragraph, and a sentence put here wraps over the
+   *  arc it is describing. */
   sublabel?: string;
+  /** The long form, below the dial rather than inside it. */
+  caption?: string;
   className?: string;
 }
 
@@ -22,6 +27,7 @@ export default function RingChart({
   tone = "accent",
   label,
   sublabel,
+  caption,
   className = "",
 }: RingChartProps) {
   const palette = usePalette();
@@ -37,6 +43,7 @@ export default function RingChart({
 
   return (
     <div className={`ring-container ${className}`}>
+      <div className="ring-dial">
       <svg width={size} height={size}>
         <circle
           cx={size / 2}
@@ -63,6 +70,15 @@ export default function RingChart({
         {label && <span className="font-num t-h3 leading-none font-medium text-ink">{label}</span>}
         {sublabel && <span className="t-micro mt-1 text-muted">{sublabel}</span>}
       </div>
+      </div>
+      {/* Outside the dial, so it can be a sentence. Width-capped so a long one
+          makes the card taller rather than wider — a chart card in a four-up
+          grid that grows sideways drags the other three out of alignment. */}
+      {caption && (
+        <p className="t-micro mt-2.5 max-w-[13.5rem] text-center leading-snug text-muted">
+          {caption}
+        </p>
+      )}
     </div>
   );
 }

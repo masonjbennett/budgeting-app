@@ -766,8 +766,13 @@
   }
 
   .rule { height: 1px; background: var(--hair); }
-  .ring-container { position: relative; display: inline-flex; align-items: center; justify-content: center; }
-  .ring-container svg { transform: rotate(-90deg); }
+  /* The container is a COLUMN — dial, then caption. The class stays on the
+     outer element so anything selecting `.ring-container` still gets the whole
+     thing, including the sentence that used to be inside the dial and over the
+     arc. */
+  .ring-container { display: inline-flex; flex-direction: column; align-items: center; }
+  .ring-dial { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+  .ring-dial svg { transform: rotate(-90deg); }
 }
 
 /* ═══ Motion ═════════════════════════════════════════════════════════

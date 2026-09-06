@@ -124,11 +124,15 @@ export function Card({
   children,
   height = 300,
   action,
+  center,
 }: {
   title?: string;
   children: ReactNode;
   height?: number;
   action?: ReactNode;
+  /** Drawn over the plot area, centred. For a donut's hole, which is the one
+   *  place a total can sit without competing with anything. */
+  center?: ReactNode;
 }) {
   return (
     <div className="card">
@@ -138,10 +142,18 @@ export function Card({
           {action}
         </div>
       )}
-      <div style={{ height }}>
+      <div className="relative" style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
           {children as never}
         </ResponsiveContainer>
+        {/* pointer-events-none, or the overlay swallows the hover the tooltip
+            is listening for and the slices stop naming themselves. */}
+        {center && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col
+                          items-center justify-center text-center">
+            {center}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -315,10 +327,18 @@ export function DonutChart({
   data,
   height = 280,
   title,
+  total,
+  totalLabel,
 }: {
   data: { name: string; value: number }[];
   height?: number;
   title?: string;
+  /** What the slices come to, ALREADY FORMATTED. The component is handed the
+   *  figure rather than summing `data` itself: the caller has the engine's
+   *  total, and a second sum here would be a number computed in the display
+   *  layer that could disagree with the one printed everywhere else. */
+  total?: string;
+  totalLabel?: string;
 }) {
   const p = usePalette();
   // Radii are numbers, not percentages. Percentage radii inside a
@@ -330,7 +350,18 @@ export function DonutChart({
   const inner = Math.round(height * 0.3);
 
   return (
-    <Card title={title} height={height}>
+    <Card
+      title={title}
+      height={height}
+      center={
+        total ? (
+          <>
+            <span className="font-num t-h3 leading-none font-medium text-ink">{total}</span>
+            {totalLabel && <span className="t-micro mt-1.5 text-muted">{totalLabel}</span>}
+          </>
+        ) : null
+      }
+    >
       <PieChart>
         <Pie
           data={data}

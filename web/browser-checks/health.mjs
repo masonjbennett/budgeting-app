@@ -490,6 +490,92 @@ console.log("\n--- the sidebar carries balances, and they are the real ones ---"
 }
 
 // ═══════════════════════════════════════════════════════════════════
+console.log("\n--- nothing sits on top of the ring, and the donut is not hollow ---");
+{
+  /* Both were found by LOOKING, and neither had anything watching it.
+
+     The ring put EVERYTHING in the middle of a 102px dial, including the
+     sentence saying why a verdict is withheld — so once that wording grew,
+     "Saved so far · 5 of 30 days into the month" wrapped to four lines and
+     printed over its own arc. A text-content assertion cannot see that: the
+     words were all present and correct. It is a question about GEOMETRY. */
+  const page = await open();
+  const geo = await page.evaluate(() => {
+    const ring = document.querySelector(".ring-container");
+    const dial = ring.querySelector(".ring-dial");
+    const svg = dial.querySelector("svg");
+    const box = svg.getBoundingClientRect();
+    const centre = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    // The hole the text has to live in: the dial less its own stroke.
+    const stroke = parseFloat(svg.querySelector("circle").getAttribute("stroke-width")) || 0;
+    const inner = box.width / 2 - stroke;
+    const corners = (r) => [[r.left, r.top], [r.right, r.top], [r.left, r.bottom], [r.right, r.bottom]];
+    const far = (r) => Math.max(...corners(r).map(([x, y]) =>
+      Math.hypot(x - centre.x, y - centre.y)));
+    const overlay = dial.querySelector("div");
+    const caption = [...ring.children].find((c) => c.tagName === "P");
+    return {
+      inner,
+      // the furthest corner of anything drawn in the middle
+      centreReach: Math.max(...[...overlay.children].map((el) => far(el.getBoundingClientRect()))),
+      centreText: overlay.innerText.replace(/\s+/g, " ").trim(),
+      hasCaption: !!caption,
+      captionText: caption?.innerText.replace(/\s+/g, " ").trim() ?? null,
+      // a caption BELOW the dial starts after the dial ends
+      captionTop: caption?.getBoundingClientRect().top ?? null,
+      dialBottom: box.bottom,
+    };
+  });
+
+  check("the ring has a dial with something written in it",
+        geo.inner > 20 && geo.centreText.length > 0, JSON.stringify(geo).slice(0, 90));
+  check("everything in the middle FITS in the middle, corners included",
+        geo.centreReach <= geo.inner,
+        `reaches ${geo.centreReach.toFixed(1)}px into a ${geo.inner.toFixed(1)}px hole`);
+  check("the reason a verdict is withheld is BELOW the dial, not over it",
+        geo.hasCaption && geo.captionTop >= geo.dialBottom - 1,
+        `caption top ${geo.captionTop} vs dial bottom ${geo.dialBottom}`);
+  check("and it is the engine's own wording, not a second copy",
+        /\d+ of \d+ days into the month/.test(geo.captionText ?? ""), String(geo.captionText));
+
+  /* The donut had a hole with nothing in it. The figure in there must be the
+     ENGINE's total, not a sum of the slices — a second sum in the display
+     layer is exactly what rule 2 exists to stop, and it could disagree with
+     the card above it. */
+  const donut = await page.evaluate(async () => {
+    const head = [...document.querySelectorAll("p.label")].find((x) => /^Spending/.test(x.textContent));
+    const card = head?.nextElementSibling?.querySelector(".card");
+    const overlay = card?.querySelector(".pointer-events-none");
+    const state = await fetch("/api/state").then((r) => r.json());
+    const p = state.profile ?? state;
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const h = await fetch("/api/dashboard", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ income: p.income, itemized: p.itemized, debts: p.debts,
+        budget_needs: p.budget.needs, assets: p.assets, expenses: p.expenses,
+        budget: p.budget, today }),
+    }).then((x) => x.json()).then((x) => x.health);
+    return {
+      text: overlay?.innerText.replace(/\s+/g, " ").trim() ?? null,
+      slices: card?.querySelectorAll(".recharts-pie path").length ?? 0,
+      spent: h.spent,
+    };
+  });
+
+  check("the donut draws slices", donut.slices > 1, `${donut.slices} slices`);
+  check("and its hole carries a figure rather than nothing",
+        /\$[\d,]+/.test(donut.text ?? ""), String(donut.text));
+  check("which is the engine's total for the month, to the dollar",
+        (donut.text ?? "").includes(
+          "$" + Math.round(donut.spent).toLocaleString("en-US")),
+        `centre "${donut.text}" vs engine ${donut.spent}`);
+  check("and the hole names the span, like every other figure on the page",
+        /\w{3} 1\u2013\d+|^\$[\d,]+ \w+$/.test(donut.text ?? ""), String(donut.text));
+  await page.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════
 if (SELFTEST) {
   console.log("\n=== selftest: each check, against an injected fault ===");
 
@@ -581,6 +667,47 @@ if (SELFTEST) {
       return link.querySelectorAll("span")[1].textContent === "$1";
     });
     check("[can fail] a sidebar total can be made to disagree and be measured", ok);
+    await page.close();
+  }
+
+  // 8. put the caption back inside the dial and the geometry must object
+  {
+    const page = await open();
+    const reach = await page.evaluate(() => {
+      const ring = document.querySelector(".ring-container");
+      const dial = ring.querySelector(".ring-dial");
+      const svg = dial.querySelector("svg");
+      const box = svg.getBoundingClientRect();
+      const centre = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      const stroke = parseFloat(svg.querySelector("circle").getAttribute("stroke-width")) || 0;
+      // move the caption into the middle, which is where it used to be
+      const caption = [...ring.children].find((c) => c.tagName === "P");
+      dial.querySelector("div").appendChild(caption);
+      const far = (r) => Math.max(...[[r.left, r.top], [r.right, r.top], [r.left, r.bottom],
+        [r.right, r.bottom]].map(([x, y]) => Math.hypot(x - centre.x, y - centre.y)));
+      const overlay = dial.querySelector("div");
+      return {
+        reach: Math.max(...[...overlay.children].map((el) => far(el.getBoundingClientRect()))),
+        inner: box.width / 2 - stroke,
+      };
+    });
+    check("[can fail] a caption put back inside the dial overflows it",
+          reach.reach > reach.inner,
+          `reaches ${reach.reach.toFixed(1)}px into a ${reach.inner.toFixed(1)}px hole`);
+    await page.close();
+  }
+
+  // 9. empty the donut's hole and the check must notice
+  {
+    const page = await open();
+    const gone = await page.evaluate(() => {
+      const head = [...document.querySelectorAll("p.label")].find((x) => /^Spending/.test(x.textContent));
+      const card = head?.nextElementSibling?.querySelector(".card");
+      card?.querySelector(".pointer-events-none")?.remove();
+      return card?.querySelector(".pointer-events-none") === null
+        || card?.querySelector(".pointer-events-none") === undefined;
+    });
+    check("[can fail] a donut with nothing in its hole is seen as hollow", gone === true);
     await page.close();
   }
 

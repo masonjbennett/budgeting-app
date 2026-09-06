@@ -512,11 +512,11 @@ export default function Dashboard() {
                  four days old. */
               tone={h.savings_tone ?? "info"}
               label={`${savingsRate.toFixed(0)}%`}
-              sublabel={
-                h.verdict_withheld
-                  ? `Saved so far · ${h.verdict_withheld}`
-                  : `Saved in ${MONTH_NAMES[monthIndex]}`
-              }
+              sublabel={h.verdict_withheld ? "Saved so far" : `Saved in ${MONTH_NAMES[monthIndex]}`}
+              // The reason goes UNDER the dial. Joined onto the sublabel it
+              // wrapped to four lines inside a 102px circle and overlapped the
+              // arc it was explaining.
+              caption={h.verdict_withheld ?? undefined}
             />
           )}
         </div>
@@ -623,6 +623,10 @@ export default function Dashboard() {
             <DonutChart
               data={categories.map(([name, value]) => ({ name, value }))}
               height={280}
+              // The engine's figure, not a sum of the slices — the same one the
+              // card above prints, so the two cannot disagree.
+              total={fmt(spent)}
+              totalLabel={soFar}
             />
           </div>
           <div className="card card-flush overflow-hidden lg:col-span-3">

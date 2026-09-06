@@ -173,6 +173,8 @@ export default function BudgetPage() {
                 .map(([name, value]) => ({ name, value })),
             )}
             height={320}
+            total={fmt(allocated)}
+            totalLabel="a month, planned"
           />
         </Section>
       )}
