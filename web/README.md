@@ -602,6 +602,37 @@ below the fold on any laptop. Three totals instead; per-account figures are one
 click away on Net Worth, which is where a row is edited anyway. A profile with
 nothing entered renders **no block at all** rather than a column of `$0`.
 
+### 13. A figure that was measured over part of the money must say so
+
+`/portfolio` (the X-ray) is the first page here whose every number is computed
+over a SUBSET of what the reader gave it, and the subset differs per figure.
+Three things follow, and all three are enforced rather than remembered.
+
+**Coverage is per figure, not per page.** An individual stock has a known asset
+class (equity) and a known fee (zero — it is not a fund) and NO region, so it
+counts towards two of the three and not the third. `mix.class_coverage_pct` and
+`mix.region_coverage_pct` are separate numbers and both render.
+
+**The banner goes ABOVE the first figure.** A weighted expense ratio measured
+across a third of someone's portfolio is typographically identical to one
+measured across all of it, and it will be believed. Below
+`FEE_COVERAGE_FLOOR` (60%, a judgement, and the page prints the real coverage
+either way) the fee card leads with the caveat and demotes the number.
+`browser-checks/portfolio.mjs` asserts the ORDERING by measuring both element
+tops — not that the banner exists, which a footnote would also satisfy.
+
+**A denominator names itself.** `cash_pct_of_total` is over the whole
+portfolio; the class mix divides by CLASSIFIED dollars. With one untabled fund
+present those are different numbers for the same $6,000, and an unqualified
+`cash_pct` beside the mix chart would print two percentages for one holding and
+one of them would look wrong. The engine's field name carries the denominator;
+a mutation swapping it fails the suite.
+
+**And a fund's absence from the table is never a zero.** A fee of 0.00 is a
+measurement (Fidelity's ZERO funds really are free); a fund nobody has added is
+`None` and lands in the uncovered bucket. Conflating them takes the coverage
+banner off the page along with the truth.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944
@@ -754,6 +785,11 @@ navigation and the re-skin have both landed. The app is a rail at `lg` and up
 and an off-canvas drawer below it, verified at 375px — `elementFromPoint(60,
 300)` returns page content rather than a sidebar element, there is no
 horizontal overflow, and the drawer closes on Escape, on navigation and on the
-backdrop, returning focus to the opener. The Streamlit app is still live and
-still the recruiter-safe link; swap it only once the preview has been used in
-anger.
+backdrop, returning focus to the opener.
+
+**SUPERSEDED Sep 3 2026 — this app IS deployed and IS the recruiter-safe
+link.** budget.masonjbennett.com is live and the site's project card, the
+recruiter-safe list and `llms.txt` all point here. The Streamlit app is the
+BACKUP: still live, still woken by the keep-alive job, not developed further.
+The sentence above about deploying to a preview first is kept as the record of
+how the first deploy was approached, not as current advice.

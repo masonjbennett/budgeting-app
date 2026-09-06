@@ -1302,3 +1302,197 @@ The generalisation is the one this project keeps meeting from a different
 direction: **two screens agreeing today is not the same as there being one
 rule.** These two had agreed for as long as every profile carried amounts in
 every row, and disagreed the first time one did not.
+
+## Sep 6 2026 — the portfolio X-ray, slice 1 (web/, NOT deployed, NOT pushed)
+
+A private, **unlinked** route at `/portfolio` that takes a list of
+holdings and says what someone actually owns: concentration, fees, mix, and
+what it could not measure. Built for the questions Mason gets from friends and
+family, which the rest of this app already half-answers — emergency fund, debt,
+employer match — and which stop at *"is what I'm holding okay."*
+Spec: `project-notes/portfolio-xray-v1-spec.md`. The research that decides
+slices 2 and 3 is `project-notes/investing-tool-research-brief.md`.
+
+**It is deliberately absent from `GROUPS` in `Nav.tsx`**, and `ALL` — which the
+command palette reads — is derived from GROUPS, so staying out of one keeps it
+out of both. Reachable by URL only. Do not add it to the nav without deciding
+that it should be public, which is a posture decision, not a UI one.
+
+### The three properties the design is built on
+
+- **No network, and that is the point.** This API had ZERO external data
+  dependencies, which is why nothing outside it could take it down, and the
+  X-ray keeps that: values arrive in **dollars, not shares**, because a share
+  count needs a live price and a live price needs a vendor. Fees come from a
+  static table (`fund_data.py`). The cost is that a value is as-entered rather
+  than as-of-now, and the page says so.
+- **Every derived figure carries its OWN coverage, and they differ.** An
+  individual stock has a known class (equity) and a known fee (zero — it is not
+  a fund) and NO region, so it counts toward two of the three. A weighted
+  expense ratio measured across 30% of someone's money is worse than no answer
+  because it will be believed, so the coverage banner is rendered **above** the
+  first figure, not as a footnote, and `portfolio.mjs` asserts that ordering by
+  measuring both tops.
+- **Nothing can see inside a fund.** Concentration is measured across
+  POSITIONS, so the real figure is higher wherever a fund and a stock hold the
+  same company. `concentration_understated` is COMPUTED (true iff a fund is
+  held) rather than written into the page copy, so it cannot be true of one
+  portfolio and left standing on another — the Exxon collapsed-table obligation
+  from filings-terminal, arriving here.
+
+### What is new
+
+- **`fund_data.py`** — a root, stdlib-only lookup table (~50 funds people
+  actually hold), synced into `web/api/` alongside the other two by
+  `scripts/sync-calculations.mjs`; `MODULES` is now three entries and
+  `api/fund_data.py` is gitignored like its siblings. **Data, not rules**, kept
+  out of `calculations.py` so a January refresh never touches an engine with
+  mutation tests behind it. Carries `AS_OF`, which renders on the page.
+  **Add it to the January chore** beside `econ-2026.json`,
+  `damodaran-2026.json` and `NYSE_HOLIDAYS_2026`.
+  **Every expense ratio in it still needs verifying against the issuer before
+  the tool is used on a real portfolio.** They are plausible and unverified.
+- **`portfolio_xray()` in `calculations.py`** and `POST /api/portfolio`. The
+  fee drag is NOT new maths: it calls the existing `project_investment` twice,
+  at the return and at the return less the weighted ratio, so this page and
+  `/investments` cannot disagree about what compounding does. The suite
+  monkeypatches `project_investment` and requires the answer to move.
+- **`web/browser-checks/fixtures/seed-holdings.mjs`** and
+  **`portfolio.mjs`** (19 assertions, 3 selftests), both in `npm run all`.
+
+### Four defects found by LOOKING, three of them mine
+
+None was visible to a green suite; the page rendered and every number was
+arithmetically correct.
+
+- **Employer stock was GUESSED.** A checkbox under the table said "one of these
+  is employer stock" and the handler marked the **largest position** — driving
+  it labelled Vanguard S&P 500 as the employer. The app asserting something
+  nobody told it. It is a property of a ROW, so it is a fourth option on that
+  row's Type select ("Employer stock", which is still `kind: stock` for every
+  lookup) rather than a seventh column.
+- **"Effective holdings" rendered as `$3.5`** — `fmt` is a currency formatter
+  and this is a count. A local `count()` helper now; formatting, not
+  arithmetic.
+- **"Top five: 100.0%" over four holdings** is true by construction and says
+  nothing. The card renders only above five positions.
+- **A fix of mine that did nothing, removed rather than shipped.** New rows are
+  born showing `0`, so I added `onFocus={e => e.target.select()}` to the value
+  field. It does not take on `input[type=number]` here, synchronously OR
+  deferred to the next frame — measured both ways, the typed value still
+  appended. Shipping it would have been the 18px solid red shadow that rendered
+  as nothing. **The papercut it aimed at is real but is NOT this page's**:
+  every NumberInput in the app appends when the caret is at the end,
+  `/investments` included, which I confirmed before concluding anything. What
+  IS specific here is that a new row is the only field in the app born showing
+  a `0` that is not a figure. Fixing it properly means teaching the shared
+  component to render a blank, across thirteen routes.
+
+### And the sweep would have seen none of it
+
+`sweep.mjs` and `mobile.mjs` now walk `/portfolio`, **and sweep SEEDS it**.
+This is the `/compare` lesson taken one step further: the served profile ships
+no `holdings`, so an unseeded sweep would have measured the empty state in both
+themes, reported clean, and never looked at a single figure, chart, table or
+banner. `SEED` is a per-route map in `sweep.mjs`; a seed that throws calls
+`check(..., false)` rather than quietly handing the probe an empty page, which
+is the exact defect the map exists to close.
+
+**Two bugs in my own check, both the eleventh of their family in this repo.**
+`topOf` took the FIRST element in document order whose `textContent` matched —
+which is an ancestor wrapping the whole page, so the banner and the figures
+both reported a top of 0 and the ordering assertion compared nothing with
+nothing. And an assertion tested for the words *"not a recommendation"*, which
+the page has never said. Both were the check.
+
+**And one bug in the fixture worth keeping.** Clearing existing rows by
+clicking every Remove button inside a single `page.evaluate` does NOT clear
+them: each handler filters the `holdings` array captured in its own closure,
+React has not re-rendered between the synchronous clicks, so all N handlers see
+the same starting array and the last to run wins — six of seven rows survive.
+The loop read as obviously correct. It is one click per turn with a yield now.
+
+### The seeded phone found a bug in the app's own mobile rule
+
+`mobile.mjs` seeds `/portfolio` too, in `go()` — the single navigation point
+every one of its loops passes through, so all five sections get the populated
+page and pay for the seed once per context. Adding the route UNSEEDED had
+passed 35/35, which is the whole argument: a phone check over an empty page
+measures one button.
+
+Seeded, it failed immediately, on **14 text-entry controls at 13.5px**, and the
+cause is a class rather than an instance. The 16px floor added in September is
+a list of `input[type="number"]`, `input[type="text"]` … selectors — and **an
+attribute selector does not match an input that omits the attribute.** A bare
+`<input>` is a text field to the browser and invisible to that rule, so Mobile
+Safari zooms the viewport on focus and does not zoom back out on blur.
+
+There are **exactly three bare inputs in the app**: the X-ray's symbol and name
+fields, and **the command palette's search box** — which no route sweep can
+ever reach, because the palette is closed until somebody opens it. So the rule
+now also carries `input:not([type])`, which can only ever RAISE a font size on
+touch, and the two new fields carry `type="text"` because that is what the
+other eighteen do. Fixing only the instances would have left the palette.
+
+The generalisation is the one this codebase keeps meeting from new directions:
+**a selector that describes markup rather than meaning silently stops covering
+things.** It is the `[data-baseweb]` lesson from portfolio-app and the
+positional slider rule, arriving in an attribute selector.
+
+**And a second defect one layer along, which no check would have flagged
+because the page was not broken — it was WRONG.** The holdings table carried
+`hidden sm:table-cell` on Type and Account, copied from the four data tables.
+Measured at 375px: both selects render at **zero width**, so on a phone every
+holding is stuck as "Fund / ETF" and there is no way to say that something is
+cash, an individual stock, or the employer's. That is not a cramped table, it
+is a wrong answer — a stock entered on a phone is looked up as a fund, misses
+the table, and drags the coverage figure down with it.
+
+Column-dropping is right for a table that is a READING and wrong for one that
+is a DECISION, which is the importer's rule verbatim. The holdings table now
+carries `table-cards` and `data-label`, stacking each row into label/value
+lines below 640px; the positions table below it keeps `hidden sm:table-cell`,
+because that one really is a reading and Account really is secondary to it.
+Verified at 375px: Type 164px, Account 152px, page overflow 0.
+
+### Counts
+
+Python **630 assertions** (test_calc 282, test_cloud 42, test_stress 168,
+web/test_api 138), and **51 mutations** (40 + 11) — the
+engine harness gained 7, each required to fail `test_calc.py`. One of those
+seven, *"the fee drag is compounded over the whole portfolio while the page
+says it was measured over the covered part"*, **survived its first run**, which
+is why there is now an assertion that the reported `without_fees` is the
+projection OF the `on_value` the page prints.
+Browser: **portfolio 20** (3 selftests) and sweep 156 -> 168 with the new
+route in both themes; `mobile.mjs` seeds it too and is unchanged at 35.
+
+`npm run build`, `check:tokens`, `eslint` and `tsc` all clean.
+
+### Before this goes anywhere near production
+
+1. **Verify every expense ratio in `fund_data.py`** against the issuer. On
+   Mason's call this SHIPPED unverified, and the page says so in two places
+   rather than implying otherwise: `AS_OF` is the date the table was COMPILED,
+   and both the fee card and the limits list state the ratios are "not yet
+   checked against the issuers". That wording is asserted — `portfolio.mjs`
+   requires the disclaimer to be present AND requires the string "last
+   verified" to be absent, because the first version of the page carried it
+   over numbers nobody had checked. **Grep for "not yet checked" when the
+   verification is done**, and rename `AS_OF` to `VERIFIED_ON` at the same
+   time.
+2. **`calculations.py` gained a module-level `from fund_data import ...`.** The
+   Streamlit app is the live BACKUP and imports the same engine, and this
+   repo's own rule applies: *after adding a new name to `calculations.py`,
+   reboot the deployed Streamlit app* — `import calculations` can return the
+   copy already in `sys.modules`. Run `browser-checks/streamlit.mjs` before
+   pushing. (`test_stress.py` and `test_cloud.py`, which exec `budget_app.py`,
+   are green.)
+3. **It is UNLINKED, not auth-gated, and those are different things.** No route
+   in this app is auth-gated — the whole thing works signed out, against
+   localStorage, by design (rule 4a). So `/portfolio` is reachable by anyone
+   who types the URL, and what protects a visitor's figures is that they are
+   the visitor's own. The spec called for "unlinked and auth-gated"; only the
+   first half is true, and saying otherwise here would be a status claim that
+   silently misinforms every future session. If it genuinely needs gating, that
+   is a new mechanism, not a checkbox.

@@ -40,6 +40,8 @@
  * Run:  node mobile.mjs            (add --selftest to prove it can fail)
  */
 import puppeteer from "puppeteer-core";
+
+import { seedHoldings } from "./fixtures/seed-holdings.mjs";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,7 +55,8 @@ const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const SELFTEST = process.argv.includes("--selftest");
 const ROUTES = ["/", "/year", "/income", "/budget", "/expenses", "/net-worth",
-                "/goals", "/debt", "/compare", "/investments", "/fire", "/tax", "/data"];
+                "/goals", "/debt", "/compare", "/investments", "/fire", "/tax",
+                "/portfolio", "/data"];
 
 // What a healthy run must FIND, not just what it must not flag. A run that
 // looks at nothing reports zero problems: during this work a probe printed
@@ -89,6 +92,22 @@ async function go(p, route) {
   await p.waitForFunction(() => !document.querySelector(".skeleton"), { timeout: 30000 })
     .catch(() => {});
   await new Promise((r) => setTimeout(r, 600));
+
+  /* /portfolio ships no holdings in the served profile, so an unseeded walk
+     measures an EMPTY page and reports it clean — the /compare lesson, which
+     sweep.mjs already answers for the same route. The phone needs it more
+     than the sweep does: what a populated page adds is two TABLES, and a
+     table quietly hiding the column that carries the answer is a defect this
+     repo has now shipped four times (/expenses hid Amount, /year hid every
+     figure it reports, /compare hid a whole scenario).
+     Seeded once per context: the rows persist to localStorage, so the checks
+     that walk this route at ten widths pay for it once each rather than
+     every visit. */
+  if (route === "/portfolio") {
+    const n = await p.evaluate(
+      () => document.querySelectorAll('[aria-label^="Value of holding"]').length);
+    if (n === 0) await seedHoldings(p);
+  }
 }
 
 /* ── probes ──────────────────────────────────────────────────────────── */

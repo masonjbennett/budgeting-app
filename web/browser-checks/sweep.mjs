@@ -18,13 +18,23 @@
  */
 import puppeteer from "puppeteer-core";
 
+import { seedHoldings } from "./fixtures/seed-holdings.mjs";
+
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 // BASE is overridable so the same checks can be run against a
 // deployment: BASE=https://... node sweep.mjs
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const ROUTES = ["/", "/year", "/income", "/budget", "/expenses", "/net-worth",
                 "/goals", "/debt", "/compare", "/investments", "/fire", "/tax",
-                "/data"];
+                "/portfolio", "/data"];
+
+/* Routes the served profile leaves EMPTY, and how to fill them.
+   /compare taught this once: a sweep of a page whose data the fixture does not
+   supply is indistinguishable from a sweep that passes, and the screen the
+   page exists for goes unmeasured. /portfolio ships no holdings, so without
+   this every figure, chart, table and coverage banner on it would be swept as
+   an empty state in both themes and reported clean. */
+const SEED = { "/portfolio": seedHoldings };
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")),
@@ -291,6 +301,12 @@ for (const theme of THEMES) {
     await page.waitForFunction(() => !document.querySelector(".skeleton"), { timeout: 30000 })
       .catch(() => {});
     await new Promise((r) => setTimeout(r, 700));
+
+    if (SEED[route]) await SEED[route](page).catch((e) => {
+      // A seed that fails must FAIL, not quietly hand the probe an empty
+      // page — which is the exact defect this map exists to close.
+      check(`${theme} ${route}: the fixture populates the page`, false, String(e).slice(0, 90));
+    });
 
     const res = await page.evaluate(PROBE);
     const tag = `${theme} ${route}`;

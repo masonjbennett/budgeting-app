@@ -30,6 +30,15 @@ import math as _math
 import random as _random
 from datetime import date as _date
 
+# The one non-stdlib import here, and it is a sibling data module rather
+# than a framework: fund_data.py is a lookup table refreshed by reading
+# issuer pages, kept out of this file so a data chore never touches an
+# engine that has mutation tests behind it. scripts/sync-calculations.mjs
+# copies both into web/api/, and a missing copy must fail the import — and
+# so the deploy — rather than serve an X-ray with an empty fund table,
+# which would report every holding as uncovered and look merely cautious.
+from fund_data import AS_OF as _FUND_AS_OF, FUNDS as _FUNDS
+
 # TAX DATA (2026 estimates)
 # ──────────────────────────────────────────────
 
@@ -2721,4 +2730,241 @@ def import_preview(grid, existing=None, categories=None, has_header=None,
             "amount": sum(r["amount"] for r in importable
                           if not r["duplicate_of"]),
         },
+    }
+
+
+# ──────────────────────────────────────────────
+# PORTFOLIO X-RAY
+# ──────────────────────────────────────────────
+#
+# What someone actually owns, from a list of holdings and nothing else.
+#
+# NO NETWORK, ON PURPOSE. This app has zero external data dependencies, which
+# is why nothing outside it can take it down, and the X-ray keeps that: values
+# arrive in DOLLARS rather than share counts, because a share count needs a
+# live price and a live price needs a vendor. Dollars is also the figure a
+# person reads off a statement without converting anything. The cost is that a
+# value is as-entered rather than as-of-now, and the page says so.
+#
+# NO LOOK-THROUGH. companyfacts has no dimensional data and this table has no
+# fund holdings, so nothing here can see INSIDE a fund. Concentration is
+# therefore measured across POSITIONS, and the true figure is higher whenever a
+# fund is held — someone holding NVDA directly and an S&P fund owns more NVDA
+# than the position list shows. That is stated rather than implied, and the
+# error is in the safe direction: this understates concentration, never
+# overstates it.
+#
+# EVERY DERIVED FIGURE CARRIES ITS OWN COVERAGE. A weighted expense ratio
+# computed over 30% of someone's money is worse than no answer, because it will
+# be believed. Coverage differs per figure and is not one number: an individual
+# stock has a known class (equity) and a known fee (zero, it is not a fund) and
+# an UNKNOWN region, so it counts towards two of the three and not the third.
+
+XRAY_KINDS = ("fund", "stock", "cash")
+
+
+def _holding_facts(h, funds):
+    """(er, cls, region, known) for one holding — the only place kind is read.
+
+    A stock and a cash line need no table: a share of a company is equity and
+    charges no expense ratio, and cash is cash. Only `fund` can miss, and a
+    miss is None everywhere rather than a zero, because "no fee" and "nobody
+    checked" are different answers and a zero prints as the first one.
+    """
+    kind = str(h.get("kind") or "fund").lower()
+    if kind == "cash":
+        return 0.0, "cash", None, True
+    if kind == "stock":
+        # Region is deliberately None. A US-listed line is usually a US
+        # company and "usually" is not a measurement; asserting `us` here
+        # would silently fill the region mix with an assumption.
+        return 0.0, "equity", None, True
+    entry = funds.get(str(h.get("symbol") or "").strip().upper())
+    if not entry:
+        return None, None, None, False
+    return entry["er"], entry["cls"], entry.get("region"), True
+
+
+def _share(part, whole):
+    """part/whole as a percentage, or None when there is no whole.
+
+    Zero dollars of something out of zero dollars is not 0% — it is not a
+    proportion at all, and a page printing 0.0% for an empty portfolio is
+    reporting a measurement it did not make.
+    """
+    if not whole:
+        return None
+    return part / whole * 100.0
+
+
+def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
+    """What a list of holdings actually adds up to.
+
+    holdings: [{id, symbol, label, value, account, kind, employer_stock}]
+              kind is one of XRAY_KINDS; anything else is treated as a fund,
+              which is the permissive direction — it lands in the uncovered
+              bucket and is REPORTED rather than raising on a profile the user
+              controls.
+
+    `funds` is injectable so the suite can drive a known table rather than
+    asserting against reference data that is refreshed every January.
+    """
+    if funds is None:
+        funds = _FUNDS
+
+    rows, total = [], 0.0
+    for h in (holdings or []):
+        try:
+            value = float(h.get("value") or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value <= 0:
+            # A zero row is something half-typed, not a holding. Dropping it
+            # keeps it out of the count and out of the coverage denominator,
+            # where it would otherwise dilute a percentage with nothing.
+            continue
+        er, cls, region, known = _holding_facts(h, funds)
+        rows.append({
+            "id": str(h.get("id") or ""),
+            "symbol": str(h.get("symbol") or "").strip().upper(),
+            "label": str(h.get("label") or "").strip(),
+            "kind": str(h.get("kind") or "fund").lower(),
+            "account": str(h.get("account") or "").strip(),
+            "employer_stock": bool(h.get("employer_stock")),
+            "value": value,
+            "er": er, "cls": cls, "region": region, "known": known,
+        })
+        total += value
+
+    for r in rows:
+        r["weight"] = _share(r["value"], total)
+
+    # ── Concentration. Needs no table, so it has no coverage. ────────
+    ordered = sorted(rows, key=lambda r: r["value"], reverse=True)
+    hhi = sum((r["value"] / total) ** 2 for r in rows) if total else 0.0
+    largest = None
+    if ordered:
+        largest = ordered[0]["label"] or ordered[0]["symbol"] or "(unnamed)"
+    concentration = {
+        "count": len(rows),
+        "largest": largest,
+        "largest_pct": ordered[0]["weight"] if ordered else None,
+        "top5_pct": _share(sum(r["value"] for r in ordered[:5]), total),
+        # 1/HHI — the number of EQUAL positions that would be this
+        # concentrated. Twelve positions with one at 60% is an effective 2.6,
+        # and that sentence lands where a list of percentages does not.
+        "effective_holdings": (1.0 / hhi) if hhi else None,
+    }
+
+    # ── Fees, over covered dollars only ──────────────────────────────
+    fee_value = sum(r["value"] for r in rows if r["er"] is not None)
+    weighted_er = (sum(r["value"] * r["er"] for r in rows if r["er"] is not None)
+                   / fee_value) if fee_value else None
+    expense = {
+        "weighted_er": weighted_er,
+        "annual_cost": (sum(r["value"] * r["er"] / 100.0
+                            for r in rows if r["er"] is not None)
+                        if fee_value else None),
+        "coverage_pct": _share(fee_value, total),
+        "covered_value": fee_value,
+        "uncovered_value": total - fee_value,
+        "uncovered": [r["label"] or r["symbol"] or "(unnamed)"
+                      for r in rows if r["er"] is None],
+    }
+
+    # ── Fee drag: the existing projection, run twice ─────────────────
+    #
+    # Deliberately NOT new maths. project_investment is what the Investments
+    # page already compounds with, so the two pages cannot disagree about what
+    # a return does over thirty years — and the fee is expressed the only way
+    # it is ever felt, as the gap between two paths.
+    fee_drag = None
+    if weighted_er is not None and fee_value > 0 and years > 0:
+        gross, _ = project_investment(fee_value, 0, annual_return, years)
+        net, _ = project_investment(fee_value, 0, annual_return - weighted_er, years)
+        fee_drag = {
+            "years": years,
+            "rate": annual_return,
+            "on_value": fee_value,
+            "without_fees": gross[-1],
+            "with_fees": net[-1],
+            "cost": gross[-1] - net[-1],
+        }
+
+    # ── Class and region mixes, each with its own coverage ───────────
+    cls_value = sum(r["value"] for r in rows if r["cls"])
+    classes = {}
+    for r in rows:
+        if r["cls"]:
+            classes[r["cls"]] = classes.get(r["cls"], 0.0) + r["value"]
+    region_value = sum(r["value"] for r in rows if r["region"])
+    regions = {}
+    for r in rows:
+        if r["region"]:
+            regions[r["region"]] = regions.get(r["region"], 0.0) + r["value"]
+
+    mix = {
+        "classes": {k: {"value": v, "pct": _share(v, cls_value)}
+                    for k, v in classes.items()},
+        "class_coverage_pct": _share(cls_value, total),
+        "regions": {k: {"value": v, "pct": _share(v, region_value)}
+                    for k, v in regions.items()},
+        "region_coverage_pct": _share(region_value, total),
+        # Region coverage is low for anyone holding individual stocks and that
+        # is correct rather than a gap to apologise for, so the page needs to
+        # be able to say WHY it is low without recomputing anything.
+        "region_unknown_stock_value": sum(r["value"] for r in rows
+                                          if r["kind"] == "stock"),
+    }
+
+    # ── The same symbol in more than one account ─────────────────────
+    #
+    # Exact, free, and the one overlap this can prove. Someone with the same
+    # index fund in a 401(k) and a Roth reads it as two holdings.
+    by_symbol = {}
+    for r in rows:
+        if r["symbol"]:
+            by_symbol.setdefault(r["symbol"], []).append(r)
+    duplicates = [{
+        "symbol": sym,
+        "label": group[0]["label"] or sym,
+        "value": sum(g["value"] for g in group),
+        "pct": _share(sum(g["value"] for g in group), total),
+        "accounts": [g["account"] or "(no account)" for g in group],
+    } for sym, group in by_symbol.items() if len(group) > 1]
+    duplicates.sort(key=lambda d: d["value"], reverse=True)
+
+    employer = [r for r in rows if r["employer_stock"]]
+    employer_stock = {
+        "value": sum(r["value"] for r in employer),
+        "pct": _share(sum(r["value"] for r in employer), total),
+        "names": [r["label"] or r["symbol"] or "(unnamed)" for r in employer],
+    } if employer else None
+
+    cash_value = sum(r["value"] for r in rows if r["cls"] == "cash")
+    fund_count = sum(1 for r in rows if r["kind"] == "fund")
+
+    return {
+        "total": total,
+        "positions": ordered,
+        "concentration": concentration,
+        "expense": expense,
+        "fee_drag": fee_drag,
+        "mix": mix,
+        "duplicates": duplicates,
+        "employer_stock": employer_stock,
+        "cash_value": cash_value,
+        # OF THE WHOLE PORTFOLIO, and the name says so because the class mix
+        # above divides by CLASSIFIED dollars instead. With an uncovered fund
+        # in the list the two denominators differ, so an unqualified
+        # "cash_pct" and the mix chart's cash slice would print two different
+        # percentages for the same $5,000 and one of them would look wrong.
+        "cash_pct_of_total": _share(cash_value, total),
+        # The claim the page has to make about its own limits, computed rather
+        # than written into the copy so it cannot be true of one portfolio and
+        # left standing on another.
+        "lookthrough": False,
+        "concentration_understated": fund_count > 0,
+        "fund_count": fund_count,
+        "as_of": _FUND_AS_OF,
     }

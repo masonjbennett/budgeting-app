@@ -818,6 +818,83 @@ check("the preview does not echo the profile back to the caller",
       "existing" not in _ip and "expenses" not in _ip)
 
 
+
+print("\n--- /api/portfolio, the X-ray ---")
+
+_pf_holdings = [
+    {"id": "1", "symbol": "VOO", "label": "Vanguard S&P 500", "value": 50_000,
+     "account": "401(k)", "kind": "fund"},
+    {"id": "2", "symbol": "BND", "label": "Total Bond", "value": 20_000,
+     "account": "401(k)", "kind": "fund"},
+    {"id": "3", "symbol": "NVDA", "label": "Nvidia", "value": 10_000,
+     "account": "Brokerage", "kind": "stock"},
+    {"id": "4", "symbol": "", "label": "Company Stock Fund", "value": 15_000,
+     "account": "401(k)", "kind": "fund", "employer_stock": True},
+    {"id": "5", "symbol": "", "label": "Cash", "value": 5_000,
+     "account": "Brokerage", "kind": "cash"},
+]
+_pf = client.post("/api/portfolio", json={
+    "holdings": _pf_holdings, "annual_return": 7.0, "years": 30}).json()
+
+# The route is a pass-through. Every number below must be the engine's, and
+# the only way to prove that is to ask the engine the same question — this is
+# the comparison, not a re-derivation.
+_pf_engine = calc.portfolio_xray(_pf_holdings, 7.0, 30)
+check("the route reports the engine's figures rather than any of its own",
+      _pf["total"] == _pf_engine["total"]
+      and _pf["expense"]["weighted_er"] == _pf_engine["expense"]["weighted_er"]
+      and _pf["concentration"]["effective_holdings"]
+      == _pf_engine["concentration"]["effective_holdings"]
+      and _pf["fee_drag"]["cost"] == _pf_engine["fee_drag"]["cost"])
+
+check("the class rows come back in the table's declared order",
+      [r["key"] for r in _pf["mix"]["class_rows"]]
+      == [k for k in index.CLASS_ORDER if k in _pf_engine["mix"]["classes"]])
+check("and each carries an English label rather than a raw key",
+      all(r["label"] and r["label"] != r["key"] for r in _pf["mix"]["class_rows"]))
+check("the class rows account for every classified dollar",
+      abs(sum(r["value"] for r in _pf["mix"]["class_rows"])
+          - _pf_engine["expense"]["covered_value"]) < 1e-9)
+
+# A class added to fund_data.py and forgotten in CLASS_ORDER must still reach
+# the page. Dropping it would leave slices that do not sum to the coverage
+# figure printed beside them, with nothing on the page saying why.
+_lab = index._labelled({"bond": {"value": 1.0, "pct": 50.0},
+                        "unheard_of": {"value": 1.0, "pct": 50.0}},
+                       index.CLASS_ORDER, index.CLASS_LABEL)
+check("a class missing from the display order is appended, never dropped",
+      [r["key"] for r in _lab] == ["bond", "unheard_of"]
+      and _lab[1]["label"] == "unheard_of")
+
+check("the coverage figure the banner needs is on the response",
+      0 < _pf["expense"]["coverage_pct"] < 100
+      and _pf["expense"]["uncovered"] == ["Company Stock Fund"])
+check("and the claim about look-through is computed, not assumed",
+      _pf["lookthrough"] is False and _pf["concentration_understated"] is True)
+
+# This crosses from a store the user controls. A row somebody is halfway
+# through typing has to reach the engine to be REPORTED, not 422 the whole
+# page — the same rule ExpenseIn follows.
+_pf_odd = client.post("/api/portfolio", json={"holdings": [
+    {"id": "x", "symbol": "VOO", "label": "ok", "value": 100},
+    {"id": "y", "label": "no kind, no symbol", "value": 50, "kind": "wat"},
+]})
+check("an unrecognised holding type is reported as uncovered rather than "
+      "rejecting the request",
+      _pf_odd.status_code == 200
+      and _pf_odd.json()["expense"]["uncovered"] == ["no kind, no symbol"])
+
+_pf_empty = client.post("/api/portfolio", json={"holdings": []})
+check("an empty portfolio answers 200 with nothing measured, not zeros",
+      _pf_empty.status_code == 200
+      and _pf_empty.json()["total"] == 0
+      and _pf_empty.json()["expense"]["weighted_er"] is None
+      and _pf_empty.json()["mix"]["class_rows"] == [])
+
+check("the fee table's date reaches the page, so it can say how fresh it is",
+      _pf["as_of"] == _pf_engine["as_of"])
+
+
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")
 print("=" * 66)

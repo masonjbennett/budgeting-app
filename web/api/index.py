@@ -75,7 +75,9 @@ from calculations import (  # noqa: E402
     simulate_payoff,
     top_bracket_limitation,
     year_to_date,
+    portfolio_xray,
 )
+from fund_data import CLASS_LABEL, CLASS_ORDER, REGION_LABEL  # noqa: E402
 
 app = FastAPI(title="Budget Tracker API", version="5.0")
 
@@ -297,6 +299,38 @@ class ImportRequest(BaseModel):
     sign: Optional[str] = None
     categories: List[str] = Field(default_factory=list)
     existing: List[ExpenseIn] = Field(default_factory=list, max_length=50_000)
+
+
+class HoldingIn(BaseModel):
+    """One position, as the profile stores it.
+
+    Permissive for the same reason ExpenseIn is: this crosses from a store the
+    user controls, and a half-typed row must reach the engine to be reported
+    rather than 422 the whole X-ray. `kind` is not validated here — an
+    unrecognised one is treated as a fund by the engine, which lands it in the
+    uncovered bucket where it is VISIBLE, rather than rejecting a profile
+    somebody has been typing into for ten minutes.
+
+    VALUE IS IN DOLLARS, not shares. A share count needs a live price, a live
+    price needs a vendor, and this API deliberately has no external data
+    dependency at all.
+    """
+    id: str = ""
+    symbol: str = ""
+    label: str = ""
+    value: float = 0
+    account: str = ""
+    kind: str = "fund"
+    employer_stock: bool = False
+
+
+class PortfolioRequest(BaseModel):
+    holdings: List[HoldingIn] = Field(default_factory=list, max_length=2_000)
+    # The projection assumptions the fee drag is measured against. Defaults
+    # match the profile's own, so the figure this page prints and the one the
+    # Investments page prints come from the same compounding.
+    annual_return: float = 7.0
+    years: int = 30
 
 
 # ── Routes ───────────────────────────────────────────────────────────
@@ -579,3 +613,52 @@ def api_import_preview(req: ImportRequest) -> Dict[str, Any]:
         date_order=req.date_order,
         sign=req.sign,
     )
+
+
+def _labelled(values, order, labels):
+    """A mix dict as an ordered, labelled list.
+
+    Anything present but absent from `order` is APPENDED rather than dropped.
+    A class added to fund_data.py and forgotten in CLASS_ORDER would otherwise
+    vanish from the chart while still counting towards the total, so the slices
+    would not sum to the coverage figure printed beside them — a table that
+    does not add up, with nothing on the page saying why.
+    """
+    known = [k for k in order if k in values]
+    extra = sorted(k for k in values if k not in order)
+    return [{"key": k, "label": labels.get(k, k), **values[k]}
+            for k in known + extra]
+
+
+@app.post("/api/portfolio")
+def api_portfolio(req: PortfolioRequest) -> Dict[str, Any]:
+    """What a list of holdings actually adds up to — the portfolio X-ray.
+
+    NOTHING IS FETCHED. Every figure comes from the holdings the caller sent
+    and a static expense-ratio table dated `as_of` in the response, so this
+    route keeps the property that makes the rest of this API dependable: there
+    is no outside service that can take it down or make it wrong.
+
+    Two things in the response exist to stop it being read as more than it is,
+    and both are computed rather than written into the page's copy so they
+    cannot be true of one portfolio and left standing on another:
+
+      * `expense.coverage_pct` — the share of the money the fee figures were
+        actually measured over. A weighted expense ratio computed across 30% of
+        someone's portfolio is worse than no answer, because it will be
+        believed.
+      * `concentration_understated` — true whenever a fund is held, because
+        nothing here can see inside one. Someone holding a stock directly and
+        an index fund owns more of it than the position list shows.
+
+    Ordering and labelling of the mixes happens here rather than in the engine
+    (which stays numeric) and rather than in TypeScript (where it would be a
+    second copy of a table that lives in fund_data.py).
+    """
+    x = portfolio_xray([h.model_dump() for h in req.holdings],
+                       req.annual_return, req.years)
+    x["mix"]["class_rows"] = _labelled(
+        x["mix"]["classes"], CLASS_ORDER, CLASS_LABEL)
+    x["mix"]["region_rows"] = _labelled(
+        x["mix"]["regions"], ["us", "intl", "global"], REGION_LABEL)
+    return x

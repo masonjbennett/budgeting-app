@@ -178,6 +178,28 @@ MUTATIONS = [
      "transaction and one without loses its oldest",
      ("    if has_header is None:\n        has_header = detect_header(grid)",
       "    if has_header is None:\n        has_header = False")),
+    # -- The portfolio X-ray ------------------------------------------
+    ('the weighted expense ratio divides by the WHOLE portfolio rather than by the dollars whose fee is known, so a 401(k) full of untabled funds reads as cheap',
+     ('                   / fee_value) if fee_value else None',
+      '                   / total) if fee_value else None')),
+    ('a fund the table does not carry resolves to a fee of ZERO, which reads as measured and takes the coverage banner off the page with it',
+     ('    if not entry:\n        return None, None, None, False',
+      '    if not entry:\n        return 0.0, None, None, True')),
+    ('effective holdings counts the positions instead of weighting them, so a portfolio 60% in one line reads as diversified as one split evenly',
+     ('        "effective_holdings": (1.0 / hhi) if hhi else None,',
+      '        "effective_holdings": float(len(rows)) if hhi else None,')),
+    ('duplicate detection matches on an EMPTY symbol, so every untabled 401(k) fund merges into one fictitious position',
+     ('        if r["symbol"]:\n            by_symbol.setdefault(r["symbol"], []).append(r)',
+      '        if True:\n            by_symbol.setdefault(r["symbol"], []).append(r)')),
+    ('a half-typed zero-value row counts as a holding, diluting every percentage on the page with a position that does not exist',
+     ('        if value <= 0:\n            # A zero row is something half-typed, not a holding.',
+      '        if False:\n            # A zero row is something half-typed, not a holding.')),
+    ('the fee drag is compounded over the WHOLE portfolio while the page says it was measured over the covered part',
+     ('        gross, _ = project_investment(fee_value, 0, annual_return, years)',
+      '        gross, _ = project_investment(total, 0, annual_return, years)')),
+    ('the cash figure divides by CLASSIFIED dollars like the mix does, so the page prints two different percentages for the same money',
+     ('        "cash_pct_of_total": _share(cash_value, total),',
+      '        "cash_pct_of_total": _share(cash_value, cls_value),')),
 ]
 
 original = open(CALC, "rb").read()

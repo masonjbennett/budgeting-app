@@ -951,6 +951,11 @@
   @media (pointer: coarse) {
     input[type="number"],
     input[type="text"],
+    /* A bare <input> is a text field to the browser and invisible to an
+       attribute selector. Fourteen fields on /portfolio were 13.5px because
+       of exactly that, and the command palette's search box - which no route
+       sweep can reach, because the palette is closed - is the same shape. */
+    input:not([type]),
     input[type="email"],
     input[type="password"],
     input[type="date"],

@@ -67,6 +67,28 @@ export interface Snapshot {
   net_worth: number;
 }
 
+/** One position in the portfolio X-ray.
+ *
+ *  `value` is DOLLARS, never shares. A share count would need a live price and
+ *  this app deliberately has no external data dependency.
+ *
+ *  `id` is generated and must stay independent of `label`: it is what the page
+ *  keys rows and any SVG gradient on, and a label is user-typed. Three Sankey
+ *  ribbons on /budget painted grey because their ids were built from category
+ *  names and `url(#...)` cannot reference an id containing a space.
+ */
+export interface Holding {
+  id: string;
+  symbol: string;
+  label: string;
+  value: number;
+  account: string;
+  /** "fund" | "stock" | "cash". A stock and a cash line need no lookup table;
+   *  only a fund can miss it, and a miss is reported as uncovered. */
+  kind: string;
+  employer_stock?: boolean;
+}
+
 /** One "what if" — the income block plus a city, which is where every
  *  dimension worth varying lives. */
 export interface Scenario {
@@ -101,6 +123,11 @@ export interface Profile {
   /** Optional, so a profile exported before the Compare page still imports. */
   scenarios?: Scenario[];
   baseline_city?: string;
+  /** Optional for the same reason, and deliberately absent from
+   *  app_data.py's get_default_state: holdings are not part of the shape the
+   *  two front ends must agree on, and adding them there would put an empty
+   *  list into every profile that will never open the X-ray. */
+  holdings?: Holding[];
 }
 
 type Status = "loading" | "ready" | "error";

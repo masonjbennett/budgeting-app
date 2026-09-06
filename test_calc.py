@@ -1218,6 +1218,196 @@ check("no budget is 'no budget set', not 0 of 0 on track",
 check("and the strip offers only the month you are in",
       _eh["months_available"] == ["2026-09"])
 
+
+# ── The portfolio X-ray ──────────────────────────────────────────────
+#
+# The numeric assertions drive an INJECTED fund table, not the shipping one.
+# fund_data.py is reference data refreshed every January by reading issuer
+# pages, and a suite anchored to it would start failing on a data chore rather
+# than on a defect. The shipping table gets shape assertions instead.
+
+import fund_data as _fd                                  # noqa: E402
+
+print("\n--- The portfolio X-ray ---")
+
+_XF = {
+    "AAA": {"name": "A fund", "er": 0.10, "cls": "equity", "region": "us", "style": "large_cap"},
+    "BBB": {"name": "B fund", "er": 0.50, "cls": "bond", "region": "intl", "style": "aggregate_bond"},
+    "ZZZ": {"name": "Free fund", "er": 0.00, "cls": "equity", "region": "us", "style": "total_market"},
+}
+
+
+def _h(symbol, value, kind="fund", **kw):
+    d = {"id": symbol + str(value), "symbol": symbol, "label": kw.pop("label", symbol),
+         "value": value, "account": kw.pop("account", "Brokerage"), "kind": kind}
+    d.update(kw)
+    return d
+
+
+_x = calc.portfolio_xray(
+    [_h("AAA", 60_000), _h("BBB", 20_000), _h("CCC", 15_000),
+     _h("NVDA", 4_000, "stock"), _h("", 1_000, "cash", label="Cash")],
+    annual_return=7.0, years=30, funds=_XF)
+
+check("the positions sum to the total",
+      abs(sum(p["value"] for p in _x["positions"]) - _x["total"]) < 1e-9)
+check("and the weights sum to 100%",
+      abs(sum(p["weight"] for p in _x["positions"]) - 100.0) < 1e-9)
+check("covered and uncovered dollars account for every dollar",
+      abs(_x["expense"]["covered_value"] + _x["expense"]["uncovered_value"]
+          - _x["total"]) < 1e-9)
+
+# A fee of zero and a fee nobody looked up are DIFFERENT ANSWERS, and this is
+# the one that decides whether the coverage banner is honest.
+check("a fund the table does not carry has no fee, rather than a fee of zero",
+      _x["positions"][2]["er"] is None
+      and "CCC" in _x["expense"]["uncovered"])
+check("and its dollars are outside the fee measurement",
+      abs(_x["expense"]["covered_value"] - 85_000) < 1e-9)
+check("while a fund the table carries AT zero is measured, not uncovered",
+      calc.portfolio_xray([_h("ZZZ", 100)], funds=_XF)["expense"]["weighted_er"] == 0.0)
+
+check("the weighted ratio is over covered dollars only",
+      abs(_x["expense"]["weighted_er"]
+          - ((60_000 * 0.10 + 20_000 * 0.50 + 4_000 * 0 + 1_000 * 0) / 85_000)) < 1e-9)
+check("and coverage says which share of the money that was",
+      abs(_x["expense"]["coverage_pct"] - 85_000 / 100_000 * 100) < 1e-9)
+
+# An individual stock needs no lookup for its class or its fee, and HAS no
+# region in this data — asserting "us" for a US listing would be an assumption
+# wearing a measurement's clothes.
+check("a stock is equity, charges nothing, and carries no region",
+      _x["positions"][3]["cls"] == "equity" and _x["positions"][3]["er"] == 0.0
+      and _x["positions"][3]["region"] is None)
+check("so region coverage is lower than class coverage",
+      _x["mix"]["region_coverage_pct"] < _x["mix"]["class_coverage_pct"])
+check("and the page can say why, in dollars",
+      _x["mix"]["region_unknown_stock_value"] == 4_000)
+
+check("cash is its own class and charges nothing",
+      _x["mix"]["classes"]["cash"]["value"] == 1_000
+      and _x["positions"][4]["er"] == 0.0)
+
+# THE DENOMINATOR LESSON. The class mix divides by CLASSIFIED dollars and the
+# cash figure by the WHOLE portfolio, so with an uncovered fund present they
+# are different numbers for the same $1,000 — which is why only one of them is
+# called "of total".
+check("the cash share of the total and its share of the mix differ when "
+      "something is uncovered",
+      abs(_x["cash_pct_of_total"] - 1.0) < 1e-9
+      and abs(_x["mix"]["classes"]["cash"]["pct"] - 1_000 / 85_000 * 100) < 1e-9)
+
+_eq = calc.portfolio_xray([_h("AAA", 25), _h("AAA", 25, account="401(k)"),
+                           _h("BBB", 25), _h("ZZZ", 25)], funds=_XF)
+check("four equal positions are an effective four",
+      abs(_eq["concentration"]["effective_holdings"] - 4.0) < 1e-9)
+check("one position is an effective one",
+      abs(calc.portfolio_xray([_h("AAA", 900)], funds=_XF)
+          ["concentration"]["effective_holdings"] - 1.0) < 1e-9)
+check("and a concentrated portfolio is effectively fewer than it holds",
+      1.0 < _x["concentration"]["effective_holdings"] < _x["concentration"]["count"])
+
+check("the same symbol in two accounts is one bet, reported once",
+      len(_eq["duplicates"]) == 1 and _eq["duplicates"][0]["symbol"] == "AAA"
+      and _eq["duplicates"][0]["value"] == 50
+      and sorted(_eq["duplicates"][0]["accounts"]) == ["401(k)", "Brokerage"])
+# Two unnamed 401(k) lines are two funds nobody could identify, not one fund
+# held twice. Matching on an empty symbol would merge every uncovered holding
+# in the portfolio into a single fictitious position.
+check("but two holdings with no symbol at all are not the same holding",
+      calc.portfolio_xray([_h("", 10, label="Fund A"), _h("", 20, label="Fund B")],
+                          funds=_XF)["duplicates"] == [])
+
+check("holding a fund means the concentration shown is a floor",
+      _x["concentration_understated"] and _x["fund_count"] == 3)
+check("holding no fund means it is not",
+      calc.portfolio_xray([_h("NVDA", 10, "stock")], funds=_XF)
+      ["concentration_understated"] is False)
+
+check("a symbol is matched whatever case or spacing it was typed in",
+      calc.portfolio_xray([_h(" aaa ", 100)], funds=_XF)["expense"]["weighted_er"] == 0.10)
+
+# A half-typed row is not a holding. Leaving it in would dilute every
+# percentage on the page with a position that does not exist.
+_z = calc.portfolio_xray([_h("AAA", 100), _h("BBB", 0)], funds=_XF)
+check("a zero-value row is out of the count and out of every denominator",
+      _z["concentration"]["count"] == 1 and _z["total"] == 100)
+
+_e = calc.portfolio_xray([], funds=_XF)
+check("an empty portfolio measures nothing, rather than measuring zero",
+      _e["total"] == 0
+      and _e["concentration"]["effective_holdings"] is None
+      and _e["concentration"]["largest_pct"] is None
+      and _e["expense"]["weighted_er"] is None
+      and _e["expense"]["coverage_pct"] is None
+      and _e["cash_pct_of_total"] is None
+      and _e["fee_drag"] is None)
+
+check("the fee costs money over time, and costs less than the portfolio holds",
+      _x["fee_drag"]["cost"] > 0
+      and _x["fee_drag"]["with_fees"] < _x["fee_drag"]["without_fees"])
+check("and it is measured on the dollars whose fee is known",
+      _x["fee_drag"]["on_value"] == _x["expense"]["covered_value"])
+check("and the figure it reports is the projection OF those dollars, not of "
+      "the whole portfolio",
+      abs(_x["fee_drag"]["without_fees"]
+          - calc.project_investment(_x["fee_drag"]["on_value"], 0,
+                                    _x["fee_drag"]["rate"],
+                                    _x["fee_drag"]["years"])[0][-1]) < 1e-6)
+check("a portfolio of free funds has a fee drag of zero, not None",
+      calc.portfolio_xray([_h("ZZZ", 1000)], funds=_XF)["fee_drag"]["cost"] == 0.0)
+
+# THE ENGINE MUST READ project_investment, not merely agree with it. Testing
+# the projection alone would not notice a second copy of the compounding
+# growing here — which is the defect that put three disagreeing versions of
+# this app's maths in three files.
+_real_pi = calc.project_investment
+try:
+    calc.project_investment = lambda *a, **k: ([1.0, 2.0], [0.0, 0.0])
+    _stub = calc.portfolio_xray([_h("AAA", 1000)], funds=_XF)
+    check("the fee drag comes from project_investment rather than its own "
+          "compounding",
+          _stub["fee_drag"]["without_fees"] == 2.0
+          and _stub["fee_drag"]["cost"] == 0.0)
+finally:
+    calc.project_investment = _real_pi
+check("and the real projection is restored",
+      calc.portfolio_xray([_h("AAA", 1000)], funds=_XF)["fee_drag"]["cost"] > 0)
+
+_emp = calc.portfolio_xray([_h("AAA", 70), _h("XCO", 30, label="Employer", employer_stock=True)],
+                           funds=_XF)
+check("employer stock is reported with its weight",
+      _emp["employer_stock"]["pct"] == 30.0
+      and _emp["employer_stock"]["names"] == ["Employer"])
+check("and a portfolio holding none says None rather than zero",
+      calc.portfolio_xray([_h("AAA", 70)], funds=_XF)["employer_stock"] is None)
+
+# ── The shipping table's SHAPE, which no January refresh may break ───
+check("every fund in the shipping table carries a full entry",
+      all(set(v) >= {"name", "er", "cls", "region", "style"}
+          for v in _fd.FUNDS.values()))
+check("every expense ratio is a percentage in a sane range",
+      all(isinstance(v["er"], (int, float)) and 0.0 <= v["er"] <= 3.0
+          for v in _fd.FUNDS.values()))
+# A class present in FUNDS but missing from CLASS_ORDER still reaches the page
+# (the route appends the leftovers) but would arrive UNLABELLED, reading as a
+# raw key beside four English words.
+check("every class the table uses is ordered and labelled",
+      all(v["cls"] in _fd.CLASS_ORDER and v["cls"] in _fd.CLASS_LABEL
+          for v in _fd.FUNDS.values()))
+check("every region the table uses is labelled",
+      all(v["region"] is None or v["region"] in _fd.REGION_LABEL
+          for v in _fd.FUNDS.values()))
+check("the table says when it was compiled",
+      isinstance(_fd.AS_OF, str) and len(_fd.AS_OF) == 10)
+check("and the X-ray passes that date through, so the page cannot claim "
+      "the numbers are fresher than the table it read them from",
+      calc.portfolio_xray([_h("AAA", 1)], funds=_XF)["as_of"] == _fd.AS_OF)
+check("lookup normalises the way the engine does",
+      _fd.lookup(" vti ") is _fd.FUNDS["VTI"] and _fd.lookup("") is None
+      and _fd.lookup("NOTATICKER") is None)
+
+
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")
 print("=" * 66)

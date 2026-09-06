@@ -13,7 +13,7 @@
  * so there is no base URL to configure and no CORS.
  */
 
-import type { Expense } from "@/context/FinanceContext";
+import type { Expense, Holding } from "@/context/FinanceContext";
 import type { Token } from "@/lib/tokens";
 
 export class ApiError extends Error {
@@ -503,6 +503,99 @@ export interface Debt {
   min_payment: number;
 }
 
+// ── Portfolio X-ray ──────────────────────────────────────────────────
+//
+// Every figure below is measured over a stated share of the money. Where a
+// `*_coverage_pct` sits beside a number, rendering the number without it is
+// the defect: a weighted expense ratio taken across 30% of a portfolio looks
+// exactly like one taken across all of it.
+
+export interface XrayPosition {
+  id: string;
+  symbol: string;
+  label: string;
+  kind: string;
+  account: string;
+  employer_stock: boolean;
+  value: number;
+  /** null only when the portfolio totals zero — never 0 for an empty one. */
+  weight: number | null;
+  er: number | null;
+  cls: string | null;
+  region: string | null;
+  known: boolean;
+}
+
+export interface XrayMixRow {
+  key: string;
+  label: string;
+  value: number;
+  pct: number | null;
+}
+
+export interface Xray {
+  total: number;
+  positions: XrayPosition[];
+  concentration: {
+    count: number;
+    largest: string | null;
+    largest_pct: number | null;
+    top5_pct: number | null;
+    /** 1/HHI — the number of EQUAL positions this portfolio is as
+     *  concentrated as. Across positions, NOT through funds. */
+    effective_holdings: number | null;
+  };
+  expense: {
+    weighted_er: number | null;
+    annual_cost: number | null;
+    /** The share of the money the two figures above were measured over. */
+    coverage_pct: number | null;
+    covered_value: number;
+    uncovered_value: number;
+    uncovered: string[];
+  };
+  /** null when no fee could be measured. The cost of the fee expressed as the
+   *  gap between two projections, from the same engine the Investments page
+   *  compounds with. */
+  fee_drag: {
+    years: number;
+    rate: number;
+    on_value: number;
+    without_fees: number;
+    with_fees: number;
+    cost: number;
+  } | null;
+  mix: {
+    class_rows: XrayMixRow[];
+    region_rows: XrayMixRow[];
+    class_coverage_pct: number | null;
+    region_coverage_pct: number | null;
+    /** Why region coverage is low: an individual stock has no region in this
+     *  data, and asserting "US" for a US-listed line would be an assumption
+     *  dressed as a measurement. */
+    region_unknown_stock_value: number;
+  };
+  duplicates: {
+    symbol: string;
+    label: string;
+    value: number;
+    pct: number | null;
+    accounts: string[];
+  }[];
+  employer_stock: { value: number; pct: number | null; names: string[] } | null;
+  cash_value: number;
+  /** OF THE WHOLE PORTFOLIO. The class mix divides by CLASSIFIED dollars, so
+   *  with an uncovered fund present the two denominators differ. */
+  cash_pct_of_total: number | null;
+  lookthrough: boolean;
+  /** True whenever a fund is held: nothing here can see inside one, so the
+   *  real concentration is higher than the positions show. */
+  concentration_understated: boolean;
+  fund_count: number;
+  /** The date the expense-ratio table was last verified. */
+  as_of: string;
+}
+
 // ── Routes ───────────────────────────────────────────────────────────
 
 export const api = {
@@ -619,4 +712,12 @@ export const api = {
     categories: string[];
     existing: Expense[];
   }) => request<ImportPreview>("/import-preview", input),
+
+  portfolio: (input: {
+    holdings: Holding[];
+    /** The projection the fee drag is measured against — passed from the
+     *  profile so this page and /investments compound identically. */
+    annual_return: number;
+    years: number;
+  }) => request<Xray>("/portfolio", input),
 };

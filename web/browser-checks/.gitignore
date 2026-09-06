@@ -3,3 +3,5 @@ out/
 fixtures/bank-big.csv
 fixtures/phone-import.csv
 package-lock.json
+# Run output. Regenerable; never source.
+*.log

@@ -40,11 +40,15 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const WEB = resolve(here, "..");
-// Both stdlib-only modules at the repo root. calculations.py is the maths;
+// The stdlib-only modules at the repo root. calculations.py is the maths;
 // app_data.py is the starting and demo profiles, which the two front ends must
 // agree on — the abandoned scaffold retyped the demo in TypeScript and its copy
 // shipped one debt, making the two payoff strategies identical by definition.
-const MODULES = ["calculations.py", "app_data.py"];
+// fund_data.py is the X-ray's expense-ratio table, which calculations.py
+// imports: leave it out and the function crashes at INVOCATION time on Vercel
+// with a green build, the same way a missing sys.path entry did on the first
+// deploy of this API.
+const MODULES = ["calculations.py", "app_data.py", "fund_data.py"];
 
 const HEADER = `# ---------------------------------------------------------------------------
 # GENERATED FILE -- DO NOT EDIT, AND DO NOT COMMIT.
