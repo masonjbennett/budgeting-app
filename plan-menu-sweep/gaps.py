@@ -6,6 +6,12 @@ enormous plan should not decide what a table for individuals carries.
 """
 import csv, io, re, sys, collections
 import clean
+# The auditor appends its own classification to the row ("... Fund Mutual
+# fund"), which fkey turns into a trailing "MUTUAL" that matches nothing in
+# the table. Left in, it reported the whole Vanguard Target Retirement series
+# as still missing AFTER it had been added. detect.py already strips it; the
+# gap list has to use the same stripper or it measures the auditor's prose.
+from detect import strip_label
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fund_data import FUNDS
@@ -35,7 +41,7 @@ for p in clean.menus(strict=True)[0]:
     for b, l, v in p["rows"]:
         if b != "mutualfund":
             continue
-        k = fkey(l)
+        k = fkey(strip_label(l))
         if not k or k in HAVE:
             continue
         hit = byname.get(k)

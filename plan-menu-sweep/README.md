@@ -57,6 +57,10 @@ python sweep11k.py 16     # fetch + extract 48 plans -> sweep11k.json (cached in
 python clean.py           # the headline percentages
 python detect.py          # score the SHIPPING fund_kinds.py against the filers' labels
 python gaps.py            # which registered funds real menus hold that the table misses
+python classes.py         # ...and which SHARE CLASSES of funds it already carries
+python gen_classes.py     # emit fund_data.py rows for those (series-id keyed)
+python gen_complete.py    # emit the rest of each series, so none is carried in part
+python verify_classes.py  # every series the table touches is carried WHOLE
 ```
 
 `sched.py` is the shared 11-K fetcher and HTML-table extractor. Documents are
@@ -86,6 +90,37 @@ Each cost a cycle and none was visible in a headline number.
 5. **`detect.py` drives the SHIPPING `fund_kinds.py`.** A hand-copied mirror of
    the rules here would test rules production no longer has — the `grid.js`
    lesson.
+
+## Two keys, and they are not the same key
+
+Matching a plan's LABEL to a fund can only be done on the NAME — a Schedule H
+4i line carries no ticker. That is `fkey`, and it has to be loose: it strips
+FUND, INDEX, ADMIRAL, INSTITUTIONAL, CLASS and so on to get "Vanguard 500
+Index Fund Investor Shares" and "Vanguard 500 Index Admiral" onto one key.
+
+**Enumerating the classes of a fund must use SEC's SERIES ID instead**, which
+is exact. Using `fkey` for both crosses fund boundaries silently, because the
+words it strips are sometimes the whole difference:
+
+| collapses to one key | and they are |
+|---|---|
+| Total Bond Market Index / Total Bond Market **II** Index | different funds |
+| Total Stock Market Index / **Institutional** Total Stock Market Index | different funds |
+| Real Estate Index / Real Estate **II** Index | different funds |
+| Fidelity Freedom 2040 (FFFFX) / Fidelity Freedom **Index** 2040 (FBIFX) | ~6x apart in fee |
+
+Five classes reached `fund_data.py` through that collapse before it was caught
+(VRTPX, VTBIX, VTBNX, VITNX, VITPX). They are real funds real plans hold, their
+fees came from their own filings and their classifications were checked one by
+one and are right — but nothing in the process had established that, which is
+the part that mattered. `gen_classes.py` and `gen_complete.py` now enumerate by
+series id; `verify_classes.py` checks the result.
+
+`gaps.py` had a second version of the same family: it did not strip the
+auditor's appended classification, so "…Fund Mutual fund" normalised to
+"…MUTUAL", matched nothing, and it reported the whole Vanguard Target
+Retirement series as still missing AFTER it had been added. It uses
+`detect.strip_label` now.
 
 ## The ceiling, which is the real finding
 

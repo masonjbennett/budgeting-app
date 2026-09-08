@@ -1387,9 +1387,16 @@ check("and a portfolio holding none says None rather than zero",
 check("every fund in the shipping table carries a full entry",
       all(set(v) >= {"name", "er", "cls", "region", "style"}
           for v in _fd.FUNDS.values()))
-check("every expense ratio is a percentage in a sane range",
-      all(isinstance(v["er"], (int, float)) and 0.0 <= v["er"] <= 3.0
+# `None` is a documented state of this table — "a fund with no ratio at all is
+# UNCOVERED" — and is the honest answer for a share class its series' filings
+# do not carry. It is admitted here rather than silently tolerated, and the
+# range still binds every ratio that IS present.
+check("every expense ratio is a percentage in a sane range, or absent",
+      all(v["er"] is None
+          or (isinstance(v["er"], (int, float)) and 0.0 <= v["er"] <= 3.0)
           for v in _fd.FUNDS.values()))
+check("and an absent ratio is rare enough to be deliberate",
+      sum(1 for v in _fd.FUNDS.values() if v["er"] is None) <= 5)
 # A class present in FUNDS but missing from CLASS_ORDER still reaches the page
 # (the route appends the leftovers) but would arrive UNLABELLED, reading as a
 # raw key beside four English words.
@@ -1671,6 +1678,45 @@ check("two plan funds sharing a name are two rows, not one",
 
 # The frame behind the claim, so the docstring's numbers can be re-derived
 # rather than believed.
+# A SHARE CLASS IS NOT ITS FUND. The table carries several classes of the
+# same fund, and their fees genuinely differ — the Vanguard 500 index runs
+# 0.01% to 0.14% across four tickers, a 14x spread. When those classes were
+# added their placeholder fees were their sibling's, and the chore corrected
+# 35 of 41, so a lookup that resolved to the FUND rather than the CLASS would
+# report a plausible wrong number on a third of them.
+_v500 = {t: _fd.FUNDS[t]["er"] for t in ("VOO", "VFIAX", "VFFSX", "VFINX")
+         if t in _fd.FUNDS}
+check("the table carries share classes of one fund at DIFFERENT fees",
+      len(_v500) >= 3 and len(set(_v500.values())) >= 3, str(_v500))
+check("and each of them was read from that class's own filing",
+      all(_fd.FUNDS[t].get("src") for t in _v500))
+# THREE STATES IN THE TABLE ITSELF, pinned so a future run that appears to
+# source one gets looked at rather than believed. They are different answers
+# and collapsing them is the defect rule 13 exists for.
+_handwritten = sorted(t for t, v in _fd.FUNDS.items()
+                      if not v.get("src") and v["er"] is not None)
+_noratio = sorted(t for t, v in _fd.FUNDS.items() if v["er"] is None)
+check("exactly three entries keep a hand-written ratio with no source",
+      _handwritten == ["GLD", "SPLG", "SPY"], str(_handwritten))
+# NOT a copied sibling's number. Both are share classes their series' recent
+# 485BPOS filings do not carry, so the ratio is genuinely unknown — and a
+# copied one would have been wrong: the chore corrected 35 of the 41 classes
+# added beside them.
+check("and two carry NO ratio rather than a copied one",
+      _noratio == ["FUBFX", "VSIBX"], str(_noratio))
+check("a fund with no ratio is still carried for class and region",
+      all(_fd.FUNDS[t]["cls"] and _fd.FUNDS[t]["region"] for t in _noratio))
+# The engine must treat that as uncovered-for-fees, never as free.
+_nr = calc.portfolio_xray(
+    [_h("NOER", 1_000)],
+    funds={"NOER": {"name": "No Ratio", "er": None, "cls": "bond",
+                    "region": "us", "style": "x"}})
+check("and the engine reports it uncovered for fees, not as a zero fee",
+      _nr["expense"]["coverage_pct"] == 0.0
+      and _nr["expense"]["weighted_er"] is None
+      and _nr["mix"]["class_coverage_pct"] == 100.0,
+      str(_nr["expense"]["weighted_er"]))
+
 check("fund_kinds records the sample its accuracy was measured on",
       _fk.MEASURED_PLANS > 20 and _fk.MEASURED_LINES > 500
       and re.match(r"^\d{4}-\d\d-\d\d$", _fk.MEASURED_AS_OF))

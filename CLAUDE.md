@@ -1795,6 +1795,19 @@ all seven new ones resolving 83–99% into their underlying funds.
   detector returned 538 useless hits; the first "menu-shaped" test let a
   securities-level plan through on dollars; a registrant matcher caught 14 of 20.
   None of that was visible in a headline number — only in the rows underneath.
+- **A mutation reported as SURVIVING was a CRLF mismatch, and the harness was
+  wrong to conflate the two.** Rewriting `fund_kinds.py` through Python's text
+  writer turned it CRLF, and the harness matched byte-decoded source against
+  patterns written with `
+` — so its one MULTI-LINE pattern found nothing
+  while all four single-line ones still matched. That reads as one weak
+  assertion among four good ones, which is the most misleading possible
+  shape. Applied by hand the mutation is caught immediately. The harness now
+  normalises newlines before matching, and **reports SETUP FAIL separately
+  from SURVIVED** — they need opposite responses: a survivor means the
+  assertion is weak, a setup failure means the code it was anchored to moved
+  and nothing was tested at all. This file had already recorded that trap
+  once, in September, without fixing it.
 - **A new browser assertion failed on a correct page, for the thirteenth time
   in this family.** `.label` uppercases the coverage banner in CSS and
   `innerText` REFLECTS text-transform, so a case-sensitive
@@ -1819,12 +1832,12 @@ which exec `budget_app.py`, are green.
 four siblings. The first deploy of this API crashed on import in production
 behind a completely green build log; a missing fifth module would do it again.
 
-Counts: **test_calc 309 → 326**, engine mutations **48 → 53** (the harness can
+Counts: **test_calc 309 → 333**, engine mutations **48 → 53** (the harness can
 now mutate `fund_kinds.py` too — a rule living in a second module is no less
 shipped, and could not be mutated while the harness knew one filename),
 test_api **143 → 152** (the byte-for-byte sync check now reads its module list
 OUT of the sync script instead of naming one file), test_stress 168, test_cloud
-42. `/data`'s About block 477 → 494, so `check_claims.py` passes.
+42. `/data`'s About block 477 → 501, so `check_claims.py` passes.
 Browser: `portfolio.mjs` **28 → 34** assertions and **4 → 5** selftests; the
 seed fixture now holds a collective trust, because the old one fired nothing
 and left the whole section unmeasured.
@@ -1845,23 +1858,81 @@ standing uvicorn gotcha arriving on a data module: `preview_start "budget-api"`
 does not watch, so a page can render a `fund_kinds` string that no longer
 exists in the file.
 
+### The reachable gap, second pass: a share class is not its fund
+
+`gaps.py` ranked the funds this table has never heard of, and **beyond the
+target-date series there is no concentration at all** — nothing above 2 of 29
+plans, against 28,500 tickered share classes in existence. "Add the top ten"
+off that tail would be arbitrary. What is NOT arbitrary is the part bounded by
+what is already here: **11 series the table carried where a sampled plan held a
+share class it lacked** — VIIIX against the 500 index it had as VFIAX, VSMAX
+against the small-cap it had as VB. 41 classes, touching **7 of 26 plans**.
+That is "a series is carried whole" one level down. **61 -> 102 funds, 99
+sourced.**
+
+**And the fee really is per class, which is the whole point.** The classes were
+inserted with their sibling's ratio as a placeholder and no `src` — the honest
+UNSOURCED state — and `refresh_fund_data.py` then **corrected 35 of the 41**:
+VSTSX 0.04 -> 0.01, VTBSX 0.04 -> 0.01, VTBIX 0.04 -> 0.09, VRTPX 0.13 -> 0.08,
+VSMAX 0.03 -> 0.05. The Vanguard 500 index alone runs **0.01% to 0.14% across
+four tickers, a 14x spread**. Copying a sibling's number would have shipped 35
+plausible wrong fees, and it is asserted that these classes carry different
+ratios and each has its own `src`.
+
+**Then `verify_classes.py` found the rule broken anyway**, in five series the
+sweep had never touched — Developed Markets carried only VEA, Total
+International Bond only BNDX. 11 more classes close it. **61 -> 102 -> 113
+funds, 108 sourced.**
+
+**Two of those 11 would not source, and they are NOT given a sibling's fee.**
+FUBFX and VSIBX appear in none of their series' recent 485BPOS filings, so
+`er` is **None** — the table's own third state, "a fund with no ratio at all
+is UNCOVERED". The engine already handled it: fee coverage 0%, class and
+region still 100%, and it is NOT counted as unsourced, because "nobody checked
+this ratio" and "there is no ratio" are different answers. So the table now
+carries all three states the page reports, and each is pinned by name.
+
+**A defect in my own gap tool, found by reading its output.** `gaps.py` did not
+strip the auditor's appended classification, so "…Fund Mutual fund" normalised
+to "…MUTUAL", matched nothing, and it **reported the whole Vanguard Target
+Retirement series as still missing after it had been added**. `detect.py` had
+solved this already and `gaps.py` was not reusing it. I nearly widened the
+table off the inflated list.
+
+### Look-through for those 41 is NOT done, and the key is not the name
+
+They have fees, class and region; they have no stored holdings, so
+`portfolio_lookthrough` reports them as unseen and names them — honest, and
+already asserted. Doing it properly means **de-duplicating by SEC SERIES ID and
+emitting an alias map**, because all classes of one fund share one N-PORT: 41
+more entries would be ~148KB of exact duplicates in a file already 210KB and
+bundled into the Vercel function.
+
+**Do not key that on `fundkey`.** It looked right and does not collapse the
+cases that matter: "Vanguard 500 Index Institutional Select" keeps SELECT, and
+VOO's own name is "Vanguard S&P 500 ETF", so neither lands on the Admiral
+class's key. The series id is exact and `refresh_holdings.py` already resolves
+it to fetch the filing.
+
 ### What is left of the REACHABLE gap, with its size
 
-The table now covers ~1% + the completed series of the fund dollars in a real
-menu, and **the whole remaining reachable population is 3.7%** — registered,
-tickered funds this table does not carry. Two named pieces, both measurable
-again with `python gaps.py` in **`plan-menu-sweep/`**:
+After both passes the remaining reachable population is a LONG TAIL with no
+natural stopping point — re-run `python gaps.py` in **`plan-menu-sweep/`** and
+nothing sits above 2 of 29 plans. Two named pieces are still worth knowing
+about, and neither should be taken as a mandate to keep adding funds:
 
-- **Institutional share classes of funds already here under another ticker.**
-  A plan holds VBTIX/VBTLX where the table has BND, VTPSX/VTISX where it has
-  VXUS, VIEIX where it has the extended-market ETF. Exact-ticker matching is
-  safe, so these are pure additions — but they are share classes with their
-  OWN fees, so each needs the chore run, never a copy of its sibling's number.
-- **Fidelity Freedom Index**, the other big default series, entirely absent.
-  It has FOUR tickered classes per year (Investor, Institutional Premium,
-  Premier, Premier II) at genuinely different fees, so carrying it means all
-  four — picking one would give three-quarters of holders a wrong fee, which
-  is the same failure as name matching and worse than a blank.
+- ~~Institutional share classes of funds already here~~ — **DONE**, 41 of
+  them, above. What remains of this shape is only classes of funds nobody in
+  the sample held.
+- **Fidelity Freedom Index** is absent, and I flagged it here from memory as
+  "the other big default series" before checking. **It appears in ZERO of the
+  29 sampled plans** — the Fidelity funds that do appear are FSSNX, FSMDX and
+  FXAIX, index funds rather than the target-date series. So it is a hypothesis,
+  not a measurement, and it is written down as one. If it is ever added it must
+  be all FOUR tickered classes per year (Investor, Institutional Premium,
+  Premier, Premier II): they carry genuinely different fees, and picking one
+  would give three-quarters of holders somebody else's — the 14x spread across
+  the Vanguard 500 classes is what that costs.
 
 **Do not widen it by memory.** The seven funds added here were resolved out of
 SEC's own series/class file and then sourced from filings; the seven that

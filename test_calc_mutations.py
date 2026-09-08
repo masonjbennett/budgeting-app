@@ -255,6 +255,7 @@ MUTATIONS = [
 # it here, which is what makes a mutation in either one honest.
 ORIGINALS = {f: open(f, "rb").read() for f in (CALC, "fund_kinds.py")}
 survived = []
+setup_failed = []
 
 print("=" * 70)
 print("ENGINE MUTATIONS — each one produces a plausible wrong number")
@@ -266,11 +267,21 @@ try:
         target = entry[2] if len(entry) > 2 else CALC
         original = ORIGINALS[target]
         edits = edits if isinstance(edits, list) else [edits]
-        src = original.decode("utf-8")
+        # NEWLINES ARE NORMALISED BEFORE MATCHING. The patterns below are
+        # written with "\n"; a file saved with CRLF — which any tool writing
+        # through Python's text mode on Windows produces — matches none of the
+        # MULTI-LINE ones, while every single-line pattern still matches. So
+        # one mutation reported SETUP FAIL and the other four on the same file
+        # passed, which reads as one weak assertion rather than as an encoding
+        # difference. Restore still writes the original bytes.
+        src = original.decode("utf-8").replace("\r\n", "\n")
         missing = [old for old, _ in edits if old not in src]
         if missing:
+            # NOT the same thing as a surviving mutation, and saying so
+            # matters: a survivor means the assertion is weak, this means the
+            # code it was anchored to has moved and nothing was ever tested.
             print(f"  [SETUP FAIL] pattern not found — {label}")
-            survived.append(label)
+            setup_failed.append(label)
             continue
         for old, new in edits:
             src = src.replace(old, new, 1)
@@ -293,9 +304,15 @@ finally:
         open(_f, "wb").write(_b)
 
 print()
+if setup_failed:
+    print(f"{len(setup_failed)} MUTATION(S) COULD NOT BE APPLIED — the code they "
+          f"are anchored to has moved, so nothing was tested:")
+    for s in setup_failed:
+        print(f"  - {s}")
 if survived:
     print(f"{len(survived)} MUTATION(S) SURVIVED — those assertions cannot fail:")
     for s in survived:
         print(f"  - {s}")
+if survived or setup_failed:
     sys.exit(1)
-print(f"all {len(MUTATIONS)} mutations caught; calculations.py restored")
+print(f"all {len(MUTATIONS)} mutations caught; every file restored")
