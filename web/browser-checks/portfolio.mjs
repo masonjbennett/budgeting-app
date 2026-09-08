@@ -27,7 +27,7 @@
  */
 import puppeteer from "puppeteer-core";
 
-import { MOSTLY_UNCOVERED, seedHoldings } from "./fixtures/seed-holdings.mjs";
+import { MOSTLY_UNCOVERED, PLAN_MENU, seedHoldings } from "./fixtures/seed-holdings.mjs";
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -131,9 +131,9 @@ console.log("=".repeat(70));
         /files nothing with the SEC/i.test(t)
         && /collective investment trust/i.test(t),
         "the unreachable block did not render");
-  check("it gives the share of the UNMEASURED money, not of the portfolio",
-        /100\.0% of what could not be measured/.test(t),
-        t.match(/[\d.]+% of what could not be measured/)?.[0] || "absent");
+  /* The share of the UNMEASURED money (not of the portfolio) is asserted in
+     section 2b, where it is a real fraction. Here every uncovered dollar is
+     unreachable, so the page says so in words instead — see below. */
   check("and it sends the reader to the document that does carry the fee",
         /annual fee disclosure/i.test(t));
   /* The whole point of the split: the tool must not tell somebody to go
@@ -156,6 +156,13 @@ console.log("=".repeat(70));
   check("a trust is NOT matched to the same-named fund now in the table",
         /measured over 85\.7% of this portfolio/i.test(t),
         t.match(/measured over [\d.]+% of this portfolio/i)?.[0] || "absent");
+  /* With one uncovered holding the unreachable share is the whole of it, and
+     restating the same dollar figure three lines under itself read as a
+     subset of itself. Found by looking at the rendered card. */
+  check("where ALL the unmeasured money is unreachable, it is not restated",
+        /all of it is in something that files nothing/i.test(t)
+        && !/of what could not be measured/i.test(t),
+        t.match(/[^\n]*could not be measured[^\n]*/i)?.[0] || "");
 
   check("effective holdings is a count, not an amount",
         /EFFECTIVE HOLDINGS\s*\n\s*\d+\.\d/i.test(t) && !/EFFECTIVE HOLDINGS\s*\n\s*\$/i.test(t),
@@ -223,6 +230,30 @@ console.log("=".repeat(70));
 
   check("no console errors while driving it", page.__errors.length === 0,
         page.__errors.slice(0, 2).join(" | "));
+  await page.close();
+}
+
+// ── 2b. A real menu: unreachable is PART of the unmeasured money ────
+//
+// The fixture above has one uncovered holding, so its unreachable share is
+// always 100% and the page's other wording would be a branch nothing ever
+// rendered. This is the common shape in the wild — a plan holding a
+// collective trust AND a fund the table simply does not carry.
+{
+  const page = await open();
+  await seedHoldings(page, PLAN_MENU);
+  const t = await textOf(page);
+
+  check("with a trust beside an untabled fund, the share is a real fraction",
+        /57\.1% of what could not be measured/.test(t),
+        t.match(/[\d.]+% of what could not be measured/)?.[0] || "absent");
+  check("and only the trust is named as unreachable, not the untabled fund",
+        /Vanguard Target Retirement 2045 Trust II/.test(t)
+        && !/Plan Growth Fund R6[^\n]*collective/i.test(t));
+  check("while the untabled fund is still reported as uncovered",
+        /Plan Growth Fund R6/.test(t));
+  check("no console errors on a mixed menu",
+        page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
   await page.close();
 }
 

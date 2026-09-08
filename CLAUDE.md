@@ -1825,9 +1825,25 @@ shipped, and could not be mutated while the harness knew one filename),
 test_api **143 → 152** (the byte-for-byte sync check now reads its module list
 OUT of the sync script instead of naming one file), test_stress 168, test_cloud
 42. `/data`'s About block 477 → 494, so `check_claims.py` passes.
-Browser: `portfolio.mjs` **28 → 30** assertions and **4 → 5** selftests; the
+Browser: `portfolio.mjs` **28 → 34** assertions and **4 → 5** selftests; the
 seed fixture now holds a collective trust, because the old one fired nothing
 and left the whole section unmeasured.
+
+**Two copy defects the suite could not see, found by rendering the card.**
+With one uncovered holding the unreachable share is 100% of it, so the block
+printed *"$20,000 of that — 100.0% of what could not be measured"* directly
+under *"$20,000 is in 1 holding"* — the same figure twice, three lines apart,
+with "of that" reading as a subset of itself. Two wordings now, and the
+partial one is the COMMON real case (a menu holding a trust AND a fund the
+table does not carry), so `PLAN_MENU` exists to render it: without it that
+branch would be a guard nothing exercised, which is the Sankey minimum-height
+floor again. And the note used an ASCII hyphen where every other dash on the
+page is an em dash — the note renders verbatim, so its punctuation IS the
+page's typography.
+**The em-dash fix did not appear until the API was restarted**, which is the
+standing uvicorn gotcha arriving on a data module: `preview_start "budget-api"`
+does not watch, so a page can render a `fund_kinds` string that no longer
+exists in the file.
 
 ### What is left of the REACHABLE gap, with its size
 

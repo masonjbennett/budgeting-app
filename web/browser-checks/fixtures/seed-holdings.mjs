@@ -42,6 +42,24 @@ export const HOLDINGS = [
   { symbol: "", label: "Cash", kind: "cash", account: "Brokerage", value: 6000 },
 ];
 
+/** A real workplace menu: a collective trust AND an untabled fund that is not
+ *  one, so the unreachable money is PART of the uncovered money rather than
+ *  all of it.
+ *
+ *  This is the common case in the wild and the fixture above cannot reach it —
+ *  with a single uncovered holding the unreachable share is always 100%, and
+ *  the page's other wording would be a branch nothing ever rendered. An
+ *  unexercised guard reads as protection and enforces nothing; the Sankey's
+ *  deleted minimum-height floor is the precedent.
+ *
+ *  $40k of $70k uncovered is unreachable, so the page must say 57.1% and must
+ *  NOT say "all of it". */
+export const PLAN_MENU = [
+  { symbol: "VOO", label: "Vanguard S&P 500", kind: "fund", account: "Roth IRA", value: 30000 },
+  { symbol: "", label: "Vanguard Target Retirement 2045 Trust II", kind: "fund", account: "401(k)", value: 40000 },
+  { symbol: "", label: "Plan Growth Fund R6", kind: "fund", account: "401(k)", value: 30000 },
+];
+
 /** A portfolio most of whose money the fee table cannot see — the state the
  *  coverage floor exists for, and the one that must not print a confident
  *  weighted expense ratio as its headline. */

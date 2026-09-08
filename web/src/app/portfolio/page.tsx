@@ -216,14 +216,28 @@ export default function PortfolioPage() {
               See fund_kinds.py. */}
           {xray.unreachable && (
             <div className="mt-4 border-t border-hair pt-3">
-              <p className="t-small text-body">
-                <span className="text-ink font-num">
-                  {fmt(xray.unreachable.value)}
-                </span>{" "}
-                of that — {pct(xray.unreachable.pct_of_uncovered)} of what could not be
-                measured — is in something that files nothing with the SEC, so no
-                amount of work on this table would reach it:
-              </p>
+              {/* Two wordings, because with one uncovered holding the figure
+                  and the share are BOTH the line above — "$20,000 of that —
+                  100.0%" printed the same $20,000 twice, three lines apart,
+                  and "of that" reads as a subset when it is the whole. The
+                  partial branch is the common real case (a menu with a trust
+                  AND an untabled share class); the seeded page exercises the
+                  whole-of-it one. Both are asserted. */}
+              {(xray.unreachable.pct_of_uncovered ?? 0) >= 99.95 ? (
+                <p className="t-small text-body">
+                  All of it is in something that files nothing with the SEC, so no
+                  amount of work on this table would reach it:
+                </p>
+              ) : (
+                <p className="t-small text-body">
+                  <span className="text-ink font-num">
+                    {fmt(xray.unreachable.value)}
+                  </span>{" "}
+                  of that — {pct(xray.unreachable.pct_of_uncovered)} of what could not be
+                  measured — is in something that files nothing with the SEC, so no
+                  amount of work on this table would reach it:
+                </p>
+              )}
               <ul className="mt-2 space-y-2">
                 {/* Keyed on POSITION, not the label. A name is not an
                     identity — two plan funds can carry the same one in

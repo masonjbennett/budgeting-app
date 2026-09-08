@@ -109,9 +109,9 @@ BROKERAGE_WINDOW = "brokerage_window"
 # the whole X-ray is built around.
 NOTES = {
     COLLECTIVE_TRUST: (
-        "This reads like a collective investment trust - a fund a bank runs "
-        "for retirement plans. It is not a registered fund, so it has no "
-        "ticker and files no prospectus or holdings report with the SEC. "
+        "This reads like a collective investment trust — a fund a bank "
+        "runs for retirement plans. It is not a registered fund, so it has "
+        "no ticker and files no prospectus or holdings report with the SEC. "
         "Nothing here can read its fee or see inside it. Your plan's annual "
         "fee disclosure carries the fee."),
     INSURANCE_CONTRACT: (
