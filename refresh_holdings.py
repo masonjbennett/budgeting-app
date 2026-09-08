@@ -74,9 +74,20 @@ FUNDLIKE = re.compile(
 # the table calls the same thing "Vanguard Total Stock Market ETF" and
 # "...Index Admiral". Stripping these makes all three "VANGUARD TOTAL STOCK
 # MARKET", which is the level the holdings are actually shared at.
+#
+# "II" IS NOT A WRAPPER WORD AND USED TO BE TREATED AS ONE. It stripped
+# because a target-date fund holds "Vanguard Total Bond Market II Index Fund"
+# and the table carried only the non-II fund, so collapsing them was the only
+# way to resolve the sleeve at all — an approximation nothing recorded. After
+# the September widening the II funds ARE in the table, so the collapse stopped
+# being necessary and started being wrong: it put BND and VTBIX on one key,
+# and `setdefault` then picked whichever came first. They are genuinely
+# different filings — **2 of 3 stored names in common, 15.87% against 22.62%
+# covered** — so a target-date fund's bond sleeve could be substituted from the
+# wrong fund, silently, in the most common 401(k) holding there is.
 WRAPPER = re.compile(
     r"\b(FUND|FUNDS|ETF|INDEX|ADMIRAL|INVESTOR|INSTITUTIONAL|SHARES|SHARE|"
-    r"CLASS|TRUST|II|III|PORTFOLIO|VANGUARD CMT)\b")
+    r"CLASS|TRUST|PORTFOLIO|VANGUARD CMT)\b")
 
 
 def fundkey(name):
@@ -243,9 +254,22 @@ def main():
     # replaced by ITS names, weighted. Anything that does not resolve (a money
     # market sweep, a derivative line) is left out and shows up in the gap
     # between `covered` and 100.
-    byfund = {}
+    # A COLLISION HERE IS SILENT AND `setdefault` RESOLVES IT BY INSERTION
+    # ORDER, which is not a decision anybody made. It is reported rather than
+    # tolerated: two stored funds sharing a key means a target-date sleeve can
+    # be substituted from whichever of them the loop happened to reach first.
+    byfund, collisions = {}, {}
     for sym, v in out.items():
-        byfund.setdefault(fundkey(fund_data.FUNDS[sym]["name"]), sym)
+        k = fundkey(fund_data.FUNDS[sym]["name"])
+        if k in byfund:
+            collisions.setdefault(k, [byfund[k]]).append(sym)
+        byfund.setdefault(k, sym)
+    if collisions:
+        print("\n  !! %d fund-name collision(s) — a fund-of-funds sleeve may be"
+              " substituted from the wrong one:" % len(collisions))
+        for k, syms in sorted(collisions.items()):
+            print("     %-40s %s" % (k, ", ".join(syms)))
+        print()
 
     expanded = []
     for sym, v in list(out.items()):

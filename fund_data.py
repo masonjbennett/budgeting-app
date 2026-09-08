@@ -26,7 +26,7 @@ claim over a mixed table is exactly the "last verified" defect this file
 carried for one afternoon. Exactly three cannot be sourced this way and never
 will be: SPY and SPLG are unit investment trusts and GLD is a commodity
 trust — none of them files a fund prospectus of this shape, and none appears
-in SEC's `company_tickers_mf.json` at all. **108 of 113 resolve.** The Schwab,
+in SEC's `company_tickers_mf.json` at all. **114 of 119 resolve.** The Schwab,
 Invesco and ARK entries that once looked unfinished were the context-id defect
 in `refresh_fund_data.py`, not missing data.
 
@@ -215,6 +215,26 @@ FUNDS = {
     "VTABX": {"name": "Vanguard Total International Bond Index Admiral", "er": 0.1, "cls": "bond", "region": "intl", "style": "intl_bond", "src": "0001193125-26-077489"},
     "VTIBX": {"name": "Vanguard Total International Bond Index Investor", "er": 0.13, "cls": "bond", "region": "intl", "style": "intl_bond", "src": "0001193125-26-077489"},
     "VTIFX": {"name": "Vanguard Total International Bond Index Institutional", "er": 0.03, "cls": "bond", "region": "intl", "style": "intl_bond", "src": "0001193125-26-077489"},
+
+
+    # -- The two sleeves a target-date fund holds and this table did not ----
+    #
+    # NOT guessed. Removing the "II" collapse made the fund-of-funds
+    # substitution precise and dropped VTINX's expansion from 83.1% to 67.7%;
+    # reading the sleeves straight out of its N-PORT named the cost exactly:
+    # Short-Term Inflation-Protected 16.12% and Total International Bond II
+    # 15.42%, plus 0.64% of Vanguard's internal Market Liquidity sweep, which
+    # is not investable and is already a WRAPPER word. Both are carried WHOLE,
+    # every class. The look-through demonstrated the need; nothing here was
+    # picked because it sounded common.
+    #
+    # Ratios below are placeholders and carry no `src` until the chore runs.
+    "VTIIX": {"name": "Vanguard Total International Bond II Index Investor", "er": 0.11, "cls": "bond", "region": "intl", "style": "intl_bond", "src": "0001193125-26-077489"},
+    "VTILX": {"name": "Vanguard Total International Bond II Index Institutional", "er": 0.07, "cls": "bond", "region": "intl", "style": "intl_bond", "src": "0001193125-26-077489"},
+    "VTAPX": {"name": "Vanguard Short-Term Inflation-Protected Securities Index Admiral", "er": 0.06, "cls": "bond", "region": "us", "style": "tips", "src": "0001193125-26-024963"},
+    "VTIP":  {"name": "Vanguard Short-Term Inflation-Protected Securities ETF", "er": 0.03, "cls": "bond", "region": "us", "style": "tips", "src": "0001193125-26-024963"},
+    "VTIPX": {"name": "Vanguard Short-Term Inflation-Protected Securities Index Investor", "er": 0.14, "cls": "bond", "region": "us", "style": "tips", "src": "0001193125-26-024963"},
+    "VTSPX": {"name": "Vanguard Short-Term Inflation-Protected Securities Index Institutional", "er": 0.03, "cls": "bond", "region": "us", "style": "tips", "src": "0001193125-26-024963"},
 
     # ── iShares ──────────────────────────────────────────────────────
     "IVV":   {"name": "iShares Core S&P 500 ETF",          "er": 0.03, "cls": "equity", "region": "us",     "style": "large_cap", "src": "0001193125-26-318131"},

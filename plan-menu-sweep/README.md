@@ -61,10 +61,33 @@ python classes.py         # ...and which SHARE CLASSES of funds it already carri
 python gen_classes.py     # emit fund_data.py rows for those (series-id keyed)
 python gen_complete.py    # emit the rest of each series, so none is carried in part
 python verify_classes.py  # every series the table touches is carried WHOLE
+python sleeves.py VTINX   # what a fund-of-funds holds, and whether the table has it
 ```
 
 `sched.py` is the shared 11-K fetcher and HTML-table extractor. Documents are
-cached under `cache/`, so a re-run after the first is free.
+cached under `cache/`, so a re-run after the first is free. `sleeves.py` is the
+odd one out — it reads a fund's own N-PORT live rather than the 11-K sample,
+and it is here because it answered the question the look-through raised: which
+fund is a target-date sleeve substituted from, and does the table carry it?
+
+## "II" is a different fund, not a share class
+
+`refresh_holdings.py` stripped **II** as a wrapper word, which was right while
+the table held only the non-II funds — collapsing them was the only way to
+resolve a target-date fund's bond sleeve at all. After the widening it became
+wrong: it put BND and VTBIX on one key and `setdefault` picked by insertion
+order, and they are genuinely different filings (**2 of 3 stored names in
+common, 15.87% against 22.62% covered**). So the most common 401(k) holding
+could have its bond sleeve substituted from the wrong fund, silently.
+
+Removing the collapse made the substitution precise and **cost expansion**:
+VTINX 83.1% -> 67.7%, VTTSX 99.4% -> 96.8%, the drop tracking each fund's
+bond weight. `sleeves.py VTINX` then named the cost exactly rather than
+leaving it to be guessed — Short-Term Inflation-Protected 16.12%, Total
+International Bond II 15.42%, and 0.64% of Vanguard's internal Market
+Liquidity sweep, which is not investable. Both real funds were added, carried
+whole. The chore now REPORTS any remaining name collision instead of letting
+insertion order decide it.
 
 ## Five things that were wrong before they were right
 

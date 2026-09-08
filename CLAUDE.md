@@ -1795,6 +1795,22 @@ all seven new ones resolving 83–99% into their underlying funds.
   detector returned 538 useless hits; the first "menu-shaped" test let a
   securities-level plan through on dollars; a registrant matcher caught 14 of 20.
   None of that was visible in a headline number — only in the rows underneath.
+- **Adding a legitimate `None` killed the chore a hundred filings in.** Giving
+  FUBFX and VSIBX no ratio is the table's own documented third state, and
+  `refresh_fund_data.py` formatted every report line with `%6.4f` — so it ran
+  for twenty minutes, fetched a hundred prospectuses and died with a
+  `TypeError` in a PRINT statement, writing nothing. **And the first fix was
+  incomplete, so it did it a second time**: I grepped for the pattern I had
+  already seen (`%6.4f%%  --`), fixed six sites, and missed a seventh in the
+  summary block written as `%.4f%%  %s`. Twenty more minutes, same death.
+  Two lessons, and the second is the one that cost the time. **A reporting
+  path is not a place to assume a shape the data model explicitly allows** —
+  and **grepping for the instances you have seen is not sweeping for the
+  class**. It is now verified by RUNNING it: `plan-menu-sweep/nonecheck/`
+  drives the chore over a four-fund table that reaches every report path —
+  unresolved-with-None, "was nothing, now sourced", the corrections table,
+  and an ordinary sourced fund so a pass cannot be vacuous. Four funds, about
+  thirty seconds, against a twenty-minute round trip.
 - **A mutation reported as SURVIVING was a CRLF mismatch, and the harness was
   wrong to conflate the two.** Rewriting `fund_kinds.py` through Python's text
   writer turned it CRLF, and the harness matched byte-decoded source against
@@ -1857,6 +1873,34 @@ page's typography.
 standing uvicorn gotcha arriving on a data module: `preview_start "budget-api"`
 does not watch, so a page can render a `fund_kinds` string that no longer
 exists in the file.
+
+### "II" is a different fund, and the collapse was hiding a coverage loss
+
+Widening the table made `fundkey` collide: `refresh_holdings.py` stripped **II**
+as a wrapper word, which was right while the table held only the non-II funds —
+collapsing them was the only way to resolve a target-date fund's bond sleeve at
+all — and became wrong the moment VTBIX arrived. It put BND and VTBIX on one key
+and `setdefault` picked by INSERTION ORDER, and they are genuinely different
+filings: **2 of 3 stored names in common, 15.87% against 22.62% covered**. The
+most common 401(k) holding there is could have had its bond sleeve substituted
+from the wrong fund, silently.
+
+Removing the collapse made it precise and **cost expansion** — VTINX 83.1% ->
+67.7%, the drop tracking each fund's bond weight. `plan-menu-sweep/sleeves.py`
+then read the cost straight out of VTINX's own N-PORT instead of leaving it to
+be guessed: Short-Term Inflation-Protected **16.12%**, Total International Bond
+II **15.42%**, and 0.64% of Vanguard's internal Market Liquidity sweep, which is
+not investable and was already a WRAPPER word. Both real funds added, carried
+whole.
+
+  **Every target-date fund now resolves 99.2-99.4%**, against 83.1-99.4% before
+  any of this — and VTINX's own look-through coverage DOUBLED, 18.7% -> 37.3%.
+
+So the original figure was not merely stale, it was flattering: the collapse had
+been substituting a near-clone and reporting the result as though it had resolved
+the real sleeve. The chore now REPORTS any remaining name collision rather than
+letting insertion order settle it. **119 funds, 114 sourced, 58 stored + 58
+aliased.**
 
 ### The reachable gap, second pass: a share class is not its fund
 
