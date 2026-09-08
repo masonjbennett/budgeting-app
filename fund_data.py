@@ -23,12 +23,22 @@ latest 485BPOS -> `oef:ExpensesOverAssets` for that share class.
 THE ABSENCE OF `src` IS A REPORTED ANSWER, not an oversight. An entry without
 one is still hand-written and the page SAYS so, naming it, because a blanket
 claim over a mixed table is exactly the "last verified" defect this file
-carried for one afternoon. Three kinds cannot be sourced this way and never
+carried for one afternoon. Exactly three cannot be sourced this way and never
 will be: SPY and SPLG are unit investment trusts and GLD is a commodity
 trust — none of them files a fund prospectus of this shape, and none appears
-in SEC's `company_tickers_mf.json` at all. A handful of Schwab, Invesco and
-ARK share classes are simply not in their series' recent filings; those are
-worth another look, not a guess.
+in SEC's `company_tickers_mf.json` at all. **Everything else resolves**: 58 of
+61. The Schwab, Invesco and ARK entries that once looked unfinished were the
+context-id defect in `refresh_fund_data.py`, not missing data.
+
+A SERIES IS CARRIED WHOLE OR NOT AT ALL. Vanguard Target Retirement was here
+with five of its twelve funds, so a saver born in 1990 was covered and one
+born in 1988 was not, for no reason anybody chose — and a half-present series
+is worse than an absent one, because it reads as coverage. The seven added in
+September were also, independently, the seven most common funds MISSING from
+this table across real 401(k) menus. See `fund_kinds.py` for that measurement,
+and for the much larger thing it found: most of a real workplace menu is
+collective trusts, which are not registered funds and can never be in here at
+all. Widening this table is not the answer to that and never will be.
 
 The first run corrected TEN of the ratios compiled from memory — VYM 0.06 ->
 0.04, VEA and VB 0.05 -> 0.03, VWO 0.07 -> 0.06 and six more, every one of
@@ -51,7 +61,7 @@ up quoted. Add it when something needs it, with a source.
 """
 
 # The date this table was COMPILED. Not the date it was checked — see above.
-AS_OF = "2026-09-06"
+AS_OF = "2026-09-08"
 
 # cls: equity | bond | cash | real_estate | commodity | multi_asset
 # region: us | intl | global | None when the concept does not apply or is not
@@ -92,6 +102,22 @@ FUNDS = {
     "VFIFX": {"name": "Vanguard Target Retirement 2050",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
     "VFORX": {"name": "Vanguard Target Retirement 2040",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
     "VTHRX": {"name": "Vanguard Target Retirement 2030",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
+    # THE SERIES IS CARRIED WHOLE, and it was not: five of its twelve funds
+    # were here, so a saver born in 1990 was covered and one born in 1988 was
+    # not, for no reason anybody chose. A half-present series is worse than an
+    # absent one because it reads as coverage.
+    #
+    # These seven are also the SEVEN MOST COMMON funds missing from this table
+    # across real 401(k) menus — 2035 and 2045 in 5 of 29 plans each, ahead of
+    # every other gap — measured off the Form 11-K sample described in
+    # fund_kinds.py rather than picked by hand.
+    "VTTHX": {"name": "Vanguard Target Retirement 2035",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
+    "VTIVX": {"name": "Vanguard Target Retirement 2045",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
+    "VTTVX": {"name": "Vanguard Target Retirement 2025",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
+    "VTWNX": {"name": "Vanguard Target Retirement 2020",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
+    "VLXVX": {"name": "Vanguard Target Retirement 2065",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
+    "VSVNX": {"name": "Vanguard Target Retirement 2070",   "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
+    "VTINX": {"name": "Vanguard Target Retirement Income", "er": 0.08, "cls": "multi_asset", "region": "global", "style": "target_date", "src": "0001193125-26-024962"},
 
     # ── iShares ──────────────────────────────────────────────────────
     "IVV":   {"name": "iShares Core S&P 500 ETF",          "er": 0.03, "cls": "equity", "region": "us",     "style": "large_cap", "src": "0001193125-26-318131"},

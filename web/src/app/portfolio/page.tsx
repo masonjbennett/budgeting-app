@@ -203,10 +203,41 @@ export default function PortfolioPage() {
             <span className="text-ink">{xray.expense.uncovered.join(", ")}</span>.
           </p>
           <p className="t-micro mt-2 text-muted">
-            401(k) menus often hold institutional share classes with no public ticker, which
-            is the usual reason. Concentration and the position weights are unaffected — they
-            need no lookup.
+            Concentration and the position weights are unaffected — they need no lookup.
           </p>
+
+          {/* Not every gap is the same gap, and until this was measured the
+              line above said they were: it blamed "institutional share classes
+              with no public ticker", which is not what a 401(k) menu is mostly
+              made of. A collective trust has no ticker because it is not a
+              registered fund at all, and 88.4% of the fund dollars in a real
+              menu are in one. A mistyped symbol is worth checking; a trust
+              never resolves, so saying "check it" would waste an afternoon.
+              See fund_kinds.py. */}
+          {xray.unreachable && (
+            <div className="mt-4 border-t border-hair pt-3">
+              <p className="t-small text-body">
+                <span className="text-ink font-num">
+                  {fmt(xray.unreachable.value)}
+                </span>{" "}
+                of that — {pct(xray.unreachable.pct_of_uncovered)} of what could not be
+                measured — is in something that files nothing with the SEC, so no
+                amount of work on this table would reach it:
+              </p>
+              <ul className="mt-2 space-y-2">
+                {/* Keyed on POSITION, not the label. A name is not an
+                    identity — two plan funds can carry the same one in
+                    different accounts, and /compare has already paid for
+                    keying a list on a label somebody typed. */}
+                {xray.unreachable.holdings.map((h, i) => (
+                  <li key={`${i}-${h.label}`} className="t-micro text-muted">
+                    <span className="text-ink">{h.label}</span>{" "}
+                    <span className="font-num">({pct(h.pct)})</span> — {h.note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -672,6 +703,21 @@ export default function PortfolioPage() {
                   from the fund&rsquo;s own SEC prospectus filing; any that were not are
                   named above. Anything not in the table at all is reported as
                   uncovered, never as free.
+                </li>
+                {/* Spec §9 item 4 asked for the real-world coverage failure to
+                    be named on the page, and guessed it was untickered
+                    institutional share classes. It is not: measured over 29 real
+                    plans, it is collective trusts, which no widening of the
+                    table can ever reach. */}
+                <li>
+                  A workplace plan often holds <em>collective investment trusts</em> rather
+                  than mutual funds &mdash; bank-run funds that look identical on a statement
+                  but are not registered with the SEC, so they have no ticker and file no
+                  prospectus or holdings report. Across 29 real 401(k) plans, sampled from
+                  the Form 11-K each public company files for its own plan, those were{" "}
+                  <span className="font-num">88%</span> of the fund dollars and a majority of
+                  the menu in 18 of them. Nothing here can read a fee or look inside one, and
+                  no free tool can; the fee is in the annual disclosure the plan sends you.
                 </li>
                 <li>
                   Values are what was typed in, on the date it was typed. Nothing here is a

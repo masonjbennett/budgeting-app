@@ -1693,3 +1693,162 @@ Counts: test_calc 293 -> **309**, engine mutations 43 -> **48**, test_api
 138 -> **143**, portfolio.mjs 22 -> **28**. New: `refresh_holdings.py`,
 `fund_holdings.py` (generated, synced into web/api/ as a fourth module and
 gitignored like its siblings).
+
+
+## Sep 8 2026 — most of a 401(k) is not a fund the table can ever carry
+
+The handoff's highest-value open item was "widen the fund table — 401(k) menus
+are full of institutional share classes with no public ticker, which is the
+most likely thing to make the tool useless on a real 401(k)." Half of that is
+right. **The other half sent the work at about a tenth of the problem**, and
+the page carried the same wrong sentence in its coverage banner.
+
+### The frame, because the answer had to be measured and not recalled
+
+**The harness is in the repo at `plan-menu-sweep/`**, not the scratchpad — same
+reason `web/browser-checks/` is: it cannot run in CI (it fetches ~50 SEC
+documents), which is an argument about CI and not about storage, and a "88.4%"
+with no runnable derivation behind it rots exactly like a stale status line.
+`detect.py` drives the SHIPPING `fund_kinds.py` rather than a copy of its
+rules. Verified reproducing every number above from its new home.
+
+A **Form 11-K** is the annual report a public company files for its own savings
+plan, and it carries Schedule H line 4i — the plan's complete list of
+investments. **766 were filed in 2026.** EDGAR's quarterly index orders them
+alphabetically by company, which is uncorrelated with plan size, so a fixed
+stride is a clean sample: 48 taken, 29 of them menu-shaped. The bucket for each
+holding is **the filer's own grouping heading** ("Mutual funds", "Collective
+trust funds"), not my reading of the name — the same instinct as preferring a
+filer's own subtotal in filings-terminal.
+
+  | | share of fund dollars in a real menu |
+  |---|---|
+  | collective trusts | **88.4%** (dollar-weighted), **67.0%** median plan |
+  | already in our table | 1.0% |
+  | registered + tickered, not in our table | 3.7% |
+  | did not resolve | 5.7% |
+
+CIT is a majority in **18 of 29** plans and absent from 6 — the six being small
+regional employers, while the CIT-heavy ones are large. So **widening the table
+addresses about 4% of the money and can never address 88%**, because a
+collective trust is a bank-maintained fund, not a registered investment
+company: no ticker, no prospectus, no N-PORT, absent from every SEC fund file.
+Both chores are built on the ticker → series → filing chain and neither can
+ever reach one. Neither can any other free tool.
+
+### What shipped: the blank explains itself (`fund_kinds.py`, README rule 14)
+
+A mistyped ticker and a collective trust were both "not in the table" and want
+opposite answers. `unknown_kind()` names three vehicles — collective trust,
+insurance contract (stable value / guaranteed), brokerage window — and the page
+says what the thing is and that the fee is in the plan's own annual
+disclosure. **It can only ever REFUSE**: it is consulted only where the table
+already missed, so every coverage figure is byte-identical with it firing and
+with it silent, which is the load-bearing assertion.
+
+- **Measured against 655 real menu lines**, each labelled by the plan auditor:
+  **100.0% precision, 65.6% recall on the fund NAME alone**; 84.4% on the raw
+  filing text. The second is the flattering number — it includes the
+  classification the auditor appends to the row, which nobody reading a
+  statement will ever type — so both are quoted and the honest one leads.
+- **The ceiling is real and it is why THERE IS NO NAME MATCHING.** Recall stops
+  in the sixties because many collective trusts are named exactly like mutual
+  funds: "MFS International Equity Fund" is a trust at Clorox and at Bank of
+  Montreal *and* a real mutual fund; so are "S&P 500 Fund" and "Aggregate Bond
+  Fund". Matching names would attach a registered fund's expense ratio to a
+  vehicle charging something else — coverage bought by making the number wrong,
+  which is the tag-list-reordering trap this project keeps refusing. Holdings
+  resolve on TICKER, exactly.
+- Two candidate markers worth 9 and 13 more lines at no measured cost were
+  **rejected**: "MFO" and "RET BLEND" are one filer's shorthand inside a
+  filing, and all 13 of the latter came from a single plan.
+
+### The reachable half: a series is carried whole or not at all
+
+`fund_data.py` had **five of the twelve Vanguard Target Retirement funds**, so a
+saver born in 1990 was covered and one born in 1988 was not, for no reason
+anybody chose. Those seven turned out to be, independently, **the seven most
+common funds missing from the table across the sampled plans** — 2035 and 2045
+in 5 of 29 each, ahead of every other gap. Tickers resolved from SEC's own
+series/class file rather than typed from memory, then both chores run: **61
+funds, 58 sourced** (SPY/SPLG/GLD never will be), and **58 with look-through**,
+all seven new ones resolving 83–99% into their underlying funds.
+
+### Three things that cost time and are worth not repeating
+
+- **The Bash heredoc ate `\b` and every "patched" message was a lie.** Writing
+  `\b` through `python - <<'PY'` delivered a single backslash, which Python
+  read as the BACKSPACE escape — so the search string never matched, `str.replace`
+  returned the original, and the script printed success having changed nothing.
+  Two "fixes" measured as no-ops before I checked the file: a detector rewrite
+  that silently collapsed recall to 6.3%, and a group-close fix that never ran
+  at all. **31 real backspace characters were sitting in one file.** The repo's
+  own rule — write patch scripts with the Write tool — is now broken five
+  sessions running. Verify the FILE, not the message.
+- **Two rounds of corpus contamination, both found by reading the misses.** A
+  group heading survives a page break inside one HTML table, so AEP's own stock
+  and a hundred individual equities sat under "COMMON / COLLECTIVE TRUSTS" and
+  scored as missed trusts. Fixed at source (a `Total X` row closes its group)
+  and again by dropping schedules that list hundreds of securities, which are
+  separately-managed-account plans rather than menus.
+- **The first probe of anything is usually wrong.** A duplicate-sentence
+  detector returned 538 useless hits; the first "menu-shaped" test let a
+  securities-level plan through on dollars; a registrant matcher caught 14 of 20.
+  None of that was visible in a headline number — only in the rows underneath.
+- **A new browser assertion failed on a correct page, for the thirteenth time
+  in this family.** `.label` uppercases the coverage banner in CSS and
+  `innerText` REFLECTS text-transform, so a case-sensitive
+  `/Measured over 85.7%/` never matched "MEASURED OVER 85.7%" — while the
+  assertion beside it passed, because `topOf` reads `textContent`, which does
+  not. Two probes over one page disagreeing about the same string is the tell.
+  Same trap as the look-through's "BOTH" badge and the dashboard month strip.
+
+### Before this goes anywhere near production
+
+**`calculations.py` gained a module-level `from fund_kinds import`**, which is
+the same condition that broke a Streamlit Cloud deploy in September:
+`import calculations` can return the copy already in `sys.modules` — the one
+from before that name existed — and the deploy dies with an ImportError while
+every file is correct and imports cleanly everywhere else. **Reboot the
+Streamlit app after pushing.** Checked locally: `streamlit.mjs` is 17/17
+against a freshly started local server, and `test_stress.py`/`test_cloud.py`,
+which exec `budget_app.py`, are green.
+
+`fund_kinds.py` is the **fifth** synced module, so it is in `MODULES` in
+`scripts/sync-calculations.mjs` and gitignored in `web/.gitignore` like its
+four siblings. The first deploy of this API crashed on import in production
+behind a completely green build log; a missing fifth module would do it again.
+
+Counts: **test_calc 309 → 326**, engine mutations **48 → 53** (the harness can
+now mutate `fund_kinds.py` too — a rule living in a second module is no less
+shipped, and could not be mutated while the harness knew one filename),
+test_api **143 → 152** (the byte-for-byte sync check now reads its module list
+OUT of the sync script instead of naming one file), test_stress 168, test_cloud
+42. `/data`'s About block 477 → 494, so `check_claims.py` passes.
+Browser: `portfolio.mjs` **28 → 30** assertions and **4 → 5** selftests; the
+seed fixture now holds a collective trust, because the old one fired nothing
+and left the whole section unmeasured.
+
+### What is left of the REACHABLE gap, with its size
+
+The table now covers ~1% + the completed series of the fund dollars in a real
+menu, and **the whole remaining reachable population is 3.7%** — registered,
+tickered funds this table does not carry. Two named pieces, both measurable
+again with `python gaps.py` in **`plan-menu-sweep/`**:
+
+- **Institutional share classes of funds already here under another ticker.**
+  A plan holds VBTIX/VBTLX where the table has BND, VTPSX/VTISX where it has
+  VXUS, VIEIX where it has the extended-market ETF. Exact-ticker matching is
+  safe, so these are pure additions — but they are share classes with their
+  OWN fees, so each needs the chore run, never a copy of its sibling's number.
+- **Fidelity Freedom Index**, the other big default series, entirely absent.
+  It has FOUR tickered classes per year (Investor, Institutional Premium,
+  Premier, Premier II) at genuinely different fees, so carrying it means all
+  four — picking one would give three-quarters of holders a wrong fee, which
+  is the same failure as name matching and worse than a blank.
+
+**Do not widen it by memory.** The seven funds added here were resolved out of
+SEC's own series/class file and then sourced from filings; the seven that
+mattered were identified by the 11-K sweep, not recalled. And widening is
+worth about 4% — it is not the answer to the 88%, and a session that spends
+itself here has aimed at the small half of the problem.

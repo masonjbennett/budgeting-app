@@ -49,7 +49,7 @@ const WEB = resolve(here, "..");
 // with a green build, the same way a missing sys.path entry did on the first
 // deploy of this API.
 const MODULES = ["calculations.py", "app_data.py", "fund_data.py",
-                 "fund_holdings.py"];
+                 "fund_holdings.py", "fund_kinds.py"];
 
 const HEADER = `# ---------------------------------------------------------------------------
 # GENERATED FILE -- DO NOT EDIT, AND DO NOT COMMIT.

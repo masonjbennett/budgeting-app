@@ -226,9 +226,34 @@ MUTATIONS = [
     ('a fund with no stored holdings is dropped rather than named, so the portfolio silently shrinks to the funds this table happens to know',
      ('        if not entry:\n            unseen_value += value\n            unseen.append(r["label"] or r["symbol"] or "(unnamed)")\n            continue',
       '        if not entry:\n            continue')),
+
+    # ── What an uncovered holding is (fund_kinds.py) ──────────────────
+    ('the unreachable share is measured against the whole portfolio while the page calls it a share of what could not be measured, which understates it on every portfolio holding anything the table knows',
+     ('        "pct_of_uncovered": _share(unreachable_value, total - fee_value),',
+      '        "pct_of_uncovered": _share(unreachable_value, total),')),
+    ('the name is read for every holding rather than only the uncovered ones, so a fund the table covers can be overruled by what somebody called it',
+     ('        if not known:\n            plan_kind, plan_note = _unknown_kind(h.get("symbol"), h.get("label"))',
+      '        if True:\n            plan_kind, plan_note = _unknown_kind(h.get("symbol"), h.get("label"))')),
+    ('only the label is read, so a plan fund whose name was typed into the symbol box is not recognised',
+     ('    text = " ".join(str(x or "") for x in (label, symbol)).strip()',
+      '    text = str(label or "").strip()'),
+     "fund_kinds.py"),
+    ('a stable value contract is reported as a collective trust, which sends somebody looking for a fee disclosure that describes a different vehicle',
+     ('    if _CIT.search(text):\n        return COLLECTIVE_TRUST, NOTES[COLLECTIVE_TRUST]\n    if _INSURANCE.search(text):\n        return INSURANCE_CONTRACT, NOTES[INSURANCE_CONTRACT]',
+      '    if _CIT.search(text) or _INSURANCE.search(text):\n        return COLLECTIVE_TRUST, NOTES[COLLECTIVE_TRUST]'),
+     "fund_kinds.py"),
+    ('a note tells somebody what to do about a holding rather than what it is — the one thing this whole tool is built not to do',
+     ('        "fee disclosure carries the fee."),',
+      '        "fee disclosure carries the fee. You should sell it."),'),
+     "fund_kinds.py"),
 ]
 
-original = open(CALC, "rb").read()
+# An entry may name the file it mutates. `fund_kinds.py` is a second module
+# the engine imports, and a rule living there is no less shipped for it — but
+# it could not be mutated while this harness only knew one filename, so its
+# assertions would have gone unchecked. Neither file has a sync check against
+# it here, which is what makes a mutation in either one honest.
+ORIGINALS = {f: open(f, "rb").read() for f in (CALC, "fund_kinds.py")}
 survived = []
 
 print("=" * 70)
@@ -236,7 +261,10 @@ print("ENGINE MUTATIONS — each one produces a plausible wrong number")
 print("=" * 70)
 
 try:
-    for label, edits in MUTATIONS:
+    for entry in MUTATIONS:
+        label, edits = entry[0], entry[1]
+        target = entry[2] if len(entry) > 2 else CALC
+        original = ORIGINALS[target]
         edits = edits if isinstance(edits, list) else [edits]
         src = original.decode("utf-8")
         missing = [old for old, _ in edits if old not in src]
@@ -246,9 +274,9 @@ try:
             continue
         for old, new in edits:
             src = src.replace(old, new, 1)
-        open(CALC, "w", encoding="utf-8", newline="").write(src)
+        open(target, "w", encoding="utf-8", newline="").write(src)
         r = subprocess.run([PY, "test_calc.py"], capture_output=True, text=True)
-        open(CALC, "wb").write(original)
+        open(target, "wb").write(original)
 
         m = re.search(r"RESULTS: (\d+) passed, (\d+) failed", r.stdout)
         if r.returncode == 0 and m and m.group(2) == "0":
@@ -261,7 +289,8 @@ try:
             print(f"  [caught: {n} fail(s)] {label[:88]}")
             print(f"       {first[:112]}")
 finally:
-    open(CALC, "wb").write(original)
+    for _f, _b in ORIGINALS.items():
+        open(_f, "wb").write(_b)
 
 print()
 if survived:

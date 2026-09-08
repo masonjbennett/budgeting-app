@@ -594,6 +594,29 @@ export interface Xray {
   }[];
   employer_stock: { value: number; pct: number | null; names: string[] } | null;
   cash_value: number;
+  /** The part of the UNCOVERED money that can never be covered, and by what.
+   *
+   *  A collective trust is not a gap in the fund table — it is not a
+   *  registered fund at all, files no prospectus and no holdings report, and
+   *  is 88.4% of the fund dollars in a real 401(k) menu. Naming it changes
+   *  what the page can SAY and never what it measured: every coverage figure
+   *  is identical with this present and absent, which the suite asserts.
+   *  `null` when nothing was recognised — which is not the same as nothing
+   *  being uncovered. See fund_kinds.py. */
+  unreachable: {
+    value: number;
+    pct_of_total: number | null;
+    /** Of what the fee figure could not measure, NOT of the portfolio. */
+    pct_of_uncovered: number | null;
+    holdings: {
+      label: string;
+      value: number;
+      pct: number | null;
+      plan_kind: "collective_trust" | "insurance_contract" | "brokerage_window";
+      note: string;
+    }[];
+    kinds: string[];
+  } | null;
   /** OF THE WHOLE PORTFOLIO. The class mix divides by CLASSIFIED dollars, so
    *  with an uncovered fund present the two denominators differ. */
   cash_pct_of_total: number | null;

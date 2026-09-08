@@ -1,0 +1,5 @@
+cache/
+form-*.idx
+*.json
+__pycache__/
+scc.csv

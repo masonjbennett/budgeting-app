@@ -39,6 +39,7 @@ from datetime import date as _date
 # which would report every holding as uncovered and look merely cautious.
 from fund_data import AS_OF as _FUND_AS_OF, FUNDS as _FUNDS
 from fund_holdings import AS_OF as _HOLD_AS_OF, HOLDINGS as _HOLDINGS
+from fund_kinds import unknown_kind as _unknown_kind
 
 # ticker -> company key, built from the baked holdings rather than kept as a
 # second table. It can only ever cover companies that appear in some fund's
@@ -2945,6 +2946,15 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
             # where it would otherwise dilute a percentage with nothing.
             continue
         er, cls, region, known, src = _holding_facts(h, funds)
+        # What an UNCOVERED holding appears to be. Read only where the table
+        # already missed, so it can never make anything covered and never
+        # moves a percentage — it refines the EXPLANATION of a blank, which
+        # is the blankNote pattern from filings-terminal. A collective trust
+        # and a mistyped ticker are both "not in the table" and want opposite
+        # answers: one is worth checking, the other never resolves.
+        plan_kind, plan_note = (None, None)
+        if not known:
+            plan_kind, plan_note = _unknown_kind(h.get("symbol"), h.get("label"))
         rows.append({
             "id": str(h.get("id") or ""),
             "symbol": str(h.get("symbol") or "").strip().upper(),
@@ -2955,6 +2965,7 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
             "value": value,
             "er": er, "cls": cls, "region": region, "known": known,
             "src": src,
+            "plan_kind": plan_kind, "plan_note": plan_note,
         })
         total += value
 
@@ -3076,6 +3087,38 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
     cash_value = sum(r["value"] for r in rows if r["cls"] == "cash")
     fund_count = sum(1 for r in rows if r["kind"] == "fund")
 
+    # ── The part of the uncovered money that will NEVER be covered ───
+    #
+    # `expense["uncovered"]` says how much was not measured. This says how
+    # much of it CANNOT be, and by what. A collective trust is not a gap in
+    # the fund table: it is not a registered fund at all, files nothing with
+    # the SEC, and is 88.4% of the fund dollars in a real 401(k) menu — so
+    # answering "add it to the table" would be answering the wrong question
+    # for most of the money. See fund_kinds.py for the frame.
+    #
+    # Kept out of every coverage denominator on purpose. These holdings are
+    # uncovered and stay counted as uncovered; naming them changes what the
+    # page can SAY, never what it measured.
+    unreachable_rows = [r for r in rows if r["plan_kind"]]
+    unreachable_value = sum(r["value"] for r in unreachable_rows)
+    unreachable = {
+        "value": unreachable_value,
+        "pct_of_total": _share(unreachable_value, total),
+        # Of the money the fee figure could not measure, not of the
+        # portfolio — the denominator names itself, as rule 13 requires,
+        # because these two are different numbers for the same dollars.
+        "pct_of_uncovered": _share(unreachable_value, total - fee_value),
+        "holdings": [{
+            "label": r["label"] or r["symbol"] or "(unnamed)",
+            "value": r["value"],
+            "pct": r["weight"],
+            "plan_kind": r["plan_kind"],
+            "note": r["plan_note"],
+        } for r in sorted(unreachable_rows,
+                          key=lambda r: r["value"], reverse=True)],
+        "kinds": sorted({r["plan_kind"] for r in unreachable_rows}),
+    } if unreachable_rows else None
+
     return {
         "total": total,
         "positions": ordered,
@@ -3086,6 +3129,7 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
         "duplicates": duplicates,
         "employer_stock": employer_stock,
         "cash_value": cash_value,
+        "unreachable": unreachable,
         # OF THE WHOLE PORTFOLIO, and the name says so because the class mix
         # above divides by CLASSIFIED dollars instead. With an uncovered fund
         # in the list the two denominators differ, so an unqualified

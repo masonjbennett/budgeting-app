@@ -119,7 +119,43 @@ console.log("=".repeat(70));
         banner !== null && firstFigure !== null && banner < firstFigure,
         `banner ${banner} vs figures ${firstFigure}`);
   check("and it names the holdings it could not measure, in dollars",
-        /Company Stock Fund/.test(t) && /\$20,000 is in 1 holding/.test(t));
+        /Vanguard Target Retirement 2045 Trust II/.test(t)
+        && /\$20,000 is in 1 holding/.test(t));
+
+  /* Not every gap is the same gap. A mistyped ticker is worth checking and a
+     collective trust never resolves, and until this was measured the page
+     told the reader the same thing about both — while blaming a cause
+     ("institutional share classes with no public ticker") that turned out not
+     to be what a 401(k) menu is mostly made of. */
+  check("an uncovered holding that can NEVER be covered says so, and by what",
+        /files nothing with the SEC/i.test(t)
+        && /collective investment trust/i.test(t),
+        "the unreachable block did not render");
+  check("it gives the share of the UNMEASURED money, not of the portfolio",
+        /100\.0% of what could not be measured/.test(t),
+        t.match(/[\d.]+% of what could not be measured/)?.[0] || "absent");
+  check("and it sends the reader to the document that does carry the fee",
+        /annual fee disclosure/i.test(t));
+  /* The whole point of the split: the tool must not tell somebody to go
+     hunting for a ticker that does not exist. */
+  check("it never suggests checking a symbol that cannot exist",
+        !/check the symbol/i.test(t));
+  check("the page's limits name collective trusts, with the measurement",
+        /88% of the fund dollars/i.test(t) && /Form 11-K/i.test(t),
+        "the limits list still blames untickered share classes");
+  /* The fund table now carries VTIVX — the MUTUAL FUND of the same name and
+     year. The trust is a different vehicle with a different fee, so matching
+     them on the name would print a confident wrong number. Holdings resolve
+     on TICKER, and the coverage percentage is what enforces it: $120,000 of
+     $140,000 is measurable, and a page that had quietly matched the trust by
+     name would report 100%. */
+  /* Case-INSENSITIVE, and that is not a detail: `.label` uppercases the
+     banner in CSS and `innerText` reflects text-transform, so this reads
+     "MEASURED OVER 85.7% OF THIS PORTFOLIO". Same trap as the look-through's
+     "BOTH" badge, and it failed here first on a page that was correct. */
+  check("a trust is NOT matched to the same-named fund now in the table",
+        /measured over 85\.7% of this portfolio/i.test(t),
+        t.match(/measured over [\d.]+% of this portfolio/i)?.[0] || "absent");
 
   check("effective holdings is a count, not an amount",
         /EFFECTIVE HOLDINGS\s*\n\s*\d+\.\d/i.test(t) && !/EFFECTIVE HOLDINGS\s*\n\s*\$/i.test(t),
@@ -272,6 +308,25 @@ if (SELFTEST) {
     const t = await textOf(page);
     check("[selftest] a fee figure leading a low-coverage page is caught",
           !/Too little of this portfolio to lead with/i.test(t));
+    await page.close();
+  }
+
+  /* An uncovered holding reported as a plain gap when it is a vehicle that
+     can never be covered. This is the state the page was in before the
+     11-K measurement, so the selftest reproduces a defect that shipped
+     rather than one invented for the occasion. */
+  {
+    const page = await open();
+    await seedHoldings(page);
+    await page.evaluate(() => {
+      const el = [...document.querySelectorAll("div")]
+        .find((n) => /files nothing with the SEC/i.test(n.textContent)
+                     && n.children.length < 4);
+      if (el) el.remove();
+    });
+    const t = await textOf(page);
+    check("[selftest] a page that does not say WHY a gap is permanent is caught",
+          !/files nothing with the SEC/i.test(t));
     await page.close();
   }
 }

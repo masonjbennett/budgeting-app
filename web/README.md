@@ -646,6 +646,63 @@ making a blanket claim over a mixed table. The three that never will are SPY,
 SPLG and GLD — two unit investment trusts and a commodity trust, which file no
 fund prospectus of this shape.
 
+### 14. A gap that can never close is not the same as a gap nobody has filled
+
+Rule 13 made `/portfolio` say how much of the money it measured. This one is
+about the rest: **a mistyped ticker and a collective investment trust are both
+"not in the fund table", and they want opposite answers.** One is worth
+checking. The other never resolves, so telling somebody to check it wastes
+their afternoon.
+
+**The page used to say the wrong cause, confidently.** Its coverage banner read
+*"401(k) menus often hold institutional share classes with no public ticker,
+which is the usual reason"* — plausible, and not what a workplace menu is
+mostly made of. Measured: every **Form 11-K** filed in 2026 is a public
+company's annual report for its own savings plan, carrying Schedule H line 4i,
+the plan's complete list of investments. 766 of them, alphabetical by company
+in EDGAR's quarterly index, so a fixed stride is a clean sample. 48 sampled,
+29 menu-shaped:
+
+> Collective trusts are **88.4%** of the fund dollars in those menus, **67.0%**
+> in the median plan, a majority in **18 of 29**, and absent from 6.
+
+A collective trust is a bank-maintained fund. It is not a registered investment
+company: no ticker, no prospectus, no N-PORT, absent from every SEC fund file.
+Both chores — `refresh_fund_data.py` and `refresh_holdings.py` — are built on
+the ticker → series → filing chain, so **neither can ever reach one, and
+neither can any other free tool.** Widening the fund table is not the answer to
+88% of the problem and never will be. What the page can do is say what the
+thing is and where the fee actually lives (the plan's annual fee disclosure),
+which is `blankNote` from filings-terminal: the blank stays, and it explains
+itself.
+
+**Three properties hold it up, and all three are asserted.**
+
+- **It can only ever REFUSE.** `fund_kinds.unknown_kind` is consulted only for
+  a holding the table already missed, so it never fills a fee, a class or a
+  region, and **every coverage figure is identical with it firing and with it
+  silent**. Naming a holding changes what the page can say, never what it
+  measured. A mutation that reads the name for covered holdings too fails the
+  suite.
+- **Precision over recall, deliberately.** Measured against 655 real menu lines
+  labelled by the plan auditor's own grouping heading: **100.0% precision,
+  65.6% recall** on the fund NAME alone, and 84.4% on the raw filing text. The
+  second number is the flattering one — it includes the classification the
+  auditor appends to the row, which a participant reading a statement will
+  never type — so the docstring quotes both and leads with the first. A miss
+  costs one sentence; a false positive would tell somebody a fee exists nowhere
+  when it is in the table.
+- **The ceiling is real, and it is why there is no name matching.** Recall
+  stops in the sixties because a large share of collective trusts are named
+  *exactly* like mutual funds — "MFS International Equity Fund" is a trust at
+  Clorox and at Bank of Montreal, and also a real mutual fund. So **holdings
+  resolve on TICKER, exactly, and never on name.** Matching names would attach
+  a registered fund's expense ratio to a vehicle that charges something else,
+  which is worse than the blank it replaces. The fund table now carries VTIVX,
+  the Vanguard Target Retirement 2045 *mutual fund*; the seed fixture holds the
+  *trust* of the same name and year, and `portfolio.mjs` asserts the page still
+  reports 85.7% coverage rather than 100%.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944

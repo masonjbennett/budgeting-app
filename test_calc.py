@@ -1586,6 +1586,104 @@ check("the holdings table says which filing and when",
       all(re.match(r"^\d{10}-\d{2}-\d{6}$", v["src"]) for v in _fh.HOLDINGS.values())
       and isinstance(_fh.AS_OF, str) and len(_fh.AS_OF) == 10)
 
+# ── What an UNCOVERED holding IS (fund_kinds.py) ─────────────────────
+#
+# A collective trust and a mistyped ticker are both "not in the table" and
+# want opposite answers. The load-bearing property is that naming the first
+# changes only what the page can SAY: every coverage figure must be identical
+# with the detector firing and with it silent.
+print("\n--- what an uncovered holding is ---")
+import fund_kinds as _fk                             # noqa: E402
+
+_TRUST = _h("", 40_000, label="Vanguard Target Retirement 2045 Trust II")
+_STABLE = _h("", 10_000, label="Putnam Stable Value Fund")
+_TYPO = _h("ZQZQ", 5_000, label="Mistyped ticker")
+_u = calc.portfolio_xray([_h("AAA", 45_000), _TRUST, _STABLE, _TYPO],
+                         funds=_XF)
+
+check("a collective trust is named as one rather than left as a bare gap",
+      _u["unreachable"]["holdings"][0]["plan_kind"] == "collective_trust")
+check("a stable value option is called an insurance contract, not a trust",
+      any(h["plan_kind"] == "insurance_contract"
+          for h in _u["unreachable"]["holdings"]))
+check("a brokerage window is neither — it is an account, not a holding",
+      calc.portfolio_xray([_h("", 100, label="Fidelity BrokerageLink")],
+                          funds=_XF)["unreachable"]["holdings"][0]["plan_kind"]
+      == "brokerage_window")
+# The whole point of the split. A typo is worth checking; a trust never
+# resolves, so telling somebody to check it would waste their afternoon.
+check("a mistyped ticker gets NO kind, so it stays a gap worth checking",
+      all(h["label"] != "Mistyped ticker" for h in _u["unreachable"]["holdings"]))
+check("but it is still reported as uncovered",
+      "Mistyped ticker" in _u["expense"]["uncovered"])
+
+# THE LOAD-BEARING ONE. If naming a holding moved a percentage, the detector
+# would be a measurement, and it is not — it is a sentence about a blank.
+_silent = calc.portfolio_xray(
+    [_h("AAA", 45_000), _h("", 40_000, label="Unnamed plan fund"),
+     _h("", 10_000, label="Another plan fund"), _TYPO], funds=_XF)
+check("naming an uncovered holding moves NO coverage figure",
+      _u["expense"]["coverage_pct"] == _silent["expense"]["coverage_pct"]
+      and _u["expense"]["covered_value"] == _silent["expense"]["covered_value"]
+      and _u["mix"]["class_coverage_pct"] == _silent["mix"]["class_coverage_pct"]
+      and _u["mix"]["region_coverage_pct"] == _silent["mix"]["region_coverage_pct"],
+      f'{_u["expense"]["coverage_pct"]} vs {_silent["expense"]["coverage_pct"]}')
+check("and it never fills a fee, a class or a region",
+      all(p["er"] is None and p["cls"] is None and p["region"] is None
+          for p in _u["positions"] if p["plan_kind"]))
+
+# A fund the table DOES cover is never second-guessed by a name.
+check("a covered fund is never marked unreachable, whatever it is called",
+      calc.portfolio_xray([_h("AAA", 100, label="AAA Collective Trust Unit D")],
+                          funds=_XF)["unreachable"] is None)
+check("and nothing is unreachable when nothing was detected",
+      calc.portfolio_xray([_h("AAA", 100), _TYPO], funds=_XF)["unreachable"] is None)
+
+# Rule 13: a denominator names itself. These are different numbers for the
+# same dollars and an unqualified one would print two percentages for it.
+check("the unreachable share of the PORTFOLIO is over the whole portfolio",
+      abs(_u["unreachable"]["pct_of_total"] - 50_000 / 100_000 * 100) < 1e-9)
+check("and its share of the UNCOVERED money uses the uncovered denominator",
+      abs(_u["unreachable"]["pct_of_uncovered"] - 50_000 / 55_000 * 100) < 1e-9)
+
+# People put the fund name in whichever box is in front of them.
+_sym_only = calc.portfolio_xray(
+    [{"id": "s", "symbol": "State Street Target Retirement 2050 Securities "
+      "Lending Series", "label": "", "value": 100, "kind": "fund"}],
+    funds=_XF)["unreachable"]
+check("the symbol is read as well as the label",
+      _sym_only is not None and _sym_only["kinds"] == ["collective_trust"],
+      "nothing was detected when the name was typed into the symbol box")
+check("a holding with no name at all is not guessed at",
+      _fk.unknown_kind("", "") == (None, None))
+# The same plan fund in two accounts is an ordinary 401(k)/457 shape, and
+# these rows carry no symbol for `duplicates` to group them by. Both must
+# survive as separate rows — the page keys the list on position rather than
+# on the label for exactly this reason.
+_dupe = calc.portfolio_xray(
+    [_h("", 1_000, label="Stable Value Fund", account="401(k)"),
+     _h("", 2_000, label="Stable Value Fund", account="457")],
+    funds=_XF)["unreachable"]
+check("two plan funds sharing a name are two rows, not one",
+      len(_dupe["holdings"]) == 2
+      and sorted(h["value"] for h in _dupe["holdings"]) == [1_000, 2_000],
+      str([h["value"] for h in _dupe["holdings"]]))
+
+# The frame behind the claim, so the docstring's numbers can be re-derived
+# rather than believed.
+check("fund_kinds records the sample its accuracy was measured on",
+      _fk.MEASURED_PLANS > 20 and _fk.MEASURED_LINES > 500
+      and re.match(r"^\d{4}-\d\d-\d\d$", _fk.MEASURED_AS_OF))
+check("every kind it can return carries a note explaining what it is",
+      all(k in _fk.NOTES for k in
+          (_fk.COLLECTIVE_TRUST, _fk.INSURANCE_CONTRACT, _fk.BROKERAGE_WINDOW))
+      and all(len(v) > 80 for v in _fk.NOTES.values()))
+# Diagnosis, never prescription — the posture the whole X-ray is built on.
+check("and no note tells anybody what to do with their money",
+      not any(re.search(r"\b(you should|sell|buy|switch to|move your|"
+                        r"we recommend)\b", v, re.I)
+              for v in _fk.NOTES.values()))
+
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")
 print("=" * 66)
