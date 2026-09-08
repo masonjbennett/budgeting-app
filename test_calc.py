@@ -12,6 +12,7 @@ clears debts in the order its name promises.
 
 Run:  .venv/Scripts/python.exe test_calc.py
 """
+import re
 import sys
 import types
 
@@ -1407,6 +1408,70 @@ check("lookup normalises the way the engine does",
       _fd.lookup(" vti ") is _fd.FUNDS["VTI"] and _fd.lookup("") is None
       and _fd.lookup("NOTATICKER") is None)
 
+
+
+# ── Where a fee figure came from ─────────────────────────────────────
+#
+# `src` is the SEC accession the ratio was read out of. Its ABSENCE is the
+# reported answer that matters: a hand-written ratio and a filed one look
+# identical on the page unless something separates them, which is the same
+# defect as a fee of zero and a fee nobody checked.
+
+_XS = {
+    "SRC": {"name": "Sourced fund", "er": 0.05, "cls": "equity", "region": "us",
+            "style": "large_cap", "src": "0000036405-26-000181"},
+    "HAND": {"name": "Hand-written fund", "er": 0.20, "cls": "equity", "region": "us",
+             "style": "large_cap"},
+    "ZERO": {"name": "Sourced free fund", "er": 0.00, "cls": "equity", "region": "us",
+             "style": "total_market", "src": "0000819118-26-000072"},
+}
+
+_p = calc.portfolio_xray(
+    [_h("SRC", 60), _h("HAND", 30), _h("NOPE", 10), _h("NVDA", 20, "stock"),
+     _h("", 5, "cash", label="Cash")], funds=_XS)
+
+check("a fund carries the accession its ratio was read from",
+      _p["positions"][0]["src"] == "0000036405-26-000181")
+check("and a hand-written one carries none",
+      [r for r in _p["positions"] if r["symbol"] == "HAND"][0]["src"] is None)
+check("sourced dollars are the ones with a filing behind them",
+      _p["expense"]["sourced_value"] == 60)
+check("stated as a share of the MEASURED money, not of the portfolio",
+      abs(_p["expense"]["sourced_pct"] - 60.0 / 115.0 * 100) < 1e-9)
+# Named by the holding's own LABEL, which is what the reader typed and what
+# `uncovered` already uses - not the table's name for the fund. The page has
+# to point at the row on screen.
+check("the hand-written fund is named so the page can say which figure it is",
+      _p["expense"]["unsourced"] == ["HAND"])
+# Three DIFFERENT answers, and collapsing any two of them misleads: a fund
+# nobody has a ratio for, a ratio nobody has checked, and a filed ratio.
+check("a fund with no ratio at all is uncovered rather than unsourced",
+      _p["expense"]["uncovered"] == ["NOPE"]
+      and "NOPE" not in _p["expense"]["unsourced"])
+# A stock charges nothing because it is not a fund, which is arithmetic
+# rather than a lookup — counting it as unsourced would invent a gap.
+check("a stock and a cash line are neither sourced nor unsourced",
+      "NVDA" not in _p["expense"]["unsourced"]
+      and "Cash" not in _p["expense"]["unsourced"]
+      and _p["expense"]["sourced_value"] == 60)
+# The Fidelity ZERO funds really do charge nothing, and a sourced zero is a
+# measurement. Treating "er == 0" as unsourced would report the best-evidenced
+# figure in the table as the least.
+check("a filed ratio of zero is sourced like any other",
+      calc.portfolio_xray([_h("ZERO", 100)], funds=_XS)["expense"]["sourced_value"] == 100)
+
+check("every source in the shipping table is a real accession",
+      all(re.match(r"^\d{10}-\d{2}-\d{6}$", v["src"])
+          for v in _fd.FUNDS.values() if v.get("src")))
+_srcd = sum(1 for v in _fd.FUNDS.values() if v.get("src"))
+check("and most of the shipping table is sourced (%d of %d)"
+      % (_srcd, len(_fd.FUNDS)), _srcd >= len(_fd.FUNDS) * 0.7)
+# SPY is a unit investment trust and files no fund prospectus of this shape.
+# It is pinned as a KNOWN unsourced entry so that a future run which appears
+# to source it is looked at rather than believed.
+check("the unit investment trusts stay unsourced, because they file nothing "
+      "of this shape",
+      not _fd.FUNDS["SPY"].get("src") and not _fd.FUNDS["GLD"].get("src"))
 
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")

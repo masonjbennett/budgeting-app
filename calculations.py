@@ -2764,7 +2764,13 @@ XRAY_KINDS = ("fund", "stock", "cash")
 
 
 def _holding_facts(h, funds):
-    """(er, cls, region, known) for one holding — the only place kind is read.
+    """(er, cls, region, known, src) for one holding — the only place kind is read.
+
+    `src` is the SEC accession the expense ratio was read out of, or None. Its
+    ABSENCE is a reported answer: a ratio nobody has checked against a filing
+    is not the same figure as one the fund itself filed, and the page has to
+    be able to say which it is holding. A blanket claim over a mixed table is
+    the "last verified" defect that shipped here once already.
 
     A stock and a cash line need no table: a share of a company is equity and
     charges no expense ratio, and cash is cash. Only `fund` can miss, and a
@@ -2773,16 +2779,18 @@ def _holding_facts(h, funds):
     """
     kind = str(h.get("kind") or "fund").lower()
     if kind == "cash":
-        return 0.0, "cash", None, True
+        # A fee of zero here is a MEASUREMENT, not a lookup — cash charges no
+        # expense ratio — so it needs no source and is not counted as one.
+        return 0.0, "cash", None, True, None
     if kind == "stock":
         # Region is deliberately None. A US-listed line is usually a US
         # company and "usually" is not a measurement; asserting `us` here
         # would silently fill the region mix with an assumption.
-        return 0.0, "equity", None, True
+        return 0.0, "equity", None, True, None
     entry = funds.get(str(h.get("symbol") or "").strip().upper())
     if not entry:
-        return None, None, None, False
-    return entry["er"], entry["cls"], entry.get("region"), True
+        return None, None, None, False, None
+    return entry["er"], entry["cls"], entry.get("region"), True, entry.get("src")
 
 
 def _share(part, whole):
@@ -2823,7 +2831,7 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
             # keeps it out of the count and out of the coverage denominator,
             # where it would otherwise dilute a percentage with nothing.
             continue
-        er, cls, region, known = _holding_facts(h, funds)
+        er, cls, region, known, src = _holding_facts(h, funds)
         rows.append({
             "id": str(h.get("id") or ""),
             "symbol": str(h.get("symbol") or "").strip().upper(),
@@ -2833,6 +2841,7 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
             "employer_stock": bool(h.get("employer_stock")),
             "value": value,
             "er": er, "cls": cls, "region": region, "known": known,
+            "src": src,
         })
         total += value
 
@@ -2870,6 +2879,16 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
         "uncovered_value": total - fee_value,
         "uncovered": [r["label"] or r["symbol"] or "(unnamed)"
                       for r in rows if r["er"] is None],
+        # OF THE MEASURED MONEY, not of the portfolio. These say how much of
+        # the fee figure above rests on a number the fund itself filed rather
+        # than on one somebody typed. A fund charging a genuine zero (the
+        # Fidelity ZERO funds) is sourced like any other; cash and individual
+        # stocks are neither sourced nor unsourced, because their zero is
+        # arithmetic rather than a lookup.
+        "sourced_value": sum(r["value"] for r in rows if r["src"]),
+        "sourced_pct": _share(sum(r["value"] for r in rows if r["src"]), fee_value),
+        "unsourced": [r["label"] or r["symbol"] or "(unnamed)" for r in rows
+                      if r["er"] is not None and not r["src"] and r["kind"] == "fund"],
     }
 
     # ── Fee drag: the existing projection, run twice ─────────────────

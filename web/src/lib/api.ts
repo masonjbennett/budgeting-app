@@ -524,6 +524,8 @@ export interface XrayPosition {
   cls: string | null;
   region: string | null;
   known: boolean;
+  /** The SEC accession the expense ratio was read out of, or null. */
+  src: string | null;
 }
 
 export interface XrayMixRow {
@@ -553,6 +555,14 @@ export interface Xray {
     covered_value: number;
     uncovered_value: number;
     uncovered: string[];
+    /** Of the MEASURED money, how much rests on a ratio the fund itself filed
+     *  rather than one somebody typed. `unsourced` names the funds that do
+     *  not, so the page can split the claim instead of making a blanket one
+     *  over a mixed table. A stock or a cash line is neither: its zero is
+     *  arithmetic, not a lookup. */
+    sourced_value: number;
+    sourced_pct: number | null;
+    unsourced: string[];
   };
   /** null when no fee could be measured. The cost of the fee expressed as the
    *  gap between two projections, from the same engine the Investments page

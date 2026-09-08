@@ -200,6 +200,16 @@ MUTATIONS = [
     ('the cash figure divides by CLASSIFIED dollars like the mix does, so the page prints two different percentages for the same money',
      ('        "cash_pct_of_total": _share(cash_value, total),',
       '        "cash_pct_of_total": _share(cash_value, cls_value),')),
+    # -- Where a fee figure came from --------------------------------
+    ('the sourced share divides by the WHOLE portfolio rather than by the money the fee was measured over, so a portfolio full of individual stocks reads as badly evidenced',
+     ('        "sourced_pct": _share(sum(r["value"] for r in rows if r["src"]), fee_value),',
+      '        "sourced_pct": _share(sum(r["value"] for r in rows if r["src"]), total),')),
+    ('individual stocks and cash are counted as UNSOURCED, so the page names them as figures nobody checked when their zero is arithmetic',
+     ('        "unsourced": [r["label"] or r["symbol"] or "(unnamed)" for r in rows\n                      if r["er"] is not None and not r["src"] and r["kind"] == "fund"],',
+      '        "unsourced": [r["label"] or r["symbol"] or "(unnamed)" for r in rows\n                      if r["er"] is not None and not r["src"]],')),
+    ('a hand-written ratio is reported as though it came from a filing, so the page claims a source for every fund in the table',
+     ('    return entry["er"], entry["cls"], entry.get("region"), True, entry.get("src")',
+      '    return entry["er"], entry["cls"], entry.get("region"), True, "0000000000-00-000000"')),
 ]
 
 original = open(CALC, "rb").read()

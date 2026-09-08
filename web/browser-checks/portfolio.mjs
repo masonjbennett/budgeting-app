@@ -146,14 +146,18 @@ console.log("=".repeat(70));
         /None of it is a recommendation to buy, sell or hold/i.test(t));
   check("the fee table's date is on the page",
         /compiled \d{4}-\d{2}-\d{2}/.test(t));
-  // The ratios have not been checked against the issuers, and the page has to
-  // SAY so. A date beside a fee reads as provenance; without this the reader
-  // is told when the table was made and left to assume it was verified —
-  // which is the more damaging half of the claim, on the one figure here
-  // somebody might act on.
-  check("and it does not claim they were verified",
-        /not yet checked against the issuers/.test(t)
-        && !/last verified/.test(t));
+  // Provenance is SPLIT, not blanket. Most ratios are now the fund's own
+  // filed figure; the seed deliberately includes SPY, which is a unit
+  // investment trust and files no fund prospectus of this shape, so the
+  // mixed branch is the one under test. Asserting only the all-sourced
+  // sentence would pass on a page that never admits a gap.
+  check("the page says where the fee figures came from",
+        /own filed expense ratio, read from its SEC prospectus filing/.test(t));
+  check("and names the funds whose ratio is still hand-written",
+        /hand-written figure not yet checked against a filing/.test(t)
+        && /SPDR S&P 500/.test(t));
+  check("and never claims the whole table was verified",
+        !/last verified/.test(t));
 
   check("no console errors while driving it", page.__errors.length === 0,
         page.__errors.slice(0, 2).join(" | "));

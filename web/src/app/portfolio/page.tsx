@@ -422,11 +422,25 @@ export default function PortfolioPage() {
                   </p>
                 )}
 
-                <p className="t-micro mt-4 text-caution">
-                  Expense ratios come from a table compiled {xray.as_of} and{" "}
-                  <span className="text-ink">not yet checked against the issuers</span>.
-                  Treat the fee figures as indicative.
-                </p>
+                {/* Provenance, split rather than blanket. Most ratios are
+                    now the fund's own filed figure; the rest are not, and
+                    saying "verified" over the mixture would be the claim this
+                    page removed once already. */}
+                {xray.expense.unsourced.length === 0 ? (
+                  <p className="t-micro mt-4 text-muted">
+                    Every expense ratio here is the fund&rsquo;s own filed figure, read
+                    from its SEC prospectus filing. Table last compiled {xray.as_of}.
+                  </p>
+                ) : (
+                  <p className="t-micro mt-4 text-muted">
+                    {pct(xray.expense.sourced_pct)} of the measured money uses the
+                    fund&rsquo;s own filed expense ratio, read from its SEC prospectus
+                    filing. The rest &mdash;{" "}
+                    <span className="text-caution">{xray.expense.unsourced.join(", ")}</span>{" "}
+                    &mdash; is a hand-written figure not yet checked against a filing.
+                    Table last compiled {xray.as_of}.
+                  </p>
+                )}
               </div>
             )}
           </Section>
@@ -555,10 +569,10 @@ export default function PortfolioPage() {
                   The real figure is higher wherever a fund and a stock hold the same company.
                 </li>
                 <li>
-                  Expense ratios come from a table of common funds compiled {xray.as_of}{" "}
-                  and <span className="text-ink">not yet checked against the issuers</span>,
-                  so a fee figure here is indicative rather than exact. Anything not in the
-                  table is reported as uncovered, never as free.
+                  Expense ratios come from a table of common funds, most of them read
+                  from the fund&rsquo;s own SEC prospectus filing; any that were not are
+                  named above. Anything not in the table at all is reported as
+                  uncovered, never as free.
                 </li>
                 <li>
                   Values are what was typed in, on the date it was typed. Nothing here is a

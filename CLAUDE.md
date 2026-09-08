@@ -1505,3 +1505,76 @@ route in both themes; `mobile.mjs` seeds it too and is unchanged at 35.
    first half is true, and saying otherwise here would be a status claim that
    silently misinforms every future session. If it genuinely needs gating, that
    is a new mechanism, not a checkbox.
+
+
+## Sep 6 2026 — the expense ratios have a source now (budgeting-app)
+
+`fund_data.py` shipped with ratios compiled from memory and a page that said
+so. `refresh_fund_data.py` reads them out of the fund's own SEC filing
+instead: ticker -> series -> the latest 485BPOS -> `oef:ExpensesOverAssets`
+for that share class. **43 of 54 now resolve, and TEN of the hand-written
+numbers were wrong** — VYM 0.06 -> 0.04, VEA and VB 0.05 -> 0.03, VWO 0.07 ->
+0.06, VIG and VBTLX 0.05 -> 0.04, VUG/VTV/VO 0.04 -> 0.03, VTWAX 0.10 -> 0.09.
+Every one a Vanguard fee cut the table had not kept up with, every one
+plausible, every one wrong. That is the argument for the chore.
+
+**It is a CHORE, not a runtime fetch.** The X-ray's whole design is that this
+app has no external data dependency, so the script runs by hand and writes
+into the static table. Add it to the January refresh beside `econ-2026.json`
+and `damodaran-2026.json`: `refresh_fund_data.py --write`.
+
+### Provenance is per entry, because the table is mixed
+
+Each sourced fund carries `src` — the accession its ratio came from — and the
+ABSENCE of one is the reported answer. The engine returns `sourced_value`,
+`sourced_pct` (of the MEASURED money, not the portfolio) and `unsourced`
+(named), and the page prints the split rather than a blanket claim. A single
+"verified" line over a mixed table is the same defect as the "last verified"
+line removed from this page earlier the same day.
+
+**Three states that must not collapse into two**: a fund with no ratio at all
+is UNCOVERED; a fund whose ratio nobody has checked is UNSOURCED; a filed
+ratio is sourced — *including a filed zero*, since the Fidelity ZERO funds
+really do charge nothing and treating `er == 0` as unsourced would report the
+best-evidenced figure in the table as the least. A stock and a cash line are
+neither: their zero is arithmetic, not a lookup, and counting them as
+unsourced invents a gap. All four asserted, with mutations.
+
+### Four findings, and three were me reading the wrong thing
+
+- **EDGAR's `&series=` filter on a CIK is LOOSE.** Asking for IVV's
+  S000004310 returns filings covering S000004320/21/22 — adjacent series in
+  the same trust. Querying with the SERIES ID in place of the CIK is the
+  precise form. The loose version reported "class not in the instance" for
+  every non-Vanguard fund, which reads as missing data and was really the
+  wrong document; Vanguard worked only because its newest filing happens to
+  cover the funds asked for.
+- **`index.json` is TRUNCATED AT 1,000 ENTRIES.** An iShares prospectus
+  filing has more files than that, so its only `.xml` is not in the listing at
+  all and the filing looked instance-less. The HTML filing index lists the
+  primary document regardless of size.
+- **Two filing shapes.** Vanguard and Fidelity file an extracted instance
+  (`*_htm.xml`) with native `<oef:ExpensesOverAssets>`; iShares, Schwab and
+  Invesco file INLINE XBRL, where the facts live inside the prospectus HTML as
+  `<ix:nonFraction name="oef:...">` and the derived `_htm.xml` path 404s.
+- **`scale` is load-bearing and only the inline form has it.** iShares files
+  `0.50` with `scale="-2"`, meaning 0.005 — 0.50%. Reading the text and
+  ignoring the scale puts every iShares, Schwab and Invesco fee out by a
+  factor of a HUNDRED, and **0.50 is a perfectly plausible expense ratio**, so
+  nothing downstream would have looked wrong. That is the one that would have
+  shipped quietly.
+
+### What will never resolve, and what is just unfinished
+
+**Structural:** SPY and SPLG are unit investment trusts and GLD is a commodity
+trust. None files a fund prospectus of this shape and none appears in SEC's
+`company_tickers_mf.json` at all. The suite PINS them as unsourced, so a
+future run that appears to source one gets looked at rather than believed.
+**Unfinished:** four Schwab ETFs, three Invesco and ARKK report their class in
+none of their series' recent filings. Worth another look; not worth a guess.
+
+Counts: test_calc 282 -> **293**, engine mutations 40 -> **43** (each proved to
+fail the suite), test_api 138, portfolio.mjs 20 -> **22**.
+One API-suite failure during this work was a RACE, not a defect: the mutation
+harness rewrites the root `calculations.py`, so the byte-for-byte sync check
+fails while it runs. Re-sync and re-run rather than chasing it.
