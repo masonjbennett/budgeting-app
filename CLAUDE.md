@@ -1512,11 +1512,12 @@ route in both themes; `mobile.mjs` seeds it too and is unchanged at 35.
 `fund_data.py` shipped with ratios compiled from memory and a page that said
 so. `refresh_fund_data.py` reads them out of the fund's own SEC filing
 instead: ticker -> series -> the latest 485BPOS -> `oef:ExpensesOverAssets`
-for that share class. **43 of 54 now resolve, and TEN of the hand-written
+for that share class. **51 of 54 now resolve, and TWELVE of the hand-written
 numbers were wrong** — VYM 0.06 -> 0.04, VEA and VB 0.05 -> 0.03, VWO 0.07 ->
-0.06, VIG and VBTLX 0.05 -> 0.04, VUG/VTV/VO 0.04 -> 0.03, VTWAX 0.10 -> 0.09.
-Every one a Vanguard fee cut the table had not kept up with, every one
-plausible, every one wrong. That is the argument for the chore.
+0.06, VIG and VBTLX 0.05 -> 0.04, VUG/VTV/VO 0.04 -> 0.03, VTWAX 0.10 -> 0.09,
+and on the second pass **SCHF 0.06 -> 0.03 and QQQ 0.20 -> 0.18**. Every one a
+fee cut the table had not kept up with, every one plausible, every one wrong.
+That is the argument for the chore.
 
 **It is a CHORE, not a runtime fetch.** The X-ray's whole design is that this
 app has no external data dependency, so the script runs by hand and writes
@@ -1540,8 +1541,21 @@ best-evidenced figure in the table as the least. A stock and a cash line are
 neither: their zero is arithmetic, not a lookup, and counting them as
 unsourced invents a gap. All four asserted, with mutations.
 
-### Four findings, and three were me reading the wrong thing
+### Five findings, and four were me asking the wrong question
 
+- **A CONTEXT ID IS NOT A DESCRIPTION**, and this was the last eight funds.
+  Vanguard, iShares and Fidelity name their contexts after what they describe
+  (`ETFProspectusMember_S000002839_C000092055`), so "is the class id a
+  substring of the contextRef" worked — for two thirds of the table, which is
+  exactly enough to look like a rule. Schwab, Invesco and ARK use OPAQUE ids
+  (`c125`, `c1003`) and declare the class INSIDE the context element as an
+  explicit member. Those eight reported "class in none of N filings", which
+  reads as missing data and was really a lookup leaning on somebody else's
+  naming convention. `context_members` resolves it properly; the substring
+  test is kept only as the cheap first check. **Six of the eight then came
+  back matching the hand-written figure exactly**, which is the evidence the
+  matcher got tighter rather than looser — and a re-run confirmed all 43
+  previously sourced values unchanged.
 - **EDGAR's `&series=` filter on a CIK is LOOSE.** Asking for IVV's
   S000004310 returns filings covering S000004320/21/22 — adjacent series in
   the same trust. Querying with the SERIES ID in place of the CIK is the
@@ -1570,11 +1584,12 @@ unsourced invents a gap. All four asserted, with mutations.
 trust. None files a fund prospectus of this shape and none appears in SEC's
 `company_tickers_mf.json` at all. The suite PINS them as unsourced, so a
 future run that appears to source one gets looked at rather than believed.
-**Unfinished:** four Schwab ETFs, three Invesco and ARKK report their class in
-none of their series' recent filings. Worth another look; not worth a guess.
+**Everything else now resolves.** The Schwab, Invesco and ARK funds that
+looked unfinished were the context-id defect above, not missing data.
 
 Counts: test_calc 282 -> **293**, engine mutations 40 -> **43** (each proved to
-fail the suite), test_api 138, portfolio.mjs 20 -> **22**.
+fail the suite), test_api 138, portfolio.mjs 20 -> **22**. Sourced ratios
+43 -> **51 of 54**.
 One API-suite failure during this work was a RACE, not a defect: the mutation
 harness rewrites the root `calculations.py`, so the byte-for-byte sync check
 fails while it runs. Re-sync and re-run rather than chasing it.

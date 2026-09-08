@@ -111,17 +111,17 @@ FUNDS = {
     "SPTM":  {"name": "SPDR Portfolio S&P 1500 Composite Stock Market ETF", "er": 0.03, "cls": "equity", "region": "us", "style": "total_market", "src": "0001193125-25-250041"},
 
     # ── Invesco ──────────────────────────────────────────────────────
-    "QQQ":   {"name": "Invesco QQQ Trust",                 "er": 0.20, "cls": "equity", "region": "us",     "style": "nasdaq100"},
-    "QQQM":  {"name": "Invesco NASDAQ 100 ETF",            "er": 0.15, "cls": "equity", "region": "us",     "style": "nasdaq100"},
-    "RSP":   {"name": "Invesco S&P 500 Equal Weight ETF",  "er": 0.20, "cls": "equity", "region": "us",     "style": "large_cap"},
+    "QQQ":   {"name": "Invesco QQQ Trust",                 "er": 0.18, "cls": "equity", "region": "us",     "style": "nasdaq100", "src": "0001104659-25-123273"},
+    "QQQM":  {"name": "Invesco NASDAQ 100 ETF",            "er": 0.15, "cls": "equity", "region": "us",     "style": "nasdaq100", "src": "0001104659-25-122454"},
+    "RSP":   {"name": "Invesco S&P 500 Equal Weight ETF",  "er": 0.20, "cls": "equity", "region": "us",     "style": "large_cap", "src": "0001104659-26-102475"},
 
     # ── Schwab ───────────────────────────────────────────────────────
     "SWPPX": {"name": "Schwab S&P 500 Index Fund",         "er": 0.02, "cls": "equity", "region": "us",     "style": "large_cap", "src": "0000884546-26-000041"},
     "SWTSX": {"name": "Schwab Total Stock Market Index Fund", "er": 0.03, "cls": "equity", "region": "us",  "style": "total_market", "src": "0000884546-26-000041"},
-    "SCHB":  {"name": "Schwab US Broad Market ETF",        "er": 0.03, "cls": "equity", "region": "us",     "style": "total_market"},
-    "SCHD":  {"name": "Schwab US Dividend Equity ETF",     "er": 0.06, "cls": "equity", "region": "us",     "style": "dividend"},
-    "SCHF":  {"name": "Schwab International Equity ETF",   "er": 0.06, "cls": "equity", "region": "intl",   "style": "developed"},
-    "SCHG":  {"name": "Schwab US Large-Cap Growth ETF",    "er": 0.04, "cls": "equity", "region": "us",     "style": "large_growth"},
+    "SCHB":  {"name": "Schwab US Broad Market ETF",        "er": 0.03, "cls": "equity", "region": "us",     "style": "total_market", "src": "0001104659-25-123308"},
+    "SCHD":  {"name": "Schwab US Dividend Equity ETF",     "er": 0.06, "cls": "equity", "region": "us",     "style": "dividend", "src": "0001104659-25-123308"},
+    "SCHF":  {"name": "Schwab International Equity ETF",   "er": 0.03, "cls": "equity", "region": "intl",   "style": "developed", "src": "0001104659-25-123308"},
+    "SCHG":  {"name": "Schwab US Large-Cap Growth ETF",    "er": 0.04, "cls": "equity", "region": "us",     "style": "large_growth", "src": "0001104659-25-123308"},
 
     # ── Fidelity ─────────────────────────────────────────────────────
     # The ZERO funds really are 0.00, and that is the one place in this table
@@ -138,7 +138,7 @@ FUNDS = {
     # ── Popular active and thematic ──────────────────────────────────
     # Carried because someone holding one should see what it costs beside the
     # index fund next to it, which is a fact, not a verdict on the strategy.
-    "ARKK":  {"name": "ARK Innovation ETF",                "er": 0.75, "cls": "equity", "region": "us",     "style": "thematic"},
+    "ARKK":  {"name": "ARK Innovation ETF",                "er": 0.75, "cls": "equity", "region": "us",     "style": "thematic", "src": "0001213900-25-115285"},
     "JEPI":  {"name": "JPMorgan Equity Premium Income ETF", "er": 0.35, "cls": "equity", "region": "us",    "style": "income", "src": "0001193125-25-246367"},
     "GLD":   {"name": "SPDR Gold Shares",                  "er": 0.40, "cls": "commodity", "region": None,  "style": "gold"},
 }

@@ -19,15 +19,22 @@ THE CHAIN, and every link can fail honestly:
          -> the filing's facts, in one of two shapes
          -> oef:ExpensesOverAssets for that share class
 
-FIVE THINGS ABOUT THAT CHAIN, every one found by looking, and THREE of them
-were me reading the wrong document rather than the data being absent:
+SIX THINGS ABOUT THAT CHAIN, every one found by looking, and FOUR of them
+were me asking the wrong question rather than the data being absent:
 
   * The element is `oef:ExpensesOverAssets`. The Open-End Fund taxonomy, not
     the older `rr:` one, and NOT `OperatingExpensesData` — which appears zero
     times in a real Vanguard filing despite being the name usually cited.
-  * The contextRef encodes series AND class
-    (`ETFProspectusMember_S000002839_C000092055`), which is what makes a
-    per-share-class ratio reachable at all.
+  * A CONTEXT ID IS NOT A DESCRIPTION. Vanguard, iShares and Fidelity name
+    their contexts after what they describe
+    (`ETFProspectusMember_S000002839_C000092055`), so "is the class id a
+    substring of the contextRef" worked — for two thirds of the table.
+    Schwab, Invesco and ARK use OPAQUE ids (`c125`, `c1003`) and declare the
+    class INSIDE the context element as an explicit member. Eight funds
+    reported "class in none of N filings", which reads as missing data and
+    was really a lookup relying on somebody else's naming convention.
+    `context_members` resolves the context; matching a substring of the id is
+    kept only as the cheap first test.
   * EDGAR's `&series=` filter ON A CIK IS LOOSE. Asking for IVV's S000004310
     that way returns filings covering S000004320/21/22 — adjacent series in
     the same trust. Passing the SERIES ID in place of the CIK is the precise
@@ -46,14 +53,14 @@ were me reading the wrong document rather than the data being absent:
     404s. Only the inline form carries a `scale`, and it is load-bearing —
     see `ratio_for`.
 
-WHAT IT WILL NOT RESOLVE, and the two kinds are different. STRUCTURAL: SPY and
-SPLG are unit investment trusts and GLD is a commodity trust; none files a
-fund prospectus of this shape and none is in `company_tickers_mf.json` at all,
-so no amount of work will source them. UNFINISHED: four Schwab ETFs, three
-Invesco and ARKK report their class in none of their series' recent filings —
-worth another look, not a guess. Both keep their hand-written value and are
-reported as unsourced, because a table that quietly claims a source it does
-not have is the defect this whole exercise exists to remove.
+WHAT IT WILL NOT RESOLVE is now exactly three funds, and the reason is
+STRUCTURAL rather than unfinished: SPY and SPLG are unit investment trusts and
+GLD is a commodity trust. None files a fund prospectus of this shape and none
+appears in `company_tickers_mf.json` at all, so no amount of work will source
+them here. They keep their hand-written value and are reported as unsourced,
+because a table that quietly claims a source it does not have is the defect
+this whole exercise exists to remove — and the suite PINS them, so a future
+run that appears to source one gets looked at rather than believed.
 
 Run:  .venv/Scripts/python.exe refresh_fund_data.py           # report only
       .venv/Scripts/python.exe refresh_fund_data.py --write   # apply
@@ -205,11 +212,38 @@ NATIVE = re.compile(
     r"<oef:ExpensesOverAssets\s+contextRef=\"([^\"]+)\"[^>]*>([^<]*)<", re.S)
 INLINE = re.compile(
     r"<ix:nonFraction([^>]*name=\"oef:ExpensesOverAssets\"[^>]*)>([^<]*)<", re.S)
+CONTEXT = re.compile(
+    r"<(?:\w+:)?context\s+id=\"([^\"]+)\"(.*?)</(?:\w+:)?context>", re.S)
+
+_ctx_cache = {}
 
 
 def _attr(blob, name):
     m = re.search(r'%s=\"([^\"]*)\"' % name, blob)
     return m.group(1) if m else None
+
+
+def context_members(doc):
+    """contextId -> the text of every dimension member it declares.
+
+    THIS IS THE GENERAL FORM AND THE SHORTCUT IT REPLACES WAS A NAMING
+    CONVENTION. Vanguard, iShares and Fidelity name their contexts after the
+    thing they describe — `ETFProspectusMember_S000002839_C000092055` — so
+    "is the class id a substring of the contextRef" worked, and worked for
+    two thirds of the table. Schwab, Invesco and ARK use OPAQUE ids (`c125`,
+    `c1003`), and for those the class is declared INSIDE the context element
+    as an explicit member. The class was in the document all along; the
+    lookup was asking the wrong question, which is why eight funds reported
+    "class in none of N filings" as though the data were missing.
+    """
+    key = id(doc)
+    if key in _ctx_cache:
+        return _ctx_cache[key]
+    out = {}
+    for cid, body in CONTEXT.findall(doc):
+        out[cid] = body
+    _ctx_cache[key] = out
+    return out
 
 
 def ratio_for(doc, class_id):
@@ -227,24 +261,35 @@ def ratio_for(doc, class_id):
     """
     if not doc:
         return None, None
-    for ctx, val in NATIVE.findall(doc):
-        if class_id in ctx:
+
+    ctxs = context_members(doc)
+
+    def matches(ref):
+        # The class either names the context, or is declared inside it.
+        if class_id in ref:
+            return True
+        return class_id in ctxs.get(ref, "")
+
+    for ref, val in NATIVE.findall(doc):
+        if matches(ref):
             try:
-                return round(float(val.strip().replace(",", "")) * 100.0, 4), ctx
+                return round(float(val.strip().replace(",", "")) * 100.0, 4), ref
             except ValueError:
-                return None, ctx
+                return None, ref
+
     for attrs, val in INLINE.findall(doc):
-        ctx = _attr(attrs, "contextRef") or ""
-        if class_id not in ctx:
+        ref = _attr(attrs, "contextRef") or ""
+        if not matches(ref):
             continue
         try:
             raw = float(val.strip().replace(",", ""))
         except ValueError:
-            return None, ctx
+            return None, ref
         scale = int(_attr(attrs, "scale") or 0)
         if (_attr(attrs, "sign") or "") == "-":
             raw = -raw
-        return round(raw * (10.0 ** scale) * 100.0, 4), ctx
+        return round(raw * (10.0 ** scale) * 100.0, 4), ref
+
     return None, None
 
 

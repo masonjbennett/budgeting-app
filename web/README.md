@@ -641,8 +641,10 @@ funds really do charge nothing and treating `er == 0` as unsourced would
 report the best-evidenced figure in the table as the least. A stock or a cash
 line is neither sourced nor unsourced: its zero is arithmetic, not a lookup,
 and counting it as unsourced invents a gap. `refresh_fund_data.py` fills the
-`src` values; 43 of 54 resolve today and the page names the rest rather than
-making a blanket claim over a mixed table.
+`src` values; **51 of 54 resolve** and the page names the rest rather than
+making a blanket claim over a mixed table. The three that never will are SPY,
+SPLG and GLD — two unit investment trusts and a commodity trust, which file no
+fund prospectus of this shape.
 
 ## Things measured, with the numbers
 
