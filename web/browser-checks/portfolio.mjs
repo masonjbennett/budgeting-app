@@ -159,6 +159,32 @@ console.log("=".repeat(70));
   check("and never claims the whole table was verified",
         !/last verified/.test(t));
 
+  // ── Look-through ──────────────────────────────────────────────
+  //
+  // The seed holds NVDA outright AND holds VOO, which holds NVDA. That pair
+  // is the whole feature: the page can say a number nobody can read off a
+  // statement. Asserted on the RENDERED page rather than the API, because
+  // the section shipped with no browser assertion at all on its first run --
+  // 22 passed before and after it existed.
+  check("the page opens the funds up and names what is inside them",
+        /counting through the funds/i.test(t) && /NVIDIA/i.test(t));
+  check("and says what share of the portfolio it could actually see",
+        /Measured across [\d.]+% of the portfolio/i.test(t),
+        t.match(/Measured across [^.]*\./i)?.[0]?.slice(0, 90));
+  // A floor, never a ceiling -- each fund stores its largest holdings only.
+  check("and that every figure in it is the lowest it can be",
+        /is not attributed to any company here/i.test(t)
+        && /lowest.{0,20}it can be/i.test(t));
+  // Case-INSENSITIVE deliberately: the badge is uppercased by CSS, and
+  // innerText reflects text-transform, so a rendered "BOTH" failed
+  // /\bboth\b/ on a page that was perfectly correct. Same trap as the
+  // dashboard's month strip, whose visible capitals are also a transform.
+  check("a company held outright AND through a fund is marked both",
+        /\bboth\b/i.test(t)
+        && /hold it outright .{0,10}and.{0,10} through a fund/i.test(t));
+  check("and the look-through names its own source",
+        /N-PORT filing with the SEC/i.test(t));
+
   check("no console errors while driving it", page.__errors.length === 0,
         page.__errors.slice(0, 2).join(" | "));
   await page.close();
@@ -215,6 +241,22 @@ if (SELFTEST) {
     const t = await textOf(page);
     check("[selftest] a currency symbol on the count is caught",
           /EFFECTIVE HOLDINGS\s*\n\s*\$/i.test(t));
+    await page.close();
+  }
+
+  // The look-through table present but claiming to have seen everything --
+  // the shape that would let the page read as a complete inventory.
+  {
+    const page = await open();
+    await seedHoldings(page);
+    await page.evaluate(() => {
+      const el = [...document.querySelectorAll("p")]
+        .find((n) => /is not attributed to any company here/i.test(n.textContent));
+      if (el) el.textContent = "Measured across 100.0% of the portfolio.";
+    });
+    const t = await textOf(page);
+    check("[selftest] a look-through claiming it saw everything is caught",
+          !/is not attributed to any company here/i.test(t));
     await page.close();
   }
 

@@ -597,7 +597,36 @@ export interface Xray {
   /** OF THE WHOLE PORTFOLIO. The class mix divides by CLASSIFIED dollars, so
    *  with an uncovered fund present the two denominators differ. */
   cash_pct_of_total: number | null;
-  lookthrough: boolean;
+  /** What the portfolio owns once the funds are opened up.
+   *
+   *  Separate from the concentration figures above, which are deliberately
+   *  across POSITIONS: those cannot see inside a fund and must not silently
+   *  change meaning depending on whether holdings data happens to exist for
+   *  the funds someone holds. */
+  lookthrough: {
+    positions: {
+      key: string;
+      name: string;
+      ticker: string | null;
+      /** Held outright. */
+      direct: number;
+      /** Held through funds. The half nobody can work out for themselves. */
+      via: number;
+      value: number;
+      pct: number | null;
+      both: boolean;
+    }[];
+    count: number;
+    /** The share of the portfolio actually decomposed. A fund stores its top
+     *  50 names, ~63% of it, so the rest is attributed to nobody. */
+    seen_value: number;
+    seen_pct: number | null;
+    unseen_value: number;
+    /** Funds with no stored holdings at all, named. */
+    unseen: string[];
+    partial: { label: string; covered: number }[];
+    as_of: string;
+  };
   /** True whenever a fund is held: nothing here can see inside one, so the
    *  real concentration is higher than the positions show. */
   concentration_understated: boolean;

@@ -1593,3 +1593,103 @@ fail the suite), test_api 138, portfolio.mjs 20 -> **22**. Sourced ratios
 One API-suite failure during this work was a RACE, not a defect: the mutation
 harness rewrites the root `calculations.py`, so the byte-for-byte sync check
 fails while it runs. Re-sync and re-run rather than chasing it.
+
+
+## Sep 7 2026 — fund look-through: what you actually own (budgeting-app)
+
+The X-ray's concentration figures are across POSITIONS, because nothing in it
+could see inside a fund. This can, for the names each fund is largest in, and
+it is the feature the September research found no free manual-entry tool has
+offered since **Morningstar retired Instant X-Ray in April 2025**.
+
+What it produces, on a portfolio of $50k VOO + $30k of a 2060 target-date fund
++ $15k NVDA + $5k of an untabled plan fund:
+
+  **NVIDIA $15,000 held outright + $4,788 through the funds = 19.79%** of
+  everything. Apple 4.25%, entirely through funds and invisible on any
+  statement. Measured across 56.8% of the portfolio, with the rest attributed
+  to nobody and said so.
+
+### Where the data comes from, and why not where the research said
+
+`refresh_holdings.py` reads each fund's N-PORT filing and bakes its top 50
+names into `fund_holdings.py` (185KB, 51 of 54 funds). **The research
+recommended issuer daily holdings CSVs over N-PORT, on freshness** — N-PORT is
+public 60 days after quarter end, third month of the quarter only, so up to ~4
+months behind. Right for a tool fetching live; wrong here. This is a CHORE
+baking a static table refreshed about annually, so the table is stale by
+construction and a quarter is inside the noise — while issuer files cost five
+per-issuer scrapers and carry redistribution terms the research itself flagged.
+N-PORT is public domain, one format, and reuses the ticker->series->filing
+chain that already works. **Freshness we do not need is not worth a licensing
+question we would have to answer.**
+
+### Three constraints that shaped it, all measured rather than assumed
+
+- **The join key had to be the company NAME.** Ticker is in 1 of 520 N-PORT
+  holdings. CUSIP is on all of them and is a LICENSED identifier — baking a few
+  thousand into a public repo is a redistribution question nothing here needs
+  answered. So holdings key on a normalised name and the user's ticker reaches
+  the same space through SEC's `company_tickers.json`. Measured on VOO's top
+  50: **45 of 50 at first, then 50 of 50** once two normalisations were added —
+  SEC appends the state of incorporation to a registrant's title ("BANK OF
+  AMERICA CORP /DE/", "WELLS FARGO & COMPANY/MN") and fund filings never do,
+  and a spaceless second pass catches "Exxon Mobil Corp" against SEC's
+  "ExxonMobil Holdings Corp", the XOM holdco entry filings-terminal documents.
+- **Depth is top 50 and the tail is REPORTED, not ignored.** Fifty names is 63%
+  of VOO, 51% at twenty-five; the whole fund is ~500 rows and a megabyte for a
+  tail that changes nothing about concentration. Each fund stores its own
+  `covered`, so the page says how much it saw — the coverage discipline the
+  fees and regions already follow, one level down. **Every look-through figure
+  is therefore a FLOOR**, and the page says that too.
+- **A target-date fund holds FUNDS, not companies.** VTTSX's seven holdings are
+  Vanguard Total Stock Market Index Fund (54%), Total International (37%), two
+  bond funds and a liquidity sweep. Listing those would put "Vanguard Total
+  Stock Market Index Fund" in somebody's top position at 54% — true and
+  useless, when what they want to know is that they own NVIDIA. So the chore
+  resolves each fund-like holding to a fund it already read and substitutes ITS
+  names, weighted: **all five resolve 98-99.5%**, each yielding 50 real
+  companies covering ~27-35% of itself. This matters more than it sounds — a
+  target-date fund is the most common 401(k) holding, so leaving it
+  un-looked-through would miss the most common real portfolio there is. The
+  matching works because stripping wrapper words (FUND, ETF, INDEX, ADMIRAL,
+  II) collapses all three share-class names to `VANGUARD TOTAL STOCK MARKET`,
+  which is the level holdings are genuinely shared at.
+
+### `lookthrough` changed meaning, from falsy to truthy
+
+It used to be a constant `False` meaning "this cannot see inside a fund"; it is
+now the look-through itself. Anything reading it as a boolean would flip. The
+claim it carried lives on `concentration_understated`, which was always the
+computed one, and TypeScript confirmed nothing else read the boolean. The two
+readings are kept SEPARATE deliberately: the concentration figures at the top
+must not silently change meaning depending on whether holdings data happens to
+exist for the funds somebody holds.
+
+### A mutation survived, and it was the assertion
+
+*"a holding is called BOTH on the strength of being held directly alone"*
+survived its first run. The fixture's only directly-held stock was also inside
+a fund, so the wrong rule and the right one agreed on every case being tested —
+`both = direct > 0` and `both = direct > 0 and via > 0` are indistinguishable
+until something is held directly and by no fund. That case is asserted now.
+The harness catching a weak assertion rather than a bug is exactly its job.
+
+### The section shipped with no browser assertion, and the count proved it
+
+`portfolio.mjs` read **22 passed before the look-through section existed and 22
+after** - a whole page section, rendering real figures, with nothing looking at
+it. Five assertions and a selftest now cover it: that it names what is inside
+the funds, states the share it saw, says every figure is a floor, marks a
+company held both ways, and cites N-PORT.
+
+**And the first run of those failed on a correct page.** `/both/` is
+case-sensitive; the badge is uppercased by CSS and `innerText` REFLECTS
+text-transform, so it read "BOTH". Same trap as the dashboard month strip's
+visible capitals - the twelfth probe error of this family, and caught by
+looking at the rendered text rather than trusting the failure.
+
+Counts: test_calc 293 -> **309**, engine mutations 43 -> **48**, test_api
+138 -> **143**, portfolio.mjs 22 -> **28**. New: `refresh_holdings.py`,
+`fund_holdings.py` (generated, synced into web/api/ as a fourth module and
+gitignored like its siblings).

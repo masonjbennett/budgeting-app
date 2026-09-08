@@ -521,6 +521,102 @@ export default function PortfolioPage() {
             </Section>
           )}
 
+          {/* ── Look-through ──────────────────────────────────────
+              The one thing here nobody can work out for themselves, and the
+              one the September research found no free manual-entry tool has
+              offered since Morningstar retired Instant X-Ray in April 2025. */}
+          {xray.lookthrough.positions.length > 0 && (
+            <Section title="What you own, counting through the funds">
+              <div className="card mb-4">
+                <p className="t-small text-body">
+                  Measured across{" "}
+                  <span className="font-num text-ink">
+                    {pct(xray.lookthrough.seen_pct)}
+                  </span>{" "}
+                  of the portfolio. Each fund stores its largest holdings, not all of
+                  them, so {fmt(xray.lookthrough.unseen_value)} is not attributed to any
+                  company here — and every figure below is therefore the{" "}
+                  <em>lowest</em> it can be.
+                  {xray.lookthrough.unseen.length > 0 && (
+                    <>
+                      {" "}
+                      <span className="text-caution">
+                        {xray.lookthrough.unseen.join(", ")}
+                      </span>{" "}
+                      {xray.lookthrough.unseen.length === 1 ? "has" : "have"} no holdings
+                      data at all.
+                    </>
+                  )}
+                </p>
+              </div>
+
+              <div className="card card-flush overflow-x-auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Company</th>
+                      <th className="hidden sm:table-cell text-right">Held directly</th>
+                      <th className="hidden sm:table-cell text-right">Through funds</th>
+                      <th className="text-right">Total</th>
+                      <th className="text-right">Of portfolio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {xray.lookthrough.positions.slice(0, 12).map((p) => (
+                      <tr key={p.key}>
+                        <td className="text-ink">
+                          {p.name}
+                          {p.ticker && (
+                            <span className="font-num t-micro ml-2 text-muted">
+                              {p.ticker}
+                            </span>
+                          )}
+                          {p.both && (
+                            <span className="badge badge-caution t-micro ml-2">
+                              both
+                            </span>
+                          )}
+                        </td>
+                        <td className="font-num hidden sm:table-cell text-right text-muted">
+                          {p.direct > 0 ? fmt(p.direct) : "—"}
+                        </td>
+                        <td className="font-num hidden sm:table-cell text-right text-muted">
+                          {p.via > 0 ? fmt(p.via) : "—"}
+                        </td>
+                        <td className="font-num text-right whitespace-nowrap">
+                          {fmt(p.value)}
+                        </td>
+                        <td className="font-num text-right text-ink">{pct(p.pct)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* The sentence the whole feature exists for. Only rendered when
+                  it is TRUE of this portfolio — a page that always says it is
+                  a page that has not measured anything. */}
+              {xray.lookthrough.positions.some((p) => p.both) && (
+                <p className="t-small mt-4 text-body">
+                  Marked <span className="badge badge-caution t-micro">both</span>{" "}
+                  means you hold it outright <em>and</em> through a fund. The funds are
+                  the part you cannot see on a statement:{" "}
+                  {xray.lookthrough.positions
+                    .filter((p) => p.both)
+                    .slice(0, 3)
+                    .map((p) => `${p.name} ${pct(p.pct)}`)
+                    .join(", ")}
+                  .
+                </p>
+              )}
+
+              <p className="t-micro mt-3 text-muted">
+                Fund holdings from each fund&rsquo;s own N-PORT filing with the SEC,
+                most recent as of {xray.lookthrough.as_of}.
+              </p>
+            </Section>
+          )}
+
           {/* ── Positions ─────────────────────────────────────────── */}
           <Section title="Every position">
             <div className="card card-flush overflow-x-auto">
@@ -565,8 +661,11 @@ export default function PortfolioPage() {
             <div className="card">
               <ul className="t-small space-y-2 text-body">
                 <li>
-                  It cannot see inside a fund, so concentration is measured across positions.
-                  The real figure is higher wherever a fund and a stock hold the same company.
+                  The concentration figures at the top are measured across{" "}
+                  <em>positions</em> and cannot see inside a fund, so the real figure is
+                  higher wherever a fund and a stock hold the same company. The
+                  look-through table does see inside, but only as far as each
+                  fund&rsquo;s largest holdings &mdash; it names a floor, never a ceiling.
                 </li>
                 <li>
                   Expense ratios come from a table of common funds, most of them read

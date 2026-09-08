@@ -210,6 +210,22 @@ MUTATIONS = [
     ('a hand-written ratio is reported as though it came from a filing, so the page claims a source for every fund in the table',
      ('    return entry["er"], entry["cls"], entry.get("region"), True, entry.get("src")',
       '    return entry["er"], entry["cls"], entry.get("region"), True, "0000000000-00-000000"')),
+    # -- Look-through -------------------------------------------------
+    ("a fund's weight is applied as a fraction rather than a percent, so a 40% holding becomes 40x the fund and the portfolio owns forty times itself",
+     ('            add(k, name, tk, value * pct / 100.0, False)',
+      '            add(k, name, tk, value * pct, False)')),
+    ('the part of a fund NOT stored is quietly attributed to nobody and not counted either, so the page claims it saw a whole portfolio it saw two thirds of',
+     ('        unseen_value += value * max(0.0, 100.0 - covered) / 100.0',
+      '        unseen_value += 0.0')),
+    ('cash is looked through as if it were a company, so it appears in a list of what you own shares of',
+     ('        if kind == "cash":\n            # Cash is not a company and does not belong in a list of what you\n            # own. It is already reported on its own.\n            continue',
+      '        if kind == "cash":\n            # Cash is not a company and does not belong in a list of what you\n            # own. It is already reported on its own.\n            add("CASH", "Cash", None, value, True)\n            continue')),
+    ('a holding is called BOTH on the strength of being held directly alone, so the badge appears on every stock somebody owns',
+     ('            "both": e["direct"] > 0 and e["via"] > 0,',
+      '            "both": e["direct"] > 0,')),
+    ('a fund with no stored holdings is dropped rather than named, so the portfolio silently shrinks to the funds this table happens to know',
+     ('        if not entry:\n            unseen_value += value\n            unseen.append(r["label"] or r["symbol"] or "(unnamed)")\n            continue',
+      '        if not entry:\n            continue')),
 ]
 
 original = open(CALC, "rb").read()

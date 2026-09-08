@@ -869,8 +869,29 @@ check("a class missing from the display order is appended, never dropped",
 check("the coverage figure the banner needs is on the response",
       0 < _pf["expense"]["coverage_pct"] < 100
       and _pf["expense"]["uncovered"] == ["Company Stock Fund"])
-check("and the claim about look-through is computed, not assumed",
-      _pf["lookthrough"] is False and _pf["concentration_understated"] is True)
+check("and the claim that the top figures understate is computed, not assumed",
+      _pf["concentration_understated"] is True)
+
+# `lookthrough` used to be a constant False meaning "this cannot see inside a
+# fund". It is now the look-through itself, so the field flipped from falsy to
+# truthy — a silent meaning change for anything reading it as a boolean. The
+# claim it used to carry lives on `concentration_understated`, which was always
+# the computed one; nothing else read the boolean, which TypeScript confirmed.
+_lt = _pf["lookthrough"]
+check("the funds are decomposed into the companies inside them",
+      _lt["count"] > 10 and any(p["ticker"] == "NVDA" for p in _lt["positions"]))
+check("and the decomposition reports how much of the portfolio it SAW",
+      0 < _lt["seen_pct"] < 100 and _lt["unseen_value"] > 0)
+# The sentence the feature exists for, and it must be computed per portfolio:
+# NVDA is held outright here AND sits inside VOO.
+_nv = [p for p in _lt["positions"] if p["ticker"] == "NVDA"][0]
+check("a company held outright AND through a fund is marked as both",
+      _nv["both"] is True and _nv["direct"] > 0 and _nv["via"] > 0)
+check("and its total is what the two halves come to",
+      abs(_nv["value"] - (_nv["direct"] + _nv["via"])) < 1e-6)
+# A floor, never a ceiling: what is attributed cannot exceed what was seen.
+check("no more is attributed to companies than the run says it saw",
+      abs(sum(p["value"] for p in _lt["positions"]) - _lt["seen_value"]) < 1e-6)
 
 # This crosses from a store the user controls. A row somebody is halfway
 # through typing has to reach the engine to be REPORTED, not 422 the whole

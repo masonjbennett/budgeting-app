@@ -38,6 +38,18 @@ from datetime import date as _date
 # so the deploy — rather than serve an X-ray with an empty fund table,
 # which would report every holding as uncovered and look merely cautious.
 from fund_data import AS_OF as _FUND_AS_OF, FUNDS as _FUNDS
+from fund_holdings import AS_OF as _HOLD_AS_OF, HOLDINGS as _HOLDINGS
+
+# ticker -> company key, built from the baked holdings rather than kept as a
+# second table. It can only ever cover companies that appear in some fund's
+# stored names, which is exactly when look-through has anything to say about
+# a directly-held stock; a ticker missing from here is reported as held
+# directly and nothing else, which is the truth.
+_TICKER_KEY = {}
+for _sym, _entry in _HOLDINGS.items():
+    for _k, _n, _p, _t in _entry["top"]:
+        if _t:
+            _TICKER_KEY.setdefault(_t, _k)
 
 # TAX DATA (2026 estimates)
 # ──────────────────────────────────────────────
@@ -2805,6 +2817,107 @@ def _share(part, whole):
     return part / whole * 100.0
 
 
+def portfolio_lookthrough(rows, total, holdings=None, ticker_key=None):
+    """What the portfolio owns once the funds are opened up.
+
+    The X-ray's own concentration figures are across POSITIONS, because
+    nothing in the fee table can see inside a fund. This can, for the names a
+    fund is largest in: someone holding NVDA directly and an S&P fund owns
+    more NVDA than their position list shows, and this is the only place that
+    can say by how much.
+
+    THREE THINGS IT REPORTS ABOUT ITSELF, and all three are the point:
+
+      * `seen_pct` — the share of the portfolio actually decomposed. A fund
+        stores its top 50 names, which is around 63% of it, so the rest is
+        NOT attributed to anybody and must not look as though it were.
+      * `unseen` — funds with no stored holdings at all, named.
+      * `direct` vs `via` per company — "8.0% directly and 3.1% through your
+        funds" is a different sentence from either half, and the second half
+        is the one nobody can see for themselves.
+
+    Every figure here is a FLOOR. The stored names are a fund's largest
+    holdings, so a company could also sit in the tail of some other fund and
+    go uncounted; the error is one-directional and the page says so.
+    """
+    if holdings is None:
+        holdings = _HOLDINGS
+    if ticker_key is None:
+        ticker_key = _TICKER_KEY
+
+    agg = {}
+    unseen_value = 0.0
+    unseen, partial = [], []
+
+    def add(k, name, ticker, value, direct):
+        e = agg.setdefault(k, {"key": k, "name": name, "ticker": ticker,
+                               "direct": 0.0, "via": 0.0})
+        # A name from the fund tables is the registrant's, which reads better
+        # than a ticker; keep the first non-empty one seen.
+        if not e["name"]:
+            e["name"] = name
+        if not e["ticker"]:
+            e["ticker"] = ticker
+        e["direct" if direct else "via"] += value
+
+    for r in rows:
+        kind, value = r["kind"], r["value"]
+        if kind == "cash":
+            # Cash is not a company and does not belong in a list of what you
+            # own. It is already reported on its own.
+            continue
+        if kind == "stock":
+            k = ticker_key.get(r["symbol"])
+            if k:
+                add(k, r["label"] or r["symbol"], r["symbol"], value, True)
+            else:
+                # A stock nothing else holds is still something you own, and
+                # keying it on its own symbol keeps it in the list without
+                # pretending it was matched to anything.
+                add("T:" + (r["symbol"] or r["label"]),
+                    r["label"] or r["symbol"], r["symbol"], value, True)
+            continue
+
+        entry = holdings.get(r["symbol"])
+        if not entry:
+            unseen_value += value
+            unseen.append(r["label"] or r["symbol"] or "(unnamed)")
+            continue
+        covered = entry.get("covered") or 0.0
+        for k, name, pct, tk in entry["top"]:
+            add(k, name, tk, value * pct / 100.0, False)
+        # The tail this table deliberately does not store.
+        unseen_value += value * max(0.0, 100.0 - covered) / 100.0
+        if covered < 99.5:
+            partial.append({"label": r["label"] or r["symbol"],
+                            "covered": covered})
+
+    out = []
+    for e in agg.values():
+        v = e["direct"] + e["via"]
+        if v <= 0:
+            continue
+        out.append({
+            "key": e["key"], "name": e["name"], "ticker": e["ticker"],
+            "direct": e["direct"], "via": e["via"], "value": v,
+            "pct": _share(v, total),
+            # The sentence nobody can work out for themselves.
+            "both": e["direct"] > 0 and e["via"] > 0,
+        })
+    out.sort(key=lambda d: -d["value"])
+
+    seen = sum(d["value"] for d in out)
+    return {
+        "positions": out,
+        "count": len(out),
+        "seen_value": seen,
+        "seen_pct": _share(seen, total),
+        "unseen_value": unseen_value,
+        "unseen": unseen,
+        "partial": partial,
+        "as_of": _HOLD_AS_OF,
+    }
+
 def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
     """What a list of holdings actually adds up to.
 
@@ -2982,7 +3095,11 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
         # The claim the page has to make about its own limits, computed rather
         # than written into the copy so it cannot be true of one portfolio and
         # left standing on another.
-        "lookthrough": False,
+        # The X-ray's OWN figures still cannot see inside a fund; this is a
+        # separate reading that can, for the names each fund is largest in.
+        # Kept apart rather than folded in, so no concentration figure above
+        # silently changes meaning depending on whether holdings data exists.
+        "lookthrough": portfolio_lookthrough(rows, total),
         "concentration_understated": fund_count > 0,
         "fund_count": fund_count,
         "as_of": _FUND_AS_OF,

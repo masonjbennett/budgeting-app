@@ -48,7 +48,8 @@ const WEB = resolve(here, "..");
 // imports: leave it out and the function crashes at INVOCATION time on Vercel
 // with a green build, the same way a missing sys.path entry did on the first
 // deploy of this API.
-const MODULES = ["calculations.py", "app_data.py", "fund_data.py"];
+const MODULES = ["calculations.py", "app_data.py", "fund_data.py",
+                 "fund_holdings.py"];
 
 const HEADER = `# ---------------------------------------------------------------------------
 # GENERATED FILE -- DO NOT EDIT, AND DO NOT COMMIT.

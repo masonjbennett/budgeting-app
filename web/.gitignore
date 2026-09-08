@@ -13,4 +13,5 @@ next-env.d.ts
 api/calculations.py
 api/app_data.py
 api/fund_data.py
+api/fund_holdings.py
 .env*

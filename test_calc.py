@@ -1473,6 +1473,119 @@ check("the unit investment trusts stay unsourced, because they file nothing "
       "of this shape",
       not _fd.FUNDS["SPY"].get("src") and not _fd.FUNDS["GLD"].get("src"))
 
+
+# ── Look-through: what you own once the funds are opened ─────────────
+#
+# Driven against an INJECTED holdings table, for the same reason the fee
+# assertions are: fund_holdings.py is regenerated from filings and a suite
+# anchored to today's weights would fail on a data chore rather than a defect.
+# The shipping table gets shape assertions instead.
+
+import fund_holdings as _fh                             # noqa: E402
+
+print("\n--- Look-through ---")
+
+_LTH = {
+    # 60% of itself accounted for by two names; the other 40 is the tail this
+    # table deliberately does not store.
+    "AAA": {"covered": 60.0, "top": [
+        ("NVIDIA", "NVIDIA Corp", 40.0, "NVDA"),
+        ("APPLE", "Apple Inc", 20.0, "AAPL"),
+    ]},
+    "BBB": {"covered": 30.0, "top": [
+        ("NVIDIA", "NVIDIA Corp", 30.0, "NVDA"),
+    ]},
+}
+_LTK = {"NVDA": "NVIDIA", "AAPL": "APPLE"}
+
+
+def _ltrows(*specs):
+    return [{"id": str(i), "symbol": s, "label": lab, "kind": k, "value": v,
+             "account": "", "employer_stock": False}
+            for i, (s, lab, k, v) in enumerate(specs)]
+
+
+_lt = calc.portfolio_lookthrough(
+    _ltrows(("AAA", "Fund A", "fund", 1000.0),
+            ("NVDA", "Nvidia", "stock", 500.0),
+            ("", "Cash", "cash", 200.0)),
+    1700.0, holdings=_LTH, ticker_key=_LTK)
+_pos = {p["key"]: p for p in _lt["positions"]}
+
+check("a fund's value is split across its stored names by their weights",
+      abs(_pos["NVIDIA"]["via"] - 400.0) < 1e-9
+      and abs(_pos["APPLE"]["via"] - 200.0) < 1e-9)
+check("a directly held stock lands on the same company as the fund's holding",
+      abs(_pos["NVIDIA"]["direct"] - 500.0) < 1e-9
+      and abs(_pos["NVIDIA"]["value"] - 900.0) < 1e-9)
+# The sentence the feature exists for.
+check("and it is marked as held BOTH ways",
+      _pos["NVIDIA"]["both"] is True and _pos["APPLE"]["both"] is False)
+# 40% of the fund is a tail this table does not store, and pretending
+# otherwise would let the page claim it had seen a whole portfolio.
+check("the part of a fund not stored is attributed to nobody",
+      abs(_lt["unseen_value"] - 400.0) < 1e-9)
+check("and what IS attributed equals what the run says it saw",
+      abs(sum(p["value"] for p in _lt["positions"]) - _lt["seen_value"]) < 1e-9)
+# Cash is not a company; listing it here would put it in a table of what you
+# own SHARES of.
+check("cash is left out of the look-through entirely",
+      not any("CASH" in p["key"].upper() for p in _lt["positions"])
+      and abs(_lt["seen_value"] - 1100.0) < 1e-9)
+check("the share seen is measured against the whole portfolio",
+      abs(_lt["seen_pct"] - 1100.0 / 1700.0 * 100) < 1e-9)
+
+_lt2 = calc.portfolio_lookthrough(
+    _ltrows(("ZZZ", "Plan Fund R6", "fund", 800.0)), 800.0,
+    holdings=_LTH, ticker_key=_LTK)
+check("a fund with no holdings data is named, not silently dropped",
+      _lt2["unseen"] == ["Plan Fund R6"]
+      and abs(_lt2["unseen_value"] - 800.0) < 1e-9
+      and _lt2["positions"] == [])
+
+# Two funds holding the same company is the case the whole feature is about.
+_lt3 = calc.portfolio_lookthrough(
+    _ltrows(("AAA", "Fund A", "fund", 1000.0), ("BBB", "Fund B", "fund", 1000.0)),
+    2000.0, holdings=_LTH, ticker_key=_LTK)
+check("one company held through two funds is added together, not listed twice",
+      len([p for p in _lt3["positions"] if p["key"] == "NVIDIA"]) == 1
+      and abs([p for p in _lt3["positions"] if p["key"] == "NVIDIA"][0]["via"]
+              - 700.0) < 1e-9)
+
+_lt4 = calc.portfolio_lookthrough(
+    _ltrows(("WEIRDCO", "Some Small Co", "stock", 300.0)), 300.0,
+    holdings=_LTH, ticker_key=_LTK)
+check("a stock no fund holds is still something you own",
+      len(_lt4["positions"]) == 1
+      and abs(_lt4["positions"][0]["direct"] - 300.0) < 1e-9)
+# The mutation "both = direct > 0" SURVIVED the first version of these
+# assertions, because the only directly held stock in the fixture above is
+# also inside a fund - so the wrong rule and the right one agreed on every
+# case being tested. A direct-only holding is what tells them apart.
+check("and it is NOT marked as held both ways, because no fund holds it",
+      _lt4["positions"][0]["both"] is False
+      and abs(_lt4["positions"][0]["via"]) < 1e-9)
+
+check("an empty portfolio looks through to nothing, measuring nothing",
+      calc.portfolio_lookthrough([], 0.0, holdings=_LTH,
+                                 ticker_key=_LTK)["seen_pct"] is None)
+
+# ── The shipping holdings table's SHAPE ──────────────────────────────
+check("every fund in the shipping holdings table carries its own coverage",
+      all(0 < v["covered"] <= 100.5 for v in _fh.HOLDINGS.values()))
+check("and the stored weights come to that coverage",
+      all(abs(sum(r[2] for r in v["top"]) - v["covered"]) < 0.5
+          for v in _fh.HOLDINGS.values()))
+# A target-date fund holds FUNDS. Listing those would put "Vanguard Total
+# Stock Market Index Fund" in somebody's top position at 54%, which is true
+# and useless - they want to know they own NVIDIA.
+check("a fund of funds was expanded into the companies underneath it",
+      _fh.HOLDINGS["VTTSX"].get("expanded_from", 0) > 95
+      and not any("INDEX FUND" in r[0] for r in _fh.HOLDINGS["VTTSX"]["top"]))
+check("the holdings table says which filing and when",
+      all(re.match(r"^\d{10}-\d{2}-\d{6}$", v["src"]) for v in _fh.HOLDINGS.values())
+      and isinstance(_fh.AS_OF, str) and len(_fh.AS_OF) == 10)
+
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")
 print("=" * 66)
