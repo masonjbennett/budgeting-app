@@ -246,6 +246,18 @@ MUTATIONS = [
      ('        "fee disclosure carries the fee."),',
       '        "fee disclosure carries the fee. You should sell it."),'),
      "fund_kinds.py"),
+
+    # ── Share classes share one stored portfolio ─────────────────────
+    ("a share class does not follow its alias, so a plan's institutional class "
+     "silently loses the look-through its brokerage-class sibling gets",
+     ('        entry = holdings.get(r["symbol"])\n'
+      '        if not entry:\n'
+      '            entry = holdings.get(aliases.get(r["symbol"]))',
+      '        entry = holdings.get(r["symbol"])')),
+    ("the alias map defaults to empty instead of the shipping one, which every "
+     "assertion passing an injected map would still pass",
+     ("    if aliases is None:\n        aliases = _HOLD_ALIASES",
+      "    if aliases is None:\n        aliases = {}")),
 ]
 
 # An entry may name the file it mutates. `fund_kinds.py` is a second module

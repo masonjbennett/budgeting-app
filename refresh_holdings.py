@@ -163,7 +163,19 @@ def main():
             bykey.setdefault(k, row["ticker"])
             bytight.setdefault(t, row["ticker"])
 
-    out, skipped = {}, []
+    # ONE FETCH PER SERIES, not per ticker. Every share class of a fund holds
+    # the SAME portfolio and files ONE N-PORT, so storing the top 50 under
+    # each of VTI/VTSAX/VITSX/VSMPX/VSTSX/VTSMX would be six copies of one
+    # list — and after the September widening 113 tickers cover 56 series, so
+    # that is over half the file duplicated, in a table already 210KB and
+    # bundled into a serverless function.
+    #
+    # The key is SEC's SERIES ID, which is exact. A normalised NAME is not:
+    # it strips INDEX, II and INSTITUTIONAL, so it collapses "Total Bond
+    # Market Index" with "Total Bond Market II Index" — different funds with
+    # different portfolios. See plan-menu-sweep/README.md.
+    out, skipped, aliases = {}, [], {}
+    rep_of_series = {}
     for sym in sorted(fund_data.FUNDS):
         ent = tmap.get(sym)
         if not ent:
@@ -171,6 +183,11 @@ def main():
             print("  %-6s -- not in SEC's fund map" % sym)
             continue
         cik, series, _cls = ent
+        rep = rep_of_series.get(series)
+        if rep:
+            aliases[sym] = rep
+            print("  %-6s -- same series as %s, aliased" % (sym, rep))
+            continue
         try:
             rows = None
             for acc, date, base in latest_nport(cik, series):
@@ -199,6 +216,7 @@ def main():
             tk = bykey.get(k) or bytight.get(tight(name))
             entries.append((k, name, round(pct, 4), tk))
 
+        rep_of_series[series] = sym
         out[sym] = {
             "src": acc, "asof": date,
             "covered": round(covered, 2),
@@ -298,9 +316,21 @@ def main():
         lines.append("    },")
     lines.append("}")
     lines.append("")
+    lines.append("# Share classes of a fund whose holdings are stored under a")
+    lines.append("# SIBLING ticker. One fund files one N-PORT, so every class of it")
+    lines.append("# holds the same portfolio; keyed on SEC's SERIES ID, never on a")
+    lines.append("# normalised name. Anything reading HOLDINGS by ticker has to")
+    lines.append("# follow this, or a plan's institutional class silently loses the")
+    lines.append("# look-through its brokerage-class sibling gets.")
+    lines.append("ALIASES = {")
+    for sym in sorted(aliases):
+        lines.append("    %r: %r," % (sym, aliases[sym]))
+    lines.append("}")
+    lines.append("")
     io.open("fund_holdings.py", "w", encoding="utf-8", newline="\n").write(
         "\n".join(lines) + "\n")
-    print("\nWrote fund_holdings.py (%d funds)" % len(out))
+    print("\nWrote fund_holdings.py (%d funds, %d aliased share classes)"
+          % (len(out), len(aliases)))
     return 0
 
 

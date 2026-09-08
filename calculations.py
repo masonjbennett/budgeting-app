@@ -38,7 +38,8 @@ from datetime import date as _date
 # so the deploy — rather than serve an X-ray with an empty fund table,
 # which would report every holding as uncovered and look merely cautious.
 from fund_data import AS_OF as _FUND_AS_OF, FUNDS as _FUNDS
-from fund_holdings import AS_OF as _HOLD_AS_OF, HOLDINGS as _HOLDINGS
+from fund_holdings import (AS_OF as _HOLD_AS_OF, ALIASES as _HOLD_ALIASES,
+                           HOLDINGS as _HOLDINGS)
 from fund_kinds import unknown_kind as _unknown_kind
 
 # ticker -> company key, built from the baked holdings rather than kept as a
@@ -2818,7 +2819,8 @@ def _share(part, whole):
     return part / whole * 100.0
 
 
-def portfolio_lookthrough(rows, total, holdings=None, ticker_key=None):
+def portfolio_lookthrough(rows, total, holdings=None, ticker_key=None,
+                          aliases=None):
     """What the portfolio owns once the funds are opened up.
 
     The X-ray's own concentration figures are across POSITIONS, because
@@ -2845,6 +2847,14 @@ def portfolio_lookthrough(rows, total, holdings=None, ticker_key=None):
         holdings = _HOLDINGS
     if ticker_key is None:
         ticker_key = _TICKER_KEY
+    # A share class whose holdings are stored under a sibling ticker. One
+    # fund files one N-PORT, so storing the same top 50 under each of its
+    # classes would duplicate over half this table; the alias is what stops a
+    # plan's institutional class losing the look-through its brokerage-class
+    # sibling gets. Injectable like the other two so the suite can drive a
+    # known map. `{}` is a deliberate map, so `is None` and not `or`.
+    if aliases is None:
+        aliases = _HOLD_ALIASES
 
     agg = {}
     unseen_value = 0.0
@@ -2880,6 +2890,8 @@ def portfolio_lookthrough(rows, total, holdings=None, ticker_key=None):
             continue
 
         entry = holdings.get(r["symbol"])
+        if not entry:
+            entry = holdings.get(aliases.get(r["symbol"]))
         if not entry:
             unseen_value += value
             unseen.append(r["label"] or r["symbol"] or "(unnamed)")

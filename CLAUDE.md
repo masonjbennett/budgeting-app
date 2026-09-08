@@ -1832,12 +1832,12 @@ which exec `budget_app.py`, are green.
 four siblings. The first deploy of this API crashed on import in production
 behind a completely green build log; a missing fifth module would do it again.
 
-Counts: **test_calc 309 → 333**, engine mutations **48 → 53** (the harness can
+Counts: **test_calc 309 → 340**, engine mutations **48 → 55** (the harness can
 now mutate `fund_kinds.py` too — a rule living in a second module is no less
 shipped, and could not be mutated while the harness knew one filename),
 test_api **143 → 152** (the byte-for-byte sync check now reads its module list
 OUT of the sync script instead of naming one file), test_stress 168, test_cloud
-42. `/data`'s About block 477 → 501, so `check_claims.py` passes.
+42. `/data`'s About block 477 → 508, so `check_claims.py` passes.
 Browser: `portfolio.mjs` **28 → 34** assertions and **4 → 5** selftests; the
 seed fixture now holds a collective trust, because the old one fired nothing
 and left the whole section unmeasured.
@@ -1899,7 +1899,34 @@ Retirement series as still missing after it had been added**. `detect.py` had
 solved this already and `gaps.py` was not reusing it. I nearly widened the
 table off the inflated list.
 
-### Look-through for those 41 is NOT done, and the key is not the name
+### Look-through: aliased, and the table got SMALLER
+
+**Adding 52 share classes created a gap I had made myself.** Before it, every
+fund in the table had look-through; after it, 52 of 113 had none, so a plan
+holding VITSX got fees but no look-through while VTI got both — arbitrary to
+the reader.
+
+One fund files ONE N-PORT and every class of it holds the same portfolio, so
+`refresh_holdings.py` now fetches **once per SEC series** and writes an
+`ALIASES` map for the rest. **56 stored, 54 aliased, 3 skipped** — and
+`fund_holdings.py` went **210,726 → 205,520 bytes**, i.e. it SHRANK while
+covering 110 tickers instead of 58. Storing the top 50 under each of
+VTI/VTSAX/VITSX/VSMPX/VSTSX/VTSMX would have been six copies of one list in a
+file bundled into a serverless function.
+
+**The key is the SERIES ID, never a normalised name** — `fkey` strips INDEX,
+II and INSTITUTIONAL, so it collapses "Total Bond Market Index" with "Total
+Bond Market II Index", which are different funds with different portfolios.
+
+**One assertion exists because the others could not catch it.** Every
+alias-behaviour test passes an injected map, so a default of `{}` would leave
+them all green while the shipping page lost look-through on every share class.
+There is now one that drives the SHIPPING maps, and the mutation for that
+default is caught only by it. Also asserted: no alias dangles, no ticker is
+both stored and aliased, and every fund in the fee table reaches holdings by
+one route or the other except the three that file no N-PORT at all.
+
+### The key is not the name — and here is what that cost
 
 They have fees, class and region; they have no stored holdings, so
 `portfolio_lookthrough` reports them as unseen and names them — honest, and

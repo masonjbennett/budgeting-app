@@ -1593,6 +1593,69 @@ check("the holdings table says which filing and when",
       all(re.match(r"^\d{10}-\d{2}-\d{6}$", v["src"]) for v in _fh.HOLDINGS.values())
       and isinstance(_fh.AS_OF, str) and len(_fh.AS_OF) == 10)
 
+# ── Share classes share a portfolio, so they share a stored one ──────
+#
+# One fund files ONE N-PORT and every class of it holds the same names, so
+# the table stores them once and ALIASES the rest. Without that a plan's
+# institutional class would silently lose the look-through its brokerage
+# sibling gets — the arbitrary split this widening would otherwise create.
+check("the table aliases share classes rather than storing them twice",
+      len(_fh.ALIASES) > 20, f"{len(_fh.ALIASES)} aliases")
+# A dangling alias loses look-through silently, which is the whole failure
+# mode this map exists to prevent.
+check("every alias points at a ticker the table actually stores",
+      all(v in _fh.HOLDINGS for v in _fh.ALIASES.values()),
+      str(sorted(set(_fh.ALIASES.values()) - set(_fh.HOLDINGS))))
+check("and no ticker is both stored and aliased",
+      not (set(_fh.ALIASES) & set(_fh.HOLDINGS)),
+      str(sorted(set(_fh.ALIASES) & set(_fh.HOLDINGS))))
+# The three that file no N-PORT at all are the only funds in the fee table
+# with no look-through by either route.
+_noholdings = sorted(t for t in _fd.FUNDS
+                     if t not in _fh.HOLDINGS and t not in _fh.ALIASES)
+check("every fund in the fee table reaches holdings by one route or the other",
+      _noholdings == ["GLD", "SPLG", "SPY"], str(_noholdings))
+
+# THE ENGINE MUST FOLLOW IT. Storing the map and not reading it would leave
+# the coverage exactly where it was while looking fixed.
+_ALIAS_H = {"REP": {"src": "0000000000-00-000000", "asof": "2026-01-01",
+                    "covered": 90.0, "total": 100.0, "fundlike": 0.0,
+                    "top": [("ACME", "Acme Corp", 90.0, "ACME")]}}
+_direct = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": "REP", "label": "Rep", "value": 1_000}],
+    1_000.0, holdings=_ALIAS_H, ticker_key={}, aliases={})
+_viaalias = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": "CLASSB", "label": "Class B", "value": 1_000}],
+    1_000.0, holdings=_ALIAS_H, ticker_key={}, aliases={"CLASSB": "REP"})
+check("a share class looks through to its sibling's stored holdings",
+      _viaalias["seen_pct"] == _direct["seen_pct"]
+      and [p["key"] for p in _viaalias["positions"]] == ["ACME"],
+      f'{_viaalias["seen_pct"]} vs {_direct["seen_pct"]}')
+# And an unknown ticker must still be REPORTED, not quietly aliased to
+# nothing — `aliases.get` returns None and `holdings.get(None)` is None.
+_noalias = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": "NOPE", "label": "Untabled", "value": 1_000}],
+    1_000.0, holdings=_ALIAS_H, ticker_key={}, aliases={"CLASSB": "REP"})
+check("a fund in neither map is still named as unseen",
+      _noalias["unseen"] == ["Untabled"] and _noalias["seen_pct"] == 0.0,
+      str(_noalias["unseen"]))
+# ...and on the SHIPPING maps, not only on injected ones. Every assertion
+# above passes an explicit `aliases`, so a default of {} would leave them all
+# green while the real page lost look-through on every share class.
+_real_alias = sorted(_fh.ALIASES)[0]
+_real_rep = _fh.ALIASES[_real_alias]
+_ship_class = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": _real_alias, "label": _real_alias, "value": 1_000}],
+    1_000.0)
+_ship_rep = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": _real_rep, "label": _real_rep, "value": 1_000}],
+    1_000.0)
+check("the shipping default resolves a real share class to its sibling",
+      _ship_class["seen_pct"] == _ship_rep["seen_pct"]
+      and _ship_class["seen_pct"] > 0 and not _ship_class["unseen"],
+      f'{_real_alias}->{_real_rep}: {_ship_class["seen_pct"]} '
+      f'vs {_ship_rep["seen_pct"]}')
+
 # ── What an UNCOVERED holding IS (fund_kinds.py) ─────────────────────
 #
 # A collective trust and a mistyped ticker are both "not in the table" and
