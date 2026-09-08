@@ -633,6 +633,17 @@ measurement (Fidelity's ZERO funds really are free); a fund nobody has added is
 `None` and lands in the uncovered bucket. Conflating them takes the coverage
 banner off the page along with the truth.
 
+**And there are THREE states, not two.** A fund with no ratio at all is
+UNCOVERED. A fund whose ratio nobody has checked against a filing is
+UNSOURCED. A ratio read out of the fund's own 485BPOS is sourced, and carries
+the accession in `src` — including a filed ZERO, because the Fidelity ZERO
+funds really do charge nothing and treating `er == 0` as unsourced would
+report the best-evidenced figure in the table as the least. A stock or a cash
+line is neither sourced nor unsourced: its zero is arithmetic, not a lookup,
+and counting it as unsourced invents a gap. `refresh_fund_data.py` fills the
+`src` values; 43 of 54 resolve today and the page names the rest rather than
+making a blanket claim over a mixed table.
+
 ## Things measured, with the numbers
 
 **Recharts, not Plotly.** `plotly.js-dist-min` was 4.51 MB in one chunk, **944
