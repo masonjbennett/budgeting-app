@@ -2098,3 +2098,18 @@ suites passing — they passed before — it is `git ls-files --eol` reporting `
 file with `autocrlf=true` STILL SET, i.e. the checkout that used to flip them no longer can.
 Sync 5/5 verified, test_api 152, test_calc 348, test_stress 168, test_cloud 42, mutations
 59/59, all over LF files.
+
+## Sep 9 2026 — 88% stays, and the sentence now carries the other tail
+
+The review brief's own open question: the /portfolio limits list quotes "88% of the fund
+dollars" to an individual reader, while the median plan is 67% — should the median lead?
+Decided (on Mason's "you decide"): **88% stays.** Dollar-weighting leans on the largest plans,
+and that is the RIGHT lean for a reader, because a large plan has far more participants than
+a small one and a plan-median weights a 50-person plan the same as a 50,000-person one —
+so 67% answers "what is a typical plan" when the reader is asking "what is my plan likely
+to hold". What the sentence lacked was the spread: it already said "a majority of the menu
+in 18 of them" and now adds **"and absent from 6"**, so a reader in a small plan is not told
+the average is theirs. All three numbers are `clean.py`'s. The same sentence's "no free
+tool can" — a claim with nothing behind it — became "no tool that reads public filings
+can, because none are filed", which is the reason and the checkable form. One browser
+assertion added (`portfolio.mjs` 40 → 41). Do not re-propose leading with the median.

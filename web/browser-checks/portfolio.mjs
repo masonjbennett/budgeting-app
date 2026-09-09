@@ -144,6 +144,15 @@ console.log("=".repeat(70));
   check("the page's limits name collective trusts, with the measurement",
         /88% of the fund dollars/i.test(t) && /Form 11-K/i.test(t),
         "the limits list still blames untickered share classes");
+  /* 88% is dollar-weighted, so it leans on the largest plans — which is the
+     right lean for a reader, since a large plan has far more participants
+     than a small one. But a reader in a small plan needs the other tail too:
+     6 of the 29 hold no collective trust at all. And "no free tool can" is
+     only a claim; "none are filed" is the reason, and the checkable form. */
+  check("and the spread, so a reader in a small plan is not told the average is theirs",
+        /majority of the menu in 18 of them, and absent from 6/i.test(t)
+        && /because none are filed/i.test(t),
+        t.match(/[^\n]*absent from[^\n]*/i)?.[0] || "absent");
   /* The fund table now carries VTIVX — the MUTUAL FUND of the same name and
      year. The trust is a different vehicle with a different fee, so matching
      them on the name would print a confident wrong number. Holdings resolve

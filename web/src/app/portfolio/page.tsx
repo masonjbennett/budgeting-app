@@ -744,8 +744,9 @@ export default function PortfolioPage() {
                   prospectus or holdings report. Across 29 real 401(k) plans, sampled from
                   the Form 11-K each public company files for its own plan, those were{" "}
                   <span className="font-num">88%</span> of the fund dollars and a majority of
-                  the menu in 18 of them. Nothing here can read a fee or look inside one, and
-                  no free tool can; the fee is in the annual disclosure the plan sends you.
+                  the menu in 18 of them, and absent from 6. Nothing here can read a fee or
+                  look inside one, and no tool that reads public filings can, because none
+                  are filed; the fee is in the annual disclosure the plan sends you.
                 </li>
                 <li>
                   Values are what was typed in, on the date it was typed. Nothing here is a
