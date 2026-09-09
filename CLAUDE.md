@@ -2080,3 +2080,21 @@ in it passed against the new code, read from the logs, and the two that failed i
 dying chain (compare's 700px stack, demonote) passed again on stable servers.
 `budget-api-alt` (:8001) and `budget-web-alt` (:3001, `DEV_API_URL` set) are the launch
 entries for a second pair, and `BASE=http://localhost:3001` points every script at them.
+
+## Sep 9 2026 — one line ending everywhere (`.gitattributes`)
+
+`web/test_api.py`'s byte-for-byte sync check had failed 3 on a CLEAN tree the day before:
+`core.autocrlf=true` on Mason's machine and no attributes, so the merge rewrote the root
+`.py` files CRLF while the gitignored `web/api/` copies kept the LF the last sync had read.
+Content identical, three FAILs, and the same mechanism behind the harness's earlier
+"mutation SURVIVED that was a CRLF mismatch". Measured before changing anything: the index
+was already LF on all 113 text files (1 binary), 72 working-tree files were CRLF, one
+(`.gitignore`) was MIXED, and nothing in the repo needs CRLF. So `* text=auto eol=lf`
+changes what a checkout WRITES, never what is stored — history is untouched.
+Two things worth knowing. `git checkout-index -a -f` does NOT rewrite files it considers
+up to date, so it left all 72 CRLF; `git rm -r --cached . && git reset --hard HEAD` is the
+recipe that does, and it is safe only on a clean tree (it was). And the proof is not the
+suites passing — they passed before — it is `git ls-files --eol` reporting `w/lf` on every
+file with `autocrlf=true` STILL SET, i.e. the checkout that used to flip them no longer can.
+Sync 5/5 verified, test_api 152, test_calc 348, test_stress 168, test_cloud 42, mutations
+59/59, all over LF files.

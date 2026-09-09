@@ -1,0 +1,7 @@
+# One line ending in the repository AND in every checkout. web/test_api.py
+# compares the gitignored web/api/ copies byte for byte against the root
+# files; with core.autocrlf=true on Windows and no attributes, a merge rewrote
+# the root .py files CRLF while the copies kept the LF the last sync had read
+# - content identical, three FAILs on a clean tree (Sep 8 2026). The index was
+# already LF throughout, so this changes what a checkout writes, not history.
+* text=auto eol=lf
