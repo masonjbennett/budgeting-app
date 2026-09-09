@@ -1387,9 +1387,16 @@ check("and a portfolio holding none says None rather than zero",
 check("every fund in the shipping table carries a full entry",
       all(set(v) >= {"name", "er", "cls", "region", "style"}
           for v in _fd.FUNDS.values()))
-check("every expense ratio is a percentage in a sane range",
-      all(isinstance(v["er"], (int, float)) and 0.0 <= v["er"] <= 3.0
+# `None` is a documented state of this table — "a fund with no ratio at all is
+# UNCOVERED" — and is the honest answer for a share class its series' filings
+# do not carry. It is admitted here rather than silently tolerated, and the
+# range still binds every ratio that IS present.
+check("every expense ratio is a percentage in a sane range, or absent",
+      all(v["er"] is None
+          or (isinstance(v["er"], (int, float)) and 0.0 <= v["er"] <= 3.0)
           for v in _fd.FUNDS.values()))
+check("and an absent ratio is rare enough to be deliberate",
+      sum(1 for v in _fd.FUNDS.values() if v["er"] is None) <= 5)
 # A class present in FUNDS but missing from CLASS_ORDER still reaches the page
 # (the route appends the leftovers) but would arrive UNLABELLED, reading as a
 # raw key beside four English words.
@@ -1585,6 +1592,206 @@ check("a fund of funds was expanded into the companies underneath it",
 check("the holdings table says which filing and when",
       all(re.match(r"^\d{10}-\d{2}-\d{6}$", v["src"]) for v in _fh.HOLDINGS.values())
       and isinstance(_fh.AS_OF, str) and len(_fh.AS_OF) == 10)
+
+# ── Share classes share a portfolio, so they share a stored one ──────
+#
+# One fund files ONE N-PORT and every class of it holds the same names, so
+# the table stores them once and ALIASES the rest. Without that a plan's
+# institutional class would silently lose the look-through its brokerage
+# sibling gets — the arbitrary split this widening would otherwise create.
+check("the table aliases share classes rather than storing them twice",
+      len(_fh.ALIASES) > 20, f"{len(_fh.ALIASES)} aliases")
+# A dangling alias loses look-through silently, which is the whole failure
+# mode this map exists to prevent.
+check("every alias points at a ticker the table actually stores",
+      all(v in _fh.HOLDINGS for v in _fh.ALIASES.values()),
+      str(sorted(set(_fh.ALIASES.values()) - set(_fh.HOLDINGS))))
+check("and no ticker is both stored and aliased",
+      not (set(_fh.ALIASES) & set(_fh.HOLDINGS)),
+      str(sorted(set(_fh.ALIASES) & set(_fh.HOLDINGS))))
+# The three that file no N-PORT at all are the only funds in the fee table
+# with no look-through by either route.
+_noholdings = sorted(t for t in _fd.FUNDS
+                     if t not in _fh.HOLDINGS and t not in _fh.ALIASES)
+check("every fund in the fee table reaches holdings by one route or the other",
+      _noholdings == ["GLD", "SPLG", "SPY"], str(_noholdings))
+
+# THE ENGINE MUST FOLLOW IT. Storing the map and not reading it would leave
+# the coverage exactly where it was while looking fixed.
+_ALIAS_H = {"REP": {"src": "0000000000-00-000000", "asof": "2026-01-01",
+                    "covered": 90.0, "total": 100.0, "fundlike": 0.0,
+                    "top": [("ACME", "Acme Corp", 90.0, "ACME")]}}
+_direct = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": "REP", "label": "Rep", "value": 1_000}],
+    1_000.0, holdings=_ALIAS_H, ticker_key={}, aliases={})
+_viaalias = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": "CLASSB", "label": "Class B", "value": 1_000}],
+    1_000.0, holdings=_ALIAS_H, ticker_key={}, aliases={"CLASSB": "REP"})
+check("a share class looks through to its sibling's stored holdings",
+      _viaalias["seen_pct"] == _direct["seen_pct"]
+      and [p["key"] for p in _viaalias["positions"]] == ["ACME"],
+      f'{_viaalias["seen_pct"]} vs {_direct["seen_pct"]}')
+# And an unknown ticker must still be REPORTED, not quietly aliased to
+# nothing — `aliases.get` returns None and `holdings.get(None)` is None.
+_noalias = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": "NOPE", "label": "Untabled", "value": 1_000}],
+    1_000.0, holdings=_ALIAS_H, ticker_key={}, aliases={"CLASSB": "REP"})
+check("a fund in neither map is still named as unseen",
+      _noalias["unseen"] == ["Untabled"] and _noalias["seen_pct"] == 0.0,
+      str(_noalias["unseen"]))
+# ...and on the SHIPPING maps, not only on injected ones. Every assertion
+# above passes an explicit `aliases`, so a default of {} would leave them all
+# green while the real page lost look-through on every share class.
+_real_alias = sorted(_fh.ALIASES)[0]
+_real_rep = _fh.ALIASES[_real_alias]
+_ship_class = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": _real_alias, "label": _real_alias, "value": 1_000}],
+    1_000.0)
+_ship_rep = calc.portfolio_lookthrough(
+    [{"kind": "fund", "symbol": _real_rep, "label": _real_rep, "value": 1_000}],
+    1_000.0)
+check("the shipping default resolves a real share class to its sibling",
+      _ship_class["seen_pct"] == _ship_rep["seen_pct"]
+      and _ship_class["seen_pct"] > 0 and not _ship_class["unseen"],
+      f'{_real_alias}->{_real_rep}: {_ship_class["seen_pct"]} '
+      f'vs {_ship_rep["seen_pct"]}')
+
+# ── What an UNCOVERED holding IS (fund_kinds.py) ─────────────────────
+#
+# A collective trust and a mistyped ticker are both "not in the table" and
+# want opposite answers. The load-bearing property is that naming the first
+# changes only what the page can SAY: every coverage figure must be identical
+# with the detector firing and with it silent.
+print("\n--- what an uncovered holding is ---")
+import fund_kinds as _fk                             # noqa: E402
+
+_TRUST = _h("", 40_000, label="Vanguard Target Retirement 2045 Trust II")
+_STABLE = _h("", 10_000, label="Putnam Stable Value Fund")
+_TYPO = _h("ZQZQ", 5_000, label="Mistyped ticker")
+_u = calc.portfolio_xray([_h("AAA", 45_000), _TRUST, _STABLE, _TYPO],
+                         funds=_XF)
+
+check("a collective trust is named as one rather than left as a bare gap",
+      _u["unreachable"]["holdings"][0]["plan_kind"] == "collective_trust")
+check("a stable value option is called an insurance contract, not a trust",
+      any(h["plan_kind"] == "insurance_contract"
+          for h in _u["unreachable"]["holdings"]))
+check("a brokerage window is neither — it is an account, not a holding",
+      calc.portfolio_xray([_h("", 100, label="Fidelity BrokerageLink")],
+                          funds=_XF)["unreachable"]["holdings"][0]["plan_kind"]
+      == "brokerage_window")
+# The whole point of the split. A typo is worth checking; a trust never
+# resolves, so telling somebody to check it would waste their afternoon.
+check("a mistyped ticker gets NO kind, so it stays a gap worth checking",
+      all(h["label"] != "Mistyped ticker" for h in _u["unreachable"]["holdings"]))
+check("but it is still reported as uncovered",
+      "Mistyped ticker" in _u["expense"]["uncovered"])
+
+# THE LOAD-BEARING ONE. If naming a holding moved a percentage, the detector
+# would be a measurement, and it is not — it is a sentence about a blank.
+_silent = calc.portfolio_xray(
+    [_h("AAA", 45_000), _h("", 40_000, label="Unnamed plan fund"),
+     _h("", 10_000, label="Another plan fund"), _TYPO], funds=_XF)
+check("naming an uncovered holding moves NO coverage figure",
+      _u["expense"]["coverage_pct"] == _silent["expense"]["coverage_pct"]
+      and _u["expense"]["covered_value"] == _silent["expense"]["covered_value"]
+      and _u["mix"]["class_coverage_pct"] == _silent["mix"]["class_coverage_pct"]
+      and _u["mix"]["region_coverage_pct"] == _silent["mix"]["region_coverage_pct"],
+      f'{_u["expense"]["coverage_pct"]} vs {_silent["expense"]["coverage_pct"]}')
+check("and it never fills a fee, a class or a region",
+      all(p["er"] is None and p["cls"] is None and p["region"] is None
+          for p in _u["positions"] if p["plan_kind"]))
+
+# A fund the table DOES cover is never second-guessed by a name.
+check("a covered fund is never marked unreachable, whatever it is called",
+      calc.portfolio_xray([_h("AAA", 100, label="AAA Collective Trust Unit D")],
+                          funds=_XF)["unreachable"] is None)
+check("and nothing is unreachable when nothing was detected",
+      calc.portfolio_xray([_h("AAA", 100), _TYPO], funds=_XF)["unreachable"] is None)
+
+# Rule 13: a denominator names itself. These are different numbers for the
+# same dollars and an unqualified one would print two percentages for it.
+check("the unreachable share of the PORTFOLIO is over the whole portfolio",
+      abs(_u["unreachable"]["pct_of_total"] - 50_000 / 100_000 * 100) < 1e-9)
+check("and its share of the UNCOVERED money uses the uncovered denominator",
+      abs(_u["unreachable"]["pct_of_uncovered"] - 50_000 / 55_000 * 100) < 1e-9)
+
+# People put the fund name in whichever box is in front of them.
+_sym_only = calc.portfolio_xray(
+    [{"id": "s", "symbol": "State Street Target Retirement 2050 Securities "
+      "Lending Series", "label": "", "value": 100, "kind": "fund"}],
+    funds=_XF)["unreachable"]
+check("the symbol is read as well as the label",
+      _sym_only is not None and _sym_only["kinds"] == ["collective_trust"],
+      "nothing was detected when the name was typed into the symbol box")
+check("a holding with no name at all is not guessed at",
+      _fk.unknown_kind("", "") == (None, None))
+# The same plan fund in two accounts is an ordinary 401(k)/457 shape, and
+# these rows carry no symbol for `duplicates` to group them by. Both must
+# survive as separate rows — the page keys the list on position rather than
+# on the label for exactly this reason.
+_dupe = calc.portfolio_xray(
+    [_h("", 1_000, label="Stable Value Fund", account="401(k)"),
+     _h("", 2_000, label="Stable Value Fund", account="457")],
+    funds=_XF)["unreachable"]
+check("two plan funds sharing a name are two rows, not one",
+      len(_dupe["holdings"]) == 2
+      and sorted(h["value"] for h in _dupe["holdings"]) == [1_000, 2_000],
+      str([h["value"] for h in _dupe["holdings"]]))
+
+# The frame behind the claim, so the docstring's numbers can be re-derived
+# rather than believed.
+# A SHARE CLASS IS NOT ITS FUND. The table carries several classes of the
+# same fund, and their fees genuinely differ — the Vanguard 500 index runs
+# 0.01% to 0.14% across four tickers, a 14x spread. When those classes were
+# added their placeholder fees were their sibling's, and the chore corrected
+# 35 of 41, so a lookup that resolved to the FUND rather than the CLASS would
+# report a plausible wrong number on a third of them.
+_v500 = {t: _fd.FUNDS[t]["er"] for t in ("VOO", "VFIAX", "VFFSX", "VFINX")
+         if t in _fd.FUNDS}
+check("the table carries share classes of one fund at DIFFERENT fees",
+      len(_v500) >= 3 and len(set(_v500.values())) >= 3, str(_v500))
+check("and each of them was read from that class's own filing",
+      all(_fd.FUNDS[t].get("src") for t in _v500))
+# THREE STATES IN THE TABLE ITSELF, pinned so a future run that appears to
+# source one gets looked at rather than believed. They are different answers
+# and collapsing them is the defect rule 13 exists for.
+_handwritten = sorted(t for t, v in _fd.FUNDS.items()
+                      if not v.get("src") and v["er"] is not None)
+_noratio = sorted(t for t, v in _fd.FUNDS.items() if v["er"] is None)
+check("exactly three entries keep a hand-written ratio with no source",
+      _handwritten == ["GLD", "SPLG", "SPY"], str(_handwritten))
+# NOT a copied sibling's number. Both are share classes their series' recent
+# 485BPOS filings do not carry, so the ratio is genuinely unknown — and a
+# copied one would have been wrong: the chore corrected 35 of the 41 classes
+# added beside them.
+check("and two carry NO ratio rather than a copied one",
+      _noratio == ["FUBFX", "VSIBX"], str(_noratio))
+check("a fund with no ratio is still carried for class and region",
+      all(_fd.FUNDS[t]["cls"] and _fd.FUNDS[t]["region"] for t in _noratio))
+# The engine must treat that as uncovered-for-fees, never as free.
+_nr = calc.portfolio_xray(
+    [_h("NOER", 1_000)],
+    funds={"NOER": {"name": "No Ratio", "er": None, "cls": "bond",
+                    "region": "us", "style": "x"}})
+check("and the engine reports it uncovered for fees, not as a zero fee",
+      _nr["expense"]["coverage_pct"] == 0.0
+      and _nr["expense"]["weighted_er"] is None
+      and _nr["mix"]["class_coverage_pct"] == 100.0,
+      str(_nr["expense"]["weighted_er"]))
+
+check("fund_kinds records the sample its accuracy was measured on",
+      _fk.MEASURED_PLANS > 20 and _fk.MEASURED_LINES > 500
+      and re.match(r"^\d{4}-\d\d-\d\d$", _fk.MEASURED_AS_OF))
+check("every kind it can return carries a note explaining what it is",
+      all(k in _fk.NOTES for k in
+          (_fk.COLLECTIVE_TRUST, _fk.INSURANCE_CONTRACT, _fk.BROKERAGE_WINDOW))
+      and all(len(v) > 80 for v in _fk.NOTES.values()))
+# Diagnosis, never prescription — the posture the whole X-ray is built on.
+check("and no note tells anybody what to do with their money",
+      not any(re.search(r"\b(you should|sell|buy|switch to|move your|"
+                        r"we recommend)\b", v, re.I)
+              for v in _fk.NOTES.values()))
 
 print("\n" + "=" * 66)
 print(f"RESULTS: {passed} passed, {failed} failed")

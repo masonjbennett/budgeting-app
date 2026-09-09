@@ -27,7 +27,7 @@
  */
 import puppeteer from "puppeteer-core";
 
-import { MOSTLY_UNCOVERED, seedHoldings } from "./fixtures/seed-holdings.mjs";
+import { MOSTLY_UNCOVERED, PLAN_MENU, seedHoldings } from "./fixtures/seed-holdings.mjs";
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -119,7 +119,50 @@ console.log("=".repeat(70));
         banner !== null && firstFigure !== null && banner < firstFigure,
         `banner ${banner} vs figures ${firstFigure}`);
   check("and it names the holdings it could not measure, in dollars",
-        /Company Stock Fund/.test(t) && /\$20,000 is in 1 holding/.test(t));
+        /Vanguard Target Retirement 2045 Trust II/.test(t)
+        && /\$20,000 is in 1 holding/.test(t));
+
+  /* Not every gap is the same gap. A mistyped ticker is worth checking and a
+     collective trust never resolves, and until this was measured the page
+     told the reader the same thing about both — while blaming a cause
+     ("institutional share classes with no public ticker") that turned out not
+     to be what a 401(k) menu is mostly made of. */
+  check("an uncovered holding that can NEVER be covered says so, and by what",
+        /files nothing with the SEC/i.test(t)
+        && /collective investment trust/i.test(t),
+        "the unreachable block did not render");
+  /* The share of the UNMEASURED money (not of the portfolio) is asserted in
+     section 2b, where it is a real fraction. Here every uncovered dollar is
+     unreachable, so the page says so in words instead — see below. */
+  check("and it sends the reader to the document that does carry the fee",
+        /annual fee disclosure/i.test(t));
+  /* The whole point of the split: the tool must not tell somebody to go
+     hunting for a ticker that does not exist. */
+  check("it never suggests checking a symbol that cannot exist",
+        !/check the symbol/i.test(t));
+  check("the page's limits name collective trusts, with the measurement",
+        /88% of the fund dollars/i.test(t) && /Form 11-K/i.test(t),
+        "the limits list still blames untickered share classes");
+  /* The fund table now carries VTIVX — the MUTUAL FUND of the same name and
+     year. The trust is a different vehicle with a different fee, so matching
+     them on the name would print a confident wrong number. Holdings resolve
+     on TICKER, and the coverage percentage is what enforces it: $120,000 of
+     $140,000 is measurable, and a page that had quietly matched the trust by
+     name would report 100%. */
+  /* Case-INSENSITIVE, and that is not a detail: `.label` uppercases the
+     banner in CSS and `innerText` reflects text-transform, so this reads
+     "MEASURED OVER 85.7% OF THIS PORTFOLIO". Same trap as the look-through's
+     "BOTH" badge, and it failed here first on a page that was correct. */
+  check("a trust is NOT matched to the same-named fund now in the table",
+        /measured over 85\.7% of this portfolio/i.test(t),
+        t.match(/measured over [\d.]+% of this portfolio/i)?.[0] || "absent");
+  /* With one uncovered holding the unreachable share is the whole of it, and
+     restating the same dollar figure three lines under itself read as a
+     subset of itself. Found by looking at the rendered card. */
+  check("where ALL the unmeasured money is unreachable, it is not restated",
+        /all of it is in something that files nothing/i.test(t)
+        && !/of what could not be measured/i.test(t),
+        t.match(/[^\n]*could not be measured[^\n]*/i)?.[0] || "");
 
   check("effective holdings is a count, not an amount",
         /EFFECTIVE HOLDINGS\s*\n\s*\d+\.\d/i.test(t) && !/EFFECTIVE HOLDINGS\s*\n\s*\$/i.test(t),
@@ -187,6 +230,30 @@ console.log("=".repeat(70));
 
   check("no console errors while driving it", page.__errors.length === 0,
         page.__errors.slice(0, 2).join(" | "));
+  await page.close();
+}
+
+// ── 2b. A real menu: unreachable is PART of the unmeasured money ────
+//
+// The fixture above has one uncovered holding, so its unreachable share is
+// always 100% and the page's other wording would be a branch nothing ever
+// rendered. This is the common shape in the wild — a plan holding a
+// collective trust AND a fund the table simply does not carry.
+{
+  const page = await open();
+  await seedHoldings(page, PLAN_MENU);
+  const t = await textOf(page);
+
+  check("with a trust beside an untabled fund, the share is a real fraction",
+        /57\.1% of what could not be measured/.test(t),
+        t.match(/[\d.]+% of what could not be measured/)?.[0] || "absent");
+  check("and only the trust is named as unreachable, not the untabled fund",
+        /Vanguard Target Retirement 2045 Trust II/.test(t)
+        && !/Plan Growth Fund R6[^\n]*collective/i.test(t));
+  check("while the untabled fund is still reported as uncovered",
+        /Plan Growth Fund R6/.test(t));
+  check("no console errors on a mixed menu",
+        page.__errors.length === 0, page.__errors.slice(0, 2).join(" | "));
   await page.close();
 }
 
@@ -272,6 +339,25 @@ if (SELFTEST) {
     const t = await textOf(page);
     check("[selftest] a fee figure leading a low-coverage page is caught",
           !/Too little of this portfolio to lead with/i.test(t));
+    await page.close();
+  }
+
+  /* An uncovered holding reported as a plain gap when it is a vehicle that
+     can never be covered. This is the state the page was in before the
+     11-K measurement, so the selftest reproduces a defect that shipped
+     rather than one invented for the occasion. */
+  {
+    const page = await open();
+    await seedHoldings(page);
+    await page.evaluate(() => {
+      const el = [...document.querySelectorAll("div")]
+        .find((n) => /files nothing with the SEC/i.test(n.textContent)
+                     && n.children.length < 4);
+      if (el) el.remove();
+    });
+    const t = await textOf(page);
+    check("[selftest] a page that does not say WHY a gap is permanent is caught",
+          !/files nothing with the SEC/i.test(t));
     await page.close();
   }
 }

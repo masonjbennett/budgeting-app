@@ -226,7 +226,7 @@ export default function DataPage() {
               how carefully the numbers are checked, with nothing checking it. */}
           <p className="t-small mt-3 leading-relaxed text-body">
             Every number on this site is calculated by one Python module, which this
-            app and the Streamlit version both import. It is covered by 477
+            app and the Streamlit version both import. It is covered by 508
             assertions, and every one of them runs that module rather than a copy of
             it. The version before this had three copies of the maths that had drifted
             apart, and one of them was in the test suite — which is how that suite

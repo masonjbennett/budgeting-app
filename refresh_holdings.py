@@ -74,9 +74,20 @@ FUNDLIKE = re.compile(
 # the table calls the same thing "Vanguard Total Stock Market ETF" and
 # "...Index Admiral". Stripping these makes all three "VANGUARD TOTAL STOCK
 # MARKET", which is the level the holdings are actually shared at.
+#
+# "II" IS NOT A WRAPPER WORD AND USED TO BE TREATED AS ONE. It stripped
+# because a target-date fund holds "Vanguard Total Bond Market II Index Fund"
+# and the table carried only the non-II fund, so collapsing them was the only
+# way to resolve the sleeve at all — an approximation nothing recorded. After
+# the September widening the II funds ARE in the table, so the collapse stopped
+# being necessary and started being wrong: it put BND and VTBIX on one key,
+# and `setdefault` then picked whichever came first. They are genuinely
+# different filings — **2 of 3 stored names in common, 15.87% against 22.62%
+# covered** — so a target-date fund's bond sleeve could be substituted from the
+# wrong fund, silently, in the most common 401(k) holding there is.
 WRAPPER = re.compile(
     r"\b(FUND|FUNDS|ETF|INDEX|ADMIRAL|INVESTOR|INSTITUTIONAL|SHARES|SHARE|"
-    r"CLASS|TRUST|II|III|PORTFOLIO|VANGUARD CMT)\b")
+    r"CLASS|TRUST|PORTFOLIO|VANGUARD CMT)\b")
 
 
 def fundkey(name):
@@ -163,7 +174,19 @@ def main():
             bykey.setdefault(k, row["ticker"])
             bytight.setdefault(t, row["ticker"])
 
-    out, skipped = {}, []
+    # ONE FETCH PER SERIES, not per ticker. Every share class of a fund holds
+    # the SAME portfolio and files ONE N-PORT, so storing the top 50 under
+    # each of VTI/VTSAX/VITSX/VSMPX/VSTSX/VTSMX would be six copies of one
+    # list — and after the September widening 113 tickers cover 56 series, so
+    # that is over half the file duplicated, in a table already 210KB and
+    # bundled into a serverless function.
+    #
+    # The key is SEC's SERIES ID, which is exact. A normalised NAME is not:
+    # it strips INDEX, II and INSTITUTIONAL, so it collapses "Total Bond
+    # Market Index" with "Total Bond Market II Index" — different funds with
+    # different portfolios. See plan-menu-sweep/README.md.
+    out, skipped, aliases = {}, [], {}
+    rep_of_series = {}
     for sym in sorted(fund_data.FUNDS):
         ent = tmap.get(sym)
         if not ent:
@@ -171,6 +194,11 @@ def main():
             print("  %-6s -- not in SEC's fund map" % sym)
             continue
         cik, series, _cls = ent
+        rep = rep_of_series.get(series)
+        if rep:
+            aliases[sym] = rep
+            print("  %-6s -- same series as %s, aliased" % (sym, rep))
+            continue
         try:
             rows = None
             for acc, date, base in latest_nport(cik, series):
@@ -199,6 +227,7 @@ def main():
             tk = bykey.get(k) or bytight.get(tight(name))
             entries.append((k, name, round(pct, 4), tk))
 
+        rep_of_series[series] = sym
         out[sym] = {
             "src": acc, "asof": date,
             "covered": round(covered, 2),
@@ -225,9 +254,22 @@ def main():
     # replaced by ITS names, weighted. Anything that does not resolve (a money
     # market sweep, a derivative line) is left out and shows up in the gap
     # between `covered` and 100.
-    byfund = {}
+    # A COLLISION HERE IS SILENT AND `setdefault` RESOLVES IT BY INSERTION
+    # ORDER, which is not a decision anybody made. It is reported rather than
+    # tolerated: two stored funds sharing a key means a target-date sleeve can
+    # be substituted from whichever of them the loop happened to reach first.
+    byfund, collisions = {}, {}
     for sym, v in out.items():
-        byfund.setdefault(fundkey(fund_data.FUNDS[sym]["name"]), sym)
+        k = fundkey(fund_data.FUNDS[sym]["name"])
+        if k in byfund:
+            collisions.setdefault(k, [byfund[k]]).append(sym)
+        byfund.setdefault(k, sym)
+    if collisions:
+        print("\n  !! %d fund-name collision(s) — a fund-of-funds sleeve may be"
+              " substituted from the wrong one:" % len(collisions))
+        for k, syms in sorted(collisions.items()):
+            print("     %-40s %s" % (k, ", ".join(syms)))
+        print()
 
     expanded = []
     for sym, v in list(out.items()):
@@ -298,9 +340,21 @@ def main():
         lines.append("    },")
     lines.append("}")
     lines.append("")
+    lines.append("# Share classes of a fund whose holdings are stored under a")
+    lines.append("# SIBLING ticker. One fund files one N-PORT, so every class of it")
+    lines.append("# holds the same portfolio; keyed on SEC's SERIES ID, never on a")
+    lines.append("# normalised name. Anything reading HOLDINGS by ticker has to")
+    lines.append("# follow this, or a plan's institutional class silently loses the")
+    lines.append("# look-through its brokerage-class sibling gets.")
+    lines.append("ALIASES = {")
+    for sym in sorted(aliases):
+        lines.append("    %r: %r," % (sym, aliases[sym]))
+    lines.append("}")
+    lines.append("")
     io.open("fund_holdings.py", "w", encoding="utf-8", newline="\n").write(
         "\n".join(lines) + "\n")
-    print("\nWrote fund_holdings.py (%d funds)" % len(out))
+    print("\nWrote fund_holdings.py (%d funds, %d aliased share classes)"
+          % (len(out), len(aliases)))
     return 0
 
 

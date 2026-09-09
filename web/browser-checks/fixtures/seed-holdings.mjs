@@ -20,6 +20,16 @@
  * than the other for the same index), one held in two accounts, an individual
  * stock, an untabled 401(k) fund so coverage is NOT 100%, employer stock, and
  * cash.
+ *
+ * THE UNTABLED FUND IS A COLLECTIVE TRUST, and deliberately the sharpest one
+ * available. `VTIVX` — Vanguard Target Retirement 2045, the mutual fund — IS
+ * in the table now, and a plan holding the TRUST version holds a different
+ * vehicle with a different fee. The page must not match them, which is why
+ * holdings resolve on ticker and never on name; the fixture holds the trust
+ * with no symbol, so it lands uncovered, is NAMED as a collective trust, and
+ * exercises the section that says why it can never be otherwise. It replaced
+ * "Company Stock Fund", which fired nothing and left that section absent from
+ * every run — the /compare lesson, where a fixture hides a whole screen.
  */
 
 export const HOLDINGS = [
@@ -27,9 +37,27 @@ export const HOLDINGS = [
   { symbol: "SPY", label: "SPDR S&P 500", kind: "fund", account: "Brokerage", value: 25000 },
   { symbol: "VOO", label: "Vanguard S&P 500", kind: "fund", account: "Roth IRA", value: 12000 },
   { symbol: "NVDA", label: "Nvidia", kind: "stock", account: "Brokerage", value: 18000 },
-  { symbol: "", label: "Company Stock Fund", kind: "fund", account: "401(k)", value: 20000 },
+  { symbol: "", label: "Vanguard Target Retirement 2045 Trust II", kind: "fund", account: "401(k)", value: 20000 },
   { symbol: "ACME", label: "Acme Corp", kind: "employer", account: "Brokerage", value: 9000 },
   { symbol: "", label: "Cash", kind: "cash", account: "Brokerage", value: 6000 },
+];
+
+/** A real workplace menu: a collective trust AND an untabled fund that is not
+ *  one, so the unreachable money is PART of the uncovered money rather than
+ *  all of it.
+ *
+ *  This is the common case in the wild and the fixture above cannot reach it —
+ *  with a single uncovered holding the unreachable share is always 100%, and
+ *  the page's other wording would be a branch nothing ever rendered. An
+ *  unexercised guard reads as protection and enforces nothing; the Sankey's
+ *  deleted minimum-height floor is the precedent.
+ *
+ *  $40k of $70k uncovered is unreachable, so the page must say 57.1% and must
+ *  NOT say "all of it". */
+export const PLAN_MENU = [
+  { symbol: "VOO", label: "Vanguard S&P 500", kind: "fund", account: "Roth IRA", value: 30000 },
+  { symbol: "", label: "Vanguard Target Retirement 2045 Trust II", kind: "fund", account: "401(k)", value: 40000 },
+  { symbol: "", label: "Plan Growth Fund R6", kind: "fund", account: "401(k)", value: 30000 },
 ];
 
 /** A portfolio most of whose money the fee table cannot see — the state the

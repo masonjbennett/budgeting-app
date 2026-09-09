@@ -11,6 +11,7 @@ Run:  .venv/Scripts/python.exe test_api.py     (from web/)
 """
 import sys
 import os
+import re
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "api"))
 
@@ -56,12 +57,23 @@ ASSETS = {"Checking": 6_200, "Savings": 9_500, "401(k)": 4_800,
 
 # ── 1. The module under the routes is the repo's one copy ────────────
 print("\n--- the API imports the shared engine, not a fork ---")
-check("api/calculations.py is the repo root's file, byte for byte",
-      open(os.path.join("api", "calculations.py"), "rb").read().endswith(
-          open(os.path.join("..", "calculations.py"), "rb").read()),
-      "the sync did not produce a verbatim copy")
-check("and it is not committed — exactly one copy is in version control",
-      "api/calculations.py" in open(".gitignore", encoding="utf-8").read())
+# The module list is READ FROM THE SYNC SCRIPT rather than written out here.
+# There are five synced modules now and naming them again is a second list to
+# keep in step — the defect this whole sync exists to prevent, one layer up.
+_sync_src = open(os.path.join("scripts", "sync-calculations.mjs"),
+                 encoding="utf-8").read()
+_SYNCED = re.findall(r'"([a-z_]+\.py)"',
+                     _sync_src.split("const MODULES")[1].split("]")[0])
+check("the sync script still names its modules where this can read them",
+      len(_SYNCED) >= 4, f"parsed {_SYNCED} out of sync-calculations.mjs")
+_ignored = open(".gitignore", encoding="utf-8").read()
+for _m in _SYNCED:
+    check(f"api/{_m} is the repo root's file, byte for byte",
+          open(os.path.join("api", _m), "rb").read().endswith(
+              open(os.path.join("..", _m), "rb").read()),
+          "the sync did not produce a verbatim copy")
+    check(f"and api/{_m} is not committed — one copy is in version control",
+          f"api/{_m}" in _ignored)
 _api_src = open(os.path.join("api", "index.py"), encoding="utf-8").read()
 check("no route body does its own arithmetic on money",
       " * (1 +" not in _api_src and "** years" not in _api_src

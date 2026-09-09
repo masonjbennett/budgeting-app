@@ -304,12 +304,21 @@ def main():
     agree, moved, unresolved = [], [], []
     sources = {}
 
+    # `er` may be None — the table's third state, "a fund with no ratio at
+    # all", which is what a share class its series' filings do not carry gets
+    # instead of a copied sibling's number. Every report line below formatted
+    # it with %6.4f and the whole chore DIED on the first one, after fetching
+    # a hundred filings. A reporting path is not a place to assume a shape the
+    # data model explicitly allows.
+    def _pct(v):
+        return "  --  " if v is None else "%6.4f%%" % v
+
     for sym in sorted(fund_data.FUNDS):
         have = fund_data.FUNDS[sym]["er"]
         ent = tmap.get(sym)
         if not ent:
             unresolved.append((sym, have, "not an open-end fund in SEC's map"))
-            print("  %-6s %6.4f%%  -- not in company_tickers_mf.json" % (sym, have))
+            print("  %-6s %s  -- not in company_tickers_mf.json" % (sym, _pct(have)))
             continue
         cik, series, cls = ent
         got = acc = date = None
@@ -317,7 +326,7 @@ def main():
             cands = candidates_485(cik, series)
             if not cands:
                 unresolved.append((sym, have, "no 485BPOS for the series"))
-                print("  %-6s %6.4f%%  -- no 485BPOS found" % (sym, have))
+                print("  %-6s %s  -- no 485BPOS found" % (sym, _pct(have)))
                 continue
             # Newest filing that actually carries this share class.
             for cand_acc, cand_date, base in cands:
@@ -328,34 +337,35 @@ def main():
                     break
         except Exception as e:                       # noqa: BLE001
             unresolved.append((sym, have, "fetch failed: %s" % e))
-            print("  %-6s %6.4f%%  -- %s" % (sym, have, e))
+            print("  %-6s %s  -- %s" % (sym, _pct(have), e))
             continue
 
         if got is None:
             unresolved.append(
                 (sym, have, "class %s in none of %d recent 485BPOS" % (cls, len(cands))))
-            print("  %-6s %6.4f%%  -- class not in any of %d filings"
-                  % (sym, have, len(cands)))
+            print("  %-6s %s  -- class not in any of %d filings"
+                  % (sym, _pct(have), len(cands)))
             continue
 
         sources[sym] = {"er": got, "acc": acc, "date": date}
-        if abs(got - have) < 1e-9:
+        if have is not None and abs(got - have) < 1e-9:
             agree.append(sym)
             print("  %-6s %6.4f%%  OK   %s %s" % (sym, got, acc, date))
         else:
             moved.append((sym, have, got))
-            print("  %-6s %6.4f%% <- was %.4f%%   %s %s" % (sym, got, have, acc, date))
+            print("  %-6s %6.4f%% <- was %s   %s %s"
+                  % (sym, got, _pct(have), acc, date))
 
     print("\n%d confirmed, %d corrected, %d unresolved"
           % (len(agree), len(moved), len(unresolved)))
     if moved:
         print("\nCorrections:")
         for sym, was, now in moved:
-            print("  %-6s %.4f%% -> %.4f%%" % (sym, was, now))
+            print("  %-6s %s -> %s" % (sym, _pct(was), _pct(now)))
     if unresolved:
-        print("\nUnsourced (keeping the hand-written value, and SAYING so):")
+        print("\nUnsourced (keeping whatever the table had, and SAYING so):")
         for sym, have, why in unresolved:
-            print("  %-6s %.4f%%  %s" % (sym, have, why))
+            print("  %-6s %s  %s" % (sym, _pct(have), why))
 
     out = "fund_sources.json"
     io.open(out, "w", encoding="utf-8", newline="\n").write(
