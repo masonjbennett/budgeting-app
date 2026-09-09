@@ -69,6 +69,32 @@ export const MOSTLY_UNCOVERED = [
   { symbol: "", label: "Plan Bond Fund R6", kind: "fund", account: "401(k)", value: 35000 },
 ];
 
+/** A registered vehicle that is CALLED a trust, typed with no symbol. By name
+ *  it is the same shape as a collective trust, so the page may name it as one
+ *  — but only with the hedged note, because a gold trust has a ticker and a
+ *  collective trust never does. An outside review found nine of these being
+ *  described with certainty. */
+export const TRUST_BY_NAME = [
+  { symbol: "VOO", label: "Vanguard S&P 500", kind: "fund", account: "Brokerage", value: 50000 },
+  { symbol: "", label: "iShares Gold Trust", kind: "fund", account: "Brokerage", value: 10000 },
+];
+
+/** The same holding with its ticker. Not in the fee table, so still uncovered
+ *  — but a ticker is the one thing a collective trust cannot have, so it must
+ *  land as a plain gap, never as a vehicle that "files nothing". */
+export const TRUST_WITH_TICKER = [
+  { symbol: "VOO", label: "Vanguard S&P 500", kind: "fund", account: "Brokerage", value: 50000 },
+  { symbol: "IAU", label: "iShares Gold Trust", kind: "fund", account: "Brokerage", value: 10000 },
+];
+
+/** A fund the table carries with NO expense ratio on file — its class is in
+ *  none of its series' filings. Uncovered for fees, counted for class and
+ *  region, and the banner has to say that rather than "not in the table". */
+export const UNPRICED_FUND = [
+  { symbol: "VOO", label: "Vanguard S&P 500", kind: "fund", account: "401(k)", value: 50000 },
+  { symbol: "FUBFX", label: "Fidelity US Bond Index Class F", kind: "fund", account: "401(k)", value: 10000 },
+];
+
 /* React does not see a value assigned straight to `input.value` — its own
    descriptor is on the instance, so the change never reaches state and the
    field snaps back on the next render, having reported success. */

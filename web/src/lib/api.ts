@@ -555,6 +555,10 @@ export interface Xray {
     covered_value: number;
     uncovered_value: number;
     uncovered: string[];
+    /** The subset of `uncovered` the table DOES carry, with no expense ratio
+     *  on file — counted for class and region, not for fees. The rest of
+     *  `uncovered` is not in the table at all. */
+    unpriced: string[];
     /** Of the MEASURED money, how much rests on a ratio the fund itself filed
      *  rather than one somebody typed. `unsourced` names the funds that do
      *  not, so the page can split the claim instead of making a blanket one

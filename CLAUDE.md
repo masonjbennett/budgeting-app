@@ -2010,3 +2010,73 @@ SEC's own series/class file and then sourced from filings; the seven that
 mattered were identified by the 11-K sweep, not recalled. And widening is
 worth about 4% — it is not the answer to the 88%, and a session that spends
 itself here has aimed at the small half of the problem.
+
+## Sep 8 2026 — the review's two findings, fixed: a registered trust is not a collective one
+
+`/code-review ultra` (cloud; run as `/code-review ultra xray-base`, a local branch at
+`a5f9409`, because master had been pushed and the no-arg form saw an empty diff)
+returned two findings on the Portfolio X-Ray change set. Both reproduced against the
+shipping code; both fixed here, committed and pushed the same evening on Mason's call
+(auto-deploys to budget.masonjbennett.com and to the Streamlit backup; no new
+module-level name, so no reboot).
+
+- **`_CIT` called nine registered vehicles collective trusts** — iShares Gold Trust,
+  SPDR Gold Trust, Grayscale Bitcoin Trust, MFS Series Trust, Dodge & Cox Investment
+  Trust… — and the page told a holder of IAU it "has no ticker and files nothing with
+  the SEC". Two clauses: the unanchored `i`/`v` class alternatives matching "Trust
+  **I**ncome" and "Trust **V**alue" (3 of 9), and `\btrust\s*$` (6 of 9). **The corpus
+  could not see it**: ZERO of its 335 mutual-fund lines end in "Trust", because no
+  401(k) menu holds a gold trust. 100% precision was true of plan menus and silent about
+  brokerage statements — the review's fair point, now in the docstring and README 14.
+- **The review's fix was measured and half-rejected.** Anchoring the alternatives is
+  free (corpus 100.0/65.6 unchanged, three of the nine cleared) and shipped. Dropping the
+  trailing clause clears all nine but costs 3 corpus lines and — worse — the bare
+  "Vanguard Target Retirement 2050 Trust" and "Vanguard Institutional 500 Index Trust",
+  the most common real case; by NAME those and a gold trust are the same shape. Shipped
+  instead: the trailing clause is `_TRUST_ONLY`, weak evidence — counted only when it is
+  the ONLY box filled (a collective trust has no ticker, so beside a symbol the plain
+  "not in the table" answer is right), tested PER BOX so the label+symbol join order is
+  not doing that job silently (the first version was, and a mutation dropping the gate
+  survived until it was rewritten), and carrying a hedged note (`NOTES[TRUST_BY_NAME]`)
+  that says a registered trust has a ticker.
+- **The coverage banner said "no fee or classification data" over FUBFX/VSIBX**, which
+  the mix chart one screen down classifies as bonds. The engine now returns
+  `expense.unpriced` (in the table, `er` None — a subset of `uncovered`) and the banner
+  splits the sentence: no fee data for all of them; these are in the table with no
+  ratio on file and still count for class and region.
+- **The stale-`.pyc` trap bit the MEASUREMENT once.** The anchored regex is the same
+  byte length as the original and was written within the same second, so Python kept
+  the old bytecode and the first pass reported "anchoring changes nothing" — while an
+  in-memory check said it cleared three. Diagnosed by the two disagreeing; every
+  variant is now compiled from source (`-B`, `__pycache__` cleared per variant).
+- **Two things the pre-flight found that are NOT in the diff, worth knowing:**
+  `web/test_api.py` fails 3 on a fresh Windows checkout with a CLEAN tree —
+  `core.autocrlf=true` and no `.gitattributes`, so a merge rewrites the root `.py`
+  files CRLF while the gitignored `web/api/` copies keep LF; content identical,
+  `npm run sync` clears it. And a `budget-api` uvicorn found on :8000 had started 8 s
+  BEFORE its source was last synced (the launch entry has no sync step and no
+  `--reload`); it happened to be current, by probe, not by design.
+
+Counts: test_calc 340 → **348**, engine mutations 55 → **59** (all caught), test_api
+152, test_stress 168, test_cloud 42; `/data` About 508 → 516, `check_claims` ok;
+`detect.py` unchanged at 100.0% / 65.6%. `npm run build`, tsc, eslint (7 pre-existing
+warnings), `check:tokens` clean. **Streamlit 17/17 against a fresh local server** with
+the changed engine (no new module-level name, so no reboot is needed on deploy).
+`portfolio.mjs` 34 → **40 assertions, 5 → 7 selftests** (47 with `--selftest`; three new
+fixtures: `TRUST_BY_NAME`, `TRUST_WITH_TICKER`, `UNPRICED_FUND`), all passing, and
+`mobile.mjs` 35/35 — every script in `npm run all` green against this session's servers
+running the new code. **Three things about running that suite in a shared checkout,
+each of which cost a cycle.** (1) Next 16 allows ONE `next dev` per directory: a second
+instance on another port exits naming the PID that holds it. (2) The proxy target is
+fixed at that server's start, so until the other chat's pair was stopped, `/portfolio` on
+:3000 was reading `expense.unpriced` from an API that did not return it. (3) This session's dev servers were stopped
+"by the app" THREE times mid-run — after 28 min, 1 min and 6 min, always both of a pair
+at once, on registered (:3000/:8000) and unregistered (:3001/:8001) ports alike, with
+every Browser-pane tab still open — cause not established. The run then reports a
+`[FAIL]` that is really a half-built page (`cols=4` where six were expected) followed
+by `ERR_CONNECTION_REFUSED`. Read the log to the end before believing a browser
+failure. So the chained `npm run all` never completed as ONE process here; every script
+in it passed against the new code, read from the logs, and the two that failed inside a
+dying chain (compare's 700px stack, demonote) passed again on stable servers.
+`budget-api-alt` (:8001) and `budget-web-alt` (:3001, `DEV_API_URL` set) are the launch
+entries for a second pair, and `BASE=http://localhost:3001` points every script at them.

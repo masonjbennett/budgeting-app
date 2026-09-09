@@ -692,6 +692,17 @@ itself.
   never type — so the docstring quotes both and leads with the first. A miss
   costs one sentence; a false positive would tell somebody a fee exists nowhere
   when it is in the table.
+- **Those numbers are measured on plan menus, and a brokerage statement is a
+  different population.** It carries registered vehicles that are *called* a
+  trust — a gold or bitcoin trust, a fund company's series trust — which no
+  401(k) menu holds, so 100% precision on the corpus said nothing about them;
+  an outside review reproduced nine being called collective trusts. A name that
+  merely ends in "Trust" is therefore weak evidence: counted only when it is the
+  only thing typed, refused beside a ticker (a collective trust has none), and
+  given a hedged note. **Dropping that clause instead was measured and
+  rejected**: it cleared all nine but cost 3 of the 655 corpus lines and, worse,
+  the bare "Vanguard Target Retirement 2050 Trust", which is the most common
+  real case. The corpus figures are unchanged by the fix.
 - **The ceiling is real, and it is why there is no name matching.** Recall
   stops in the sixties because a large share of collective trusts are named
   *exactly* like mutual funds — "MFS International Equity Fund" is a trust at

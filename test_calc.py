@@ -1739,6 +1739,34 @@ check("two plan funds sharing a name are two rows, not one",
       and sorted(h["value"] for h in _dupe["holdings"]) == [1_000, 2_000],
       str([h["value"] for h in _dupe["holdings"]]))
 
+# A REGISTERED trust is not a collective one. A gold trust, a bitcoin trust
+# and a fund company's series trust are SEC-registered and tickered, and no
+# 401(k) menu holds one — so the corpus the precision figure was measured on
+# cannot see this case; an outside review found nine of them being called
+# collective trusts. By NAME the two are the same shape. The ticker is what
+# separates them, because a collective trust has none.
+check("a name that merely ends in 'Trust' beside a TICKER is not called a collective trust",
+      calc.portfolio_xray([_h("IAU", 100, label="iShares Gold Trust")],
+                          funds=_XF)["unreachable"] is None)
+check("nor is a word that merely begins with a class letter after 'Trust'",
+      _fk.unknown_kind("", "First Trust Value Line Dividend Index Fund") == (None, None)
+      and _fk.unknown_kind("", "T. Rowe Price Trust Income Fund") == (None, None))
+_by_name = _fk.unknown_kind("", "iShares Gold Trust")
+check("typed ALONE it is still named, because the tool genuinely cannot tell",
+      _by_name[0] == _fk.COLLECTIVE_TRUST)
+check("but with the hedged note, which says a registered trust has a ticker",
+      _by_name[1] == _fk.NOTES[_fk.TRUST_BY_NAME]
+      and _by_name[1] != _fk.NOTES[_fk.COLLECTIVE_TRUST]
+      and "ticker" in _by_name[1])
+check("a trust carrying a class marker keeps the plain note",
+      _fk.unknown_kind("", "Vanguard Target Retirement 2045 Trust II")
+      == (_fk.COLLECTIVE_TRUST, _fk.NOTES[_fk.COLLECTIVE_TRUST]))
+check("and the Vanguard trusts named by nothing but 'Trust' are still caught",
+      _fk.unknown_kind("", "Vanguard Institutional 500 Index Trust")[0]
+      == _fk.COLLECTIVE_TRUST
+      and _fk.unknown_kind("", "Vanguard Target Retirement 2050 Trust")[0]
+      == _fk.COLLECTIVE_TRUST)
+
 # The frame behind the claim, so the docstring's numbers can be re-derived
 # rather than believed.
 # A SHARE CLASS IS NOT ITS FUND. The table carries several classes of the
@@ -1779,6 +1807,15 @@ check("and the engine reports it uncovered for fees, not as a zero fee",
       and _nr["expense"]["weighted_er"] is None
       and _nr["mix"]["class_coverage_pct"] == 100.0,
       str(_nr["expense"]["weighted_er"]))
+# The page has to tell those two gaps apart: a fund the table carries with no
+# ratio still counts for class and region, and calling it "not in the table"
+# would send somebody checking a ticker that is right.
+check("a fund carried without a ratio is named as unpriced as well as uncovered",
+      _nr["expense"]["unpriced"] == _nr["expense"]["uncovered"] == ["NOER"],
+      str(_nr["expense"]["unpriced"]))
+check("while a symbol the table lacks is uncovered but NOT unpriced",
+      "Mistyped ticker" in _u["expense"]["uncovered"]
+      and "Mistyped ticker" not in _u["expense"]["unpriced"])
 
 check("fund_kinds records the sample its accuracy was measured on",
       _fk.MEASURED_PLANS > 20 and _fk.MEASURED_LINES > 500

@@ -3015,6 +3015,14 @@ def portfolio_xray(holdings, annual_return=7.0, years=30, funds=None):
         "uncovered_value": total - fee_value,
         "uncovered": [r["label"] or r["symbol"] or "(unnamed)"
                       for r in rows if r["er"] is None],
+        # IN THE TABLE, WITHOUT A FEE. A fund whose class is in none of its
+        # series' filings (FUBFX, VSIBX) is carried for class and region with
+        # `er` None. It sits in `uncovered` above — the fee figure was not
+        # measured over it — and is named here as well, so the page can say
+        # "no ratio on file" rather than "not in the table", which would send
+        # somebody checking a ticker that is right.
+        "unpriced": [r["label"] or r["symbol"] or "(unnamed)"
+                     for r in rows if r["er"] is None and r["known"]],
         # OF THE MEASURED MONEY, not of the portfolio. These say how much of
         # the fee figure above rests on a number the fund itself filed rather
         # than on one somebody typed. A fund charging a genuine zero (the

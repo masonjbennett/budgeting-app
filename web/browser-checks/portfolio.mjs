@@ -27,7 +27,8 @@
  */
 import puppeteer from "puppeteer-core";
 
-import { MOSTLY_UNCOVERED, PLAN_MENU, seedHoldings } from "./fixtures/seed-holdings.mjs";
+import { MOSTLY_UNCOVERED, PLAN_MENU, TRUST_BY_NAME, TRUST_WITH_TICKER, UNPRICED_FUND,
+         seedHoldings } from "./fixtures/seed-holdings.mjs";
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -257,6 +258,60 @@ console.log("=".repeat(70));
   await page.close();
 }
 
+// ── 2c. A registered trust is not a collective one ──────────────────
+//
+// "iShares Gold Trust" ends in the one word a collective trust's name often
+// does, and no 401(k) menu holds a gold trust, so the corpus the detector was
+// measured on could never see it being called one. An outside review did. By
+// NAME the two are the same shape; the ticker is what separates them, since a
+// collective trust has none. The rendered NOTE is what a reader acts on, so
+// it is asserted here rather than only in the engine suite.
+{
+  const page = await open();
+  await seedHoldings(page, TRUST_BY_NAME);
+  const t = await textOf(page);
+  check("a name ending in 'Trust' typed alone is named, with the hedged note",
+        /named like a collective investment trust/i.test(t)
+        && /those have a ticker/i.test(t),
+        t.match(/[^\n]*collective investment trust[^\n]*/i)?.[0] || "absent");
+  check("and not with the certainty reserved for a marker the tool can read",
+        !/This reads like a collective investment trust/i.test(t));
+  await page.close();
+}
+{
+  const page = await open();
+  await seedHoldings(page, TRUST_WITH_TICKER);
+  const t = await textOf(page);
+  check("the same name beside a TICKER is a plain gap, not a permanent one",
+        !/files nothing with the SEC/i.test(t)
+        && /iShares Gold Trust/.test(t)
+        && /\$10,000 is in 1 holding/.test(t),
+        t.match(/[^\n]*files nothing[^\n]*/i)?.[0] || t.match(/\$[\d,]+ is in \d+ holding/)?.[0] || "");
+  await page.close();
+}
+// A fund the table carries with no ratio on file is a different gap from a
+// symbol the table lacks. The old banner said "no fee or classification data"
+// over a fund the mix chart one screen down was classifying as a bond.
+{
+  const page = await open();
+  await seedHoldings(page, UNPRICED_FUND);
+  const t = await textOf(page);
+  check("a fund carried without a ratio is named as such, not as missing",
+        /Fidelity US Bond Index Class F/.test(t)
+        && /in the table with no expense ratio on file/i.test(t)
+        && /still counts toward the class and region mix/i.test(t),
+        t.match(/[^\n]*expense ratio on file[^\n]*/i)?.[0] || "absent");
+  check("and the banner no longer claims it has no classification data",
+        !/no fee or classification data/i.test(t));
+  // Both holdings are US, so the region mix it "still counts toward" must be
+  // measured over all of the money, while the fee banner is not.
+  check("while the mix is measured over all of the money and the fees are not",
+        /measured over 100(\.0)?% of the portfolio/i.test(t)
+        && /measured over 83\.3% of this portfolio/i.test(t),
+        (t.match(/measured over [\d.]+% of th(e|is) portfolio/gi) || []).join(" | "));
+  await page.close();
+}
+
 // ── 3. The coverage floor: the caveat takes the headline ────────────
 {
   const page = await open();
@@ -358,6 +413,42 @@ if (SELFTEST) {
     const t = await textOf(page);
     check("[selftest] a page that does not say WHY a gap is permanent is caught",
           !/files nothing with the SEC/i.test(t));
+    await page.close();
+  }
+
+  // The hedged note swapped for the certain one — the defect the review
+  // reproduced, put back on the rendered page.
+  {
+    const page = await open();
+    await seedHoldings(page, TRUST_BY_NAME);
+    await page.evaluate(() => {
+      const el = [...document.querySelectorAll("*")]
+        .filter((n) => /named like a collective investment trust/i.test(n.textContent)).pop();
+      if (el) el.textContent = el.textContent
+        .replace(/named like a collective investment trust/i, "This reads like a collective investment trust")
+        .replace(/those have a ticker/i, "");
+    });
+    const t = await textOf(page);
+    check("[selftest] a registered trust described with certainty is caught",
+          !(/named like a collective investment trust/i.test(t) && /those have a ticker/i.test(t)));
+    await page.close();
+  }
+
+  // The banner's old wording put back over a fund the mix chart classifies.
+  {
+    const page = await open();
+    await seedHoldings(page, UNPRICED_FUND);
+    await page.evaluate(() => {
+      const el = [...document.querySelectorAll("p")]
+        .find((n) => /no fee data for/i.test(n.textContent));
+      if (el) el.textContent = el.textContent
+        .replace(/no fee data for/i, "no fee or classification data for")
+        .replace(/in the table with no expense ratio on file/i, "");
+    });
+    const t = await textOf(page);
+    check("[selftest] the old 'no classification data' wording is caught",
+          !/in the table with no expense ratio on file/i.test(t)
+          || /no fee or classification data/i.test(t));
     await page.close();
   }
 }

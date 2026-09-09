@@ -199,8 +199,22 @@ export default function PortfolioPage() {
           <p className="t-small mt-2 text-body">
             {fmt(xray.expense.uncovered_value)} is in {xray.expense.uncovered.length}{" "}
             {xray.expense.uncovered.length === 1 ? "holding" : "holdings"} this tool has no
-            fee or classification data for, so the figures below describe the rest:{" "}
+            fee data for, so the fee figures below describe the rest:{" "}
             <span className="text-ink">{xray.expense.uncovered.join(", ")}</span>.
+            {/* Not the same gap twice. A fund the table carries with no
+                ratio on file still counts for class and region — the mix
+                below places it — so the old "no fee or classification data"
+                contradicted the chart one screen down for exactly those. */}
+            {xray.expense.unpriced.length > 0 && (
+              <>
+                {" "}
+                <span className="text-ink">{xray.expense.unpriced.join(", ")}</span>{" "}
+                {xray.expense.unpriced.length === 1 ? "is" : "are"} in the table with no
+                expense ratio on file, so{" "}
+                {xray.expense.unpriced.length === 1 ? "it still counts" : "they still count"}{" "}
+                toward the class and region mix.
+              </>
+            )}
           </p>
           <p className="t-micro mt-2 text-muted">
             Concentration and the position weights are unaffected — they need no lookup.

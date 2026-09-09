@@ -58,6 +58,16 @@ collective trusts are named exactly like mutual funds: "S&P 500 Fund",
 "Aggregate Bond Fund", "Blackrock Short-Term Investment Fund". No rule over
 names can separate those without calling real mutual funds trusts, and that
 trade is the wrong way round.
+
+WHAT THOSE NUMBERS ARE MEASURED ON, AND WHAT THEY ARE NOT. The corpus is
+401(k) menu lines. A brokerage statement is a different population: it
+carries registered vehicles that are CALLED a trust - a gold or bitcoin
+trust, a fund company's series trust - which no plan menu holds, so 100%
+precision there says nothing about them. An outside review reproduced nine
+of them being called collective trusts. A name that merely ENDS in "Trust"
+is therefore weak evidence: counted only when it is the only thing typed,
+refused beside a ticker (a collective trust has none), and worded as a
+maybe. See `_TRUST_ONLY`. The corpus figures above are unchanged by that.
 """
 
 import re
@@ -77,13 +87,31 @@ MEASURED_LINES = 655
 # lines at no measured cost. Both are one filer's shorthand inside a filing,
 # not something a participant reads on a statement, and a rule fitted to the
 # filer that prompted it is the trap this project keeps refusing.
+#
+# The class markers after "Trust" are WHOLE WORDS: "Trust I", "Trust V" and
+# "Trust Select" are share classes; "Trust Income" and "Trust Value" are not,
+# and an unanchored `i` or `v` read them as one. Anchoring changed nothing on
+# the 655 corpus lines and cleared three registered funds.
 _CIT = re.compile(
     r"\bcollective\b|\bcommingled\b|\bgroup trust\b|\bnon-?lendable\b|"
     r"\bnon[- ]?sl\b|\bnsl\b|\bsecurities lending\b|\bcit\b|\bcif\b|"
     r"\bunit(ized)?\s+(class|trust)\b|\bunit\s+[a-z0-9]{1,3}\b|"
     r"\btrust\s+(co|company)\b|"
-    r"\btrust,?\s+(i{1,3}|iv|v|select|unit|class|[a-z]\b)|"
-    r"\btrust\s*$|\bpool\b|\bdaily liquidity\b|\beb dl\b", re.I)
+    r"\btrust,?\s+(i{1,3}|iv|v|select|unit|class|[a-z])\b|"
+    r"\bpool\b|\bdaily liquidity\b|\beb dl\b", re.I)
+
+# A name that merely ENDS in "Trust" is weak evidence, kept apart from the
+# markers above because it is the one clause a registered vehicle can also
+# satisfy: "iShares Gold Trust", "Grayscale Bitcoin Trust" and "MFS Series
+# Trust" are SEC-registered and tickered, and none appears in any 401(k)
+# menu, so the corpus the numbers above were measured on cannot see them. By
+# name alone "Vanguard Institutional 500 Index Trust" (a collective trust)
+# and a gold trust are the same shape. The ticker is the discriminator - a
+# collective trust has none - so this clause counts only when it is the ONLY
+# thing typed, is refused beside a symbol, and gets the hedged note below.
+# Measured: dropping it instead would cost 3 of the 655 corpus lines and,
+# worse, the bare Vanguard trusts that are the most common real case.
+_TRUST_ONLY = re.compile(r"\btrust\s*$", re.I)
 
 # A stable value or guaranteed option is an insurance contract or a trust
 # holding them. Same structural answer as a collective trust - nothing is
@@ -103,6 +131,10 @@ _SDBA = re.compile(
 COLLECTIVE_TRUST = "collective_trust"
 INSURANCE_CONTRACT = "insurance_contract"
 BROKERAGE_WINDOW = "brokerage_window"
+# Not a kind: the hedged wording for a collective trust identified by a
+# trailing "Trust" and nothing else, the one shape a registered vehicle
+# shares. Kept in NOTES so every check over the notes covers it too.
+TRUST_BY_NAME = "trust_by_name"
 
 # What each is, and where the number this tool cannot supply actually lives.
 # Phrased as a fact plus where to look, never as an instruction - the posture
@@ -123,6 +155,15 @@ NOTES = {
         "This reads like a self-directed brokerage window, which is an "
         "account rather than a single holding. Enter what you hold inside "
         "it as separate lines and the rest of this page will cover them."),
+    TRUST_BY_NAME: (
+        "This is named like a collective investment trust — a fund a bank "
+        "runs for retirement plans, which has no ticker and files nothing "
+        "with the SEC, so nothing here can read its fee. If that is what it "
+        "is, your plan's annual fee disclosure carries the fee. Some "
+        "registered funds are also called a trust — a gold or bitcoin "
+        "trust, or a fund company's series trust — and those have a ticker; "
+        "typed in the symbol box it is looked up as a fund rather than read "
+        "as a name."),
 }
 
 
@@ -144,6 +185,13 @@ def unknown_kind(symbol="", label=""):
         return BROKERAGE_WINDOW, NOTES[BROKERAGE_WINDOW]
     if _CIT.search(text):
         return COLLECTIVE_TRUST, NOTES[COLLECTIVE_TRUST]
+    # Trailing "Trust" alone, and only when ONE box was filled: a collective
+    # trust has no ticker, so beside a symbol the plain "not in the table"
+    # answer is the right one. Tested per box rather than on `text`, or the
+    # join order above would be doing this job silently.
+    lone = [s for s in (str(label or "").strip(), str(symbol or "").strip()) if s]
+    if len(lone) == 1 and _TRUST_ONLY.search(lone[0]):
+        return COLLECTIVE_TRUST, NOTES[TRUST_BY_NAME]
     if _INSURANCE.search(text):
         return INSURANCE_CONTRACT, NOTES[INSURANCE_CONTRACT]
     return None, None
