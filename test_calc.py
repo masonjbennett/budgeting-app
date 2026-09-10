@@ -1490,6 +1490,17 @@ check("the unit investment trusts stay unsourced, because they file nothing "
 
 import fund_holdings as _fh                             # noqa: E402
 
+# The chore reads names out of raw N-PORT XML, so "AT&amp;T Inc" arrived with
+# its entity intact and the page printed "Eli Lilly &amp; Co" — 150 names,
+# found by LOOKING at the rendered table. Matching was never affected (the
+# key normaliser strips it), which is exactly why no figure-level assertion
+# could have caught a display defect.
+check("no stored holding name carries an XML entity",
+      not any(re.search(r"&(amp|#\d+|apos|quot|lt|gt);", n)
+              for v in _fh.HOLDINGS.values() for _k, n, _p, _t in v["top"]),
+      str([n for v in _fh.HOLDINGS.values() for _k, n, _p, _t in v["top"]
+           if "&amp;" in n][:3]))
+
 print("\n--- Look-through ---")
 
 _LTH = {

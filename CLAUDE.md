@@ -2113,3 +2113,25 @@ the average is theirs. All three numbers are `clean.py`'s. The same sentence's "
 tool can" — a claim with nothing behind it — became "no tool that reads public filings
 can, because none are filed", which is the reason and the checkable form. One browser
 assertion added (`portfolio.mjs` 40 → 41). Do not re-propose leading with the median.
+
+## Sep 10 2026 — "Eli Lilly &amp; Co", found while writing a guide about the page
+
+Asked for a PDF explaining the X-Ray, I screenshotted the rendered look-through table and
+read it. 150 company names across the stored holdings carried an undecoded XML entity:
+**`Eli Lilly &amp; Co`, `AT&amp;T Inc`, `Johnson &amp; Johnson`** — on the page, in that
+form, live since the look-through shipped Sep 8.
+- **Cause**: `refresh_holdings.py` reads `<name>` out of raw N-PORT XML with a regex, so the
+  entity arrives intact. `key()` normalises `&AMP;` back to `&` for MATCHING, so every join,
+  every weight and every percentage was correct — it was only the DISPLAY name that was
+  never decoded. `html.unescape` at the parse site now, so the chore cannot re-introduce it.
+- **Why nothing caught it.** Every assertion in this area is about figures: does the
+  look-through foot, does a share class follow its alias, is a company held both ways marked.
+  A name that renders wrong breaks no arithmetic. That is the same class as the Excel `↧`
+  glyph and the `'4,000,000` truncation in filings-terminal — **wrong output behind right
+  numbers, and only looking finds it.** `test_calc.py` now asserts no stored name carries an
+  entity (349 assertions); the 150 already in the generated file were decoded in place.
+- `/data`'s About block 516 -> 517 so `check_claims.py` passes.
+Suites after: test_calc 349, test_api 152, test_stress 168, test_cloud 42, portfolio.mjs
+48/48 (7 selftests). **The guide itself is not in the repo** — it is a one-off deliverable
+at `Downloads/Portfolio-X-Ray-Field-Guide.pdf`, built from the shipping page and rebuilt
+rather than edited if the page changes.

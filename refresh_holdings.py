@@ -46,6 +46,7 @@ Run:  .venv/Scripts/python.exe refresh_holdings.py           # report only
       .venv/Scripts/python.exe refresh_holdings.py --write   # write fund_holdings.py
 """
 
+import html
 import io
 import json
 import re
@@ -154,7 +155,11 @@ def holdings_from(doc):
             pct = float(p.group(1))
         except ValueError:
             continue
-        out.append((n.group(1).strip(), pct, c.group(1) if c else ""))
+        # The regex reads raw XML, so "AT&amp;T Inc" arrives with its entity
+        # intact. `key()` already normalises it for MATCHING, which is why the
+        # look-through resolved correctly while the page printed
+        # "Eli Lilly &amp; Co" — the DISPLAY name was never decoded. 150 names.
+        out.append((html.unescape(n.group(1)).strip(), pct, c.group(1) if c else ""))
     return out
 
 
