@@ -29,3 +29,8 @@ Thumbs.db
 
 .vercel
 .env*
+
+# Working notes and local tool config for AI-assisted sessions. They stay on disk (Claude Code loads
+# CLAUDE.md from here) but are not part of the published repo.
+CLAUDE.md
+.claude/
