@@ -34,3 +34,7 @@ Thumbs.db
 # CLAUDE.md from here) but are not part of the published repo.
 CLAUDE.md
 .claude/
+
+# An AI session handoff prompt, not documentation: it carries a local Windows path, a private
+# artifact link and the live Supabase project id. Stays on disk, not published.
+web/HANDOFF.md

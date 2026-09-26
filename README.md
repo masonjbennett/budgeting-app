@@ -1,6 +1,20 @@
 # Personal Budgeting App
 
-A comprehensive personal finance management tool built with Python and Streamlit. Designed for early-career finance professionals to track income, expenses, net worth, debt payoff strategies, savings goals, investment projections, and FIRE planning.
+**Live: [budget.masonjbennett.com](https://budget.masonjbennett.com)** — a Next.js front end over one
+shared Python calculation engine.
+
+Income and tax estimation on 2026 IRS brackets for all 50 states, a budget builder, expense tracking
+with bank-CSV import, net worth and savings goals, an avalanche-vs-snowball debt planner, and FIRE
+projections with a Monte Carlo.
+
+**It reads SEC filings directly.** Fund expense ratios come from each fund's own prospectus XBRL and
+its holdings from its N-PORT filing, so a portfolio of index funds decomposes into the companies
+actually inside it — every figure carrying the accession number behind it, and the page saying what
+share it could not see. Reading those filings corrected twelve expense ratios that were plausible
+and wrong.
+
+Two front ends, one engine (`calculations.py`). No arithmetic lives in either front end, so the tests
+exercise the same code the app runs rather than a copy of it.
 
 **Built by [Mason Bennett](https://masonjbennett.com)**
 
@@ -50,12 +64,16 @@ All tax calculations use **official IRS 2026 data**:
 
 ## Tests
 
-Three suites, 210 assertions, all driving the shipping code:
+Four suites, 711 assertions, all driving the shipping code — plus 59 mutation tests, each a real
+engine defect the suites are required to catch.
 
 ```bash
-python test_calc.py     #  29 — the debt engine, as properties rather than a re-implementation
-python test_cloud.py    #  42 — auth and cloud sync, with streamlit and supabase stubbed
-python test_stress.py   # 139 — tax, FICA, SALT, itemizing, investments, dashboard ratios
+python test_calc.py           # 349 — the engine: tax, debt, take-home, fund look-through
+python test_stress.py         # 168 — tax, FICA, SALT, itemizing, investments, dashboard ratios
+python test_cloud.py          #  42 — auth and cloud sync, with streamlit and supabase stubbed
+python web/test_api.py        # 152 — the shipping routes (run from web/)
+python test_calc_mutations.py #  59 engine defects, each required to fail test_calc
+python check_claims.py        # the figures the app states about itself must be true
 ```
 
 ## Deployment
@@ -72,9 +90,12 @@ pip install -r requirements.txt
 streamlit run budget_app.py
 ```
 
-## Live Demo
+## Live
 
-[Open the app on Streamlit Cloud](https://masonbennett-budget.streamlit.app/)
+- **[budget.masonjbennett.com](https://budget.masonjbennett.com)** — the current app (Next.js front
+  end, server-side Python tax engine), deployed on Vercel.
+- [masonbennett-budget.streamlit.app](https://masonbennett-budget.streamlit.app/) — the original
+  Streamlit front end, still live against the same engine.
 
 ## License
 
