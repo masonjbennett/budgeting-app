@@ -13,15 +13,15 @@ budgeting-app/
   calculations.py       ← the maths. ONE copy. Read by both front ends.
   app_data.py           ← the starting and demo profiles. ONE copy.
   budget_app.py         ← Streamlit front end (deploys to Streamlit Cloud)
-  test_calc / test_cloud / test_stress    413 assertions
-  test_calc_mutations.py  22 engine defects, each required to fail test_calc
+  test_calc / test_cloud / test_stress    559 assertions
+  test_calc_mutations.py  59 engine defects, each required to fail test_calc
   web/                  ← THIS. Vercel Root Directory.
     api/index.py        one Vercel Function, fourteen routes, no arithmetic
     api/calculations.py GENERATED at build time. Gitignored. Never edit.
     api/app_data.py     GENERATED at build time. Gitignored. Never edit.
     scripts/sync-calculations.mjs
     src/                Next.js App Router, Tailwind 4, Recharts
-    test_api.py         106 assertions against the shipping routes
+    test_api.py         152 assertions against the shipping routes
     test_api_mutations.py   11 shipped bugs, each required to fail the suite
     DEPLOY.md           the click-by-click for the first deploy
 ```
