@@ -598,10 +598,11 @@ export default function FirePage() {
               returns drawn each year (Cholesky factorisation of a 0.05 correlation).
               Stocks 10% mean / 18% standard deviation, bonds 5% / 6%, at{" "}
               {result.stock_pct}% stocks. Inflation is drawn too, at {inflation}% mean
-              and 1.5% deviation, and retirement spending compounds at the inflation
-              actually realised — the sequence you get is the risk this exists to
-              measure. Contributions grow at expected inflation until age{" "}
-              {result.retire_age}, then withdrawals begin. A path that reaches zero
+              and 1.5% deviation. Spending is taken in today&rsquo;s dollars: it and
+              your contributions grow at expected inflation until age{" "}
+              {result.retire_age}, when withdrawals begin, and from then spending
+              compounds at the inflation actually realised each year — the sequence
+              you get is the risk this exists to measure. A path that reaches zero
               stays there. Sources: Trinity Study (1998), Shiller/Ibbotson series.
             </p>
           </div>

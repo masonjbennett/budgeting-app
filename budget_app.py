@@ -2318,7 +2318,8 @@ def page_fire():
     # Monte Carlo simulation
     st.divider()
     st.markdown("### Monte Carlo Retirement Simulation")
-    st.caption("Runs randomized market scenarios with correlated stock/bond returns to test your plan's resilience across accumulation and retirement phases.")
+    st.caption("Runs randomized market scenarios with correlated stock/bond returns to test your plan's resilience across accumulation and retirement phases. "
+               "Spending is taken in today's dollars: it grows at your assumed inflation until retirement, then at each scenario's realised inflation.")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:

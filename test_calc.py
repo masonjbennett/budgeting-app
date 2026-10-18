@@ -421,6 +421,50 @@ check("retirement spending compounds over years retired, not calendar years",
 check("nothing is withdrawn before the retirement age",
       all(b == 100_000.0 for b in bal[:6]), str(bal[:6]))
 
+# Spending is entered in TODAY's dollars, so it is grown to retirement at the
+# plan's EXPECTED inflation -- the rate savings grow at -- before the first
+# withdrawal. Until Oct 2026 it was not grown at all. Realised inflation of 0
+# isolates the pre-retirement growth: every withdrawal is 1,000 * 1.03**5.
+bal, _ = calc.simulate_path(30, 35, 40, 100_000.0, 0.0, 1_000.0, 3.0,
+                            [0.0] * 10, [0.0] * 10)
+_first = bal[5] - bal[6]
+check("the first retired year's spending is today's spending grown to retirement",
+      abs(_first - 1_000 * 1.03 ** 5) < 1e-6,
+      "withdrew %.4f, expected %.4f" % (_first, 1_000 * 1.03 ** 5))
+
+# In retirement spending follows the CUMULATIVE product of realised inflation.
+# 0%, 10%, 0% must leave the third year at 1.10x; raising one year's draw to the
+# years retired (the shipped defect) gives 1.00**3 = 1.0x there and 1.21x in year 2.
+bal, _ = calc.simulate_path(30, 30, 33, 10_000.0, 0.0, 1_000.0, 0.0,
+                            [0.0] * 3, [0.0, 0.10, 0.0])
+_spent = [bal[i] - bal[i + 1] for i in range(3)]
+check("retirement spending is the cumulative product of realised inflation "
+      "(0%, 10%, 0% -> 1.00x, 1.10x, 1.10x)",
+      all(abs(a - b) < 1e-6 for a, b in zip(_spent, (1_000.0, 1_100.0, 1_100.0))),
+      str(_spent))
+
+# Both together, retiring LATER than today -- the case every early assertion
+# skipped. Pre-retirement years are grown at EXPECTED inflation (2%); the
+# wild realised draws in those years (50%) must not touch spending at all.
+bal, _ = calc.simulate_path(30, 33, 36, 100_000.0, 0.0, 1_000.0, 2.0,
+                            [0.0] * 6, [0.5, 0.5, 0.5, 0.0, 0.10, 0.0])
+_spent = [bal[i] - bal[i + 1] for i in range(3, 6)]
+_base = 1_000 * 1.02 ** 3
+check("retiring later: grown at expected inflation to retirement, then by the "
+      "realised years retired only",
+      all(abs(a - b) < 1e-6 for a, b in zip(_spent, (_base, _base * 1.1, _base * 1.1))),
+      "%s vs base %.4f" % (_spent, _base))
+
+# Already past retire_age: the entered spending IS today's spending, so the
+# first simulated year grows it by that year's inflation only -- not by the
+# years since retire_age, which happened before the simulation starts.
+bal, _ = calc.simulate_path(40, 35, 42, 100_000.0, 0.0, 1_000.0, 3.0,
+                            [0.0] * 2, [0.10, 0.0])
+_spent = [bal[i] - bal[i + 1] for i in range(2)]
+check("already retired: no growth for the years before the run starts",
+      all(abs(a - b) < 1e-6 for a, b in zip(_spent, (1_100.0, 1_100.0))),
+      str(_spent))
+
 print("\n--- run_monte_carlo ---")
 mc = calc.run_monte_carlo(24, 45, 95, 25_000, 30_000, 50_000, 80, 3.0, 300, seed=3)
 mc2 = calc.run_monte_carlo(24, 45, 95, 25_000, 30_000, 50_000, 80, 3.0, 300, seed=3)

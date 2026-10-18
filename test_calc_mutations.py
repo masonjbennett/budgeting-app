@@ -32,6 +32,27 @@ PY = sys.executable
 CALC = "calculations.py"
 
 MUTATIONS = [
+    # ── The retirement Monte Carlo (Oct 2026) ────────────────────────
+    ("spending entered in today's dollars is charged at retirement without "
+     "being grown, so a 30-year-old retiring at 65 pays 1x prices in 2061",
+     ("    spending = annual_expenses * (1.0 + infl_mean) ** years_to_retirement",
+      "    spending = float(annual_expenses)")),
+    ("one year's inflation draw is raised to the years retired instead of the "
+     "years' draws being multiplied, about 5x the inflation risk at thirty years",
+     ("            spending *= (1.0 + inflations[year - 1])\n"
+      "            balance -= spending",
+      "            balance -= spending * (1.0 + inflations[year - 1]) ** (age - retire_age)")),
+    ("realised inflation compounds over calendar years since the start rather "
+     "than years retired, so the years before retirement are charged twice",
+     ("        if age <= retire_age:\n"
+      "            balance += annual_savings",
+      "        if age <= retire_age:\n"
+      "            spending *= (1.0 + inflations[year - 1])\n"
+      "            balance += annual_savings")),
+    ("retirement spending grows at EXPECTED inflation, so the sequence of "
+     "inflation — the risk the simulation measures — vanishes",
+     ("            spending *= (1.0 + inflations[year - 1])",
+      "            spending *= (1.0 + infl_mean)")),
     # ── The month strip ──────────────────────────────────────────────
     ("a past month is judged against today's calendar, so August is 'not over' "
      "on the 4th of September and can never carry a verdict",

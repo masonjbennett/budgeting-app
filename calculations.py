@@ -791,10 +791,24 @@ def simulate_path(current_age, retire_age, end_age, portfolio, annual_savings,
 
     Two phases. Before retirement the portfolio earns its return and receives
     savings grown at the EXPECTED inflation rate — a raise you can plan for.
-    After retirement it earns its return and pays expenses grown at that year's
-    REALISED inflation, compounded over the years already retired: the sequence
-    of inflation you actually get is a risk, and modelling it as the average
-    would remove the thing the simulation exists to measure.
+    After retirement it earns its return and pays expenses.
+
+    `annual_expenses` is in TODAY'S dollars: both FIRE pages pass the budget's
+    current spending. So it is first grown to retirement at the same EXPECTED
+    rate the savings grow at — the years before retirement are a plan, not a
+    draw, on both sides of the ledger. Until Oct 2026 it was not grown at all,
+    which charged a 30-year-old retiring at 65 that spending at today's prices
+    thirty-five years on: the largest optimism in the page, worst for the
+    youngest user. Someone already at or past retire_age enters today's
+    spending, and it is grown by nothing before the first simulated year.
+
+    In retirement each year's spending is the previous year's grown by that
+    year's REALISED inflation — the cumulative product over the years retired.
+    The sequence of inflation you actually get is a risk, and modelling it as
+    the average would remove the thing the simulation exists to measure. Until
+    Oct 2026 it raised ONE year's draw to the number of years retired, so
+    year-n spending varied like n·sd rather than about √n·sd — roughly five
+    times the inflation risk at thirty years.
 
     Once a path hits zero it stays at zero — a portfolio does not recover from
     having been spent. Returns (balances, failure_age); failure_age is None if
@@ -805,6 +819,8 @@ def simulate_path(current_age, retire_age, end_age, portfolio, annual_savings,
     balances = [float(portfolio)]
     balance = float(portfolio)
     failure_age = None
+    years_to_retirement = max(0, retire_age - current_age)
+    spending = annual_expenses * (1.0 + infl_mean) ** years_to_retirement
 
     for year in range(1, years + 1):
         if failure_age is not None:
@@ -815,8 +831,8 @@ def simulate_path(current_age, retire_age, end_age, portfolio, annual_savings,
         if age <= retire_age:
             balance += annual_savings * ((1.0 + infl_mean) ** year)
         else:
-            realised = inflations[year - 1]
-            balance -= annual_expenses * ((1.0 + realised) ** (age - retire_age))
+            spending *= (1.0 + inflations[year - 1])
+            balance -= spending
         if balance <= 0:
             balance = 0.0
             failure_age = age
